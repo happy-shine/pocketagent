@@ -18,7 +18,7 @@ import {
   mkdirSync,
   readFileSync,
   unlinkSync,
-  createWriteStream,
+  openSync,
 } from "node:fs";
 import { resolve, join } from "node:path";
 
@@ -164,8 +164,8 @@ program
       const outLog = join(logDir, "gateway.log");
       const errLog = join(logDir, "gateway.err");
 
-      const out = createWriteStream(outLog, { flags: "a" });
-      const err = createWriteStream(errLog, { flags: "a" });
+      const out = openSync(outLog, "a");
+      const err = openSync(errLog, "a");
 
       const child = spawn(process.argv[0], [process.argv[1], "start", ...(opts.config ? ["-c", opts.config] : [])], {
         detached: true,

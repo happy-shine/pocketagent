@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
@@ -135,12 +135,23 @@ export class AgyEngineAdapter implements EngineAdapter {
     ep.lastActiveAt = Date.now();
     this.clearIdleTimer(session.sessionId);
 
-    // Context Handover check
+    // Check for Context Handover
     let fullPrompt = text;
-    if (!session.agySessionId && session.turns && session.turns.length > 0) {
-      const primer = buildContextHandoverPrimer(session, "agy", ep.workspaceDir);
-      if (primer) {
-        fullPrompt = `${primer}\n\n${text}`;
+    if (!session.agySessionId) {
+      let agentsMdContent = "";
+      try {
+        agentsMdContent = readFileSync(join(ep.workspaceDir, "AGENTS.md"), "utf-8");
+      } catch {}
+
+      if (session.turns && session.turns.length > 0) {
+        const primer = buildContextHandoverPrimer(session, "agy", ep.workspaceDir);
+        if (primer) {
+          fullPrompt = `${primer}\n\n${text}`;
+        }
+      }
+
+      if (agentsMdContent) {
+        fullPrompt = `<SYSTEM_INSTRUCTIONS>\n${agentsMdContent}\n</SYSTEM_INSTRUCTIONS>\n\n${fullPrompt}`;
       }
     } else if (session.agySessionId && session.lastEngine && session.lastEngine !== "agy") {
       const deltaTurns = getDeltaTurnsForEngine(session, "agy");
@@ -174,31 +185,46 @@ export class AgyEngineAdapter implements EngineAdapter {
 
         const eventType = (event.event as string) || (event.type as string);
 
-        if (typeof event.session_id === "string" && !session.agySessionId) {
-          session.agySessionId = event.session_id;
-          ep.engineSessionId = event.session_id;
-          yield { type: "session_started", sessionId: event.session_id };
-        } else if (typeof event.conversation_id === "string" && !session.agySessionId) {
+        // Session init
+        if (eventType === "init" && typeof event.conversation_id === "string") {
           session.agySessionId = event.conversation_id;
           ep.engineSessionId = event.conversation_id;
           yield { type: "session_started", sessionId: event.conversation_id };
+        } else if (typeof event.session_id === "string" && !session.agySessionId) {
+          session.agySessionId = event.session_id;
+          ep.engineSessionId = event.session_id;
+          yield { type: "session_started", sessionId: event.session_id };
         }
 
-        if (eventType === "thought" || eventType === "thinking") {
-          yield { type: "thinking_started" };
-        } else if (eventType === "tool_call" || eventType === "tool_use") {
-          const toolName = (event.name as string) || ((event.tool as any)?.name as string) || "tool";
-          yield { type: "tool_started", name: toolName, detail: JSON.stringify(event.input ?? event.args ?? {}) };
-        } else if (eventType === "message" || eventType === "text") {
-          const msgContent = typeof event.content === "string" ? event.content : ((event.message as any)?.content as string);
-          if (msgContent) {
-            yield { type: "text", text: msgContent };
+        // Step update
+        if (eventType === "step_update" && event.step_update && typeof event.step_update === "object") {
+          const step = event.step_update as Record<string, unknown>;
+          if (step.step_type === "agent_response") {
+            if (typeof step.text_delta === "string" && step.text_delta) {
+              yield { type: "text", text: step.text_delta };
+            }
+            if (step.state === "ACTIVE" && !step.text_delta) {
+              yield { type: "thinking_started" };
+            }
+          } else if (step.step_type === "tool" && step.state === "ACTIVE") {
+            const toolName = typeof step.tool_name === "string" ? step.tool_name : "tool";
+            const toolInfo = (step.tool_info as Record<string, unknown>) ?? {};
+            yield {
+              type: "tool_started",
+              name: toolName,
+              detail: JSON.stringify(toolInfo.parameters ?? {}),
+            };
           }
-        } else if (eventType === "result") {
+        }
+
+        // Result finalize
+        if (eventType === "result") {
+          const resObj = (event.result ?? {}) as Record<string, unknown>;
+          const responseText = typeof resObj.response === "string" ? resObj.response : undefined;
           yield {
             type: "result",
-            result: typeof event.result === "string" ? event.result : undefined,
-            isError: Boolean(event.is_error),
+            result: responseText,
+            isError: resObj.status === "ERROR",
           };
           return;
         }

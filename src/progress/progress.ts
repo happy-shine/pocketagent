@@ -52,6 +52,7 @@ export class ProgressTracker {
   private flushing = false;
   private flushTimer?: ReturnType<typeof setInterval>;
   private done = false;
+  private buffer = "";
   private pendingFlush: Promise<void> = Promise.resolve();
 
   constructor(channel: ChannelAdapter, chatId: string, replyToMessageId?: string) {
@@ -91,6 +92,18 @@ export class ProgressTracker {
     this.currentIcon = TOOL_ICONS[name] ?? "⚙";
     this.currentLabel = detail ? `${name}: ${detail}` : name;
     this.phaseStart = Date.now();
+  }
+
+  appendText(text: string): void {
+    this.buffer += text;
+  }
+
+  getBuffer(): string {
+    return this.buffer;
+  }
+
+  getMessageId(): string | null {
+    return this.messageId;
   }
 
   async finish(finalText: string, buttons?: string[]): Promise<void> {

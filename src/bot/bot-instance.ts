@@ -584,6 +584,32 @@ export class BotInstance {
       defaultEffort: this.config.effort,
     });
 
+    // Format prompt text with metadata, timestamp, and reply context
+    const dt = new Date(msg.timestamp * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ts = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+
+    let promptText = `[${ts}] ${msg.senderName}:\n`;
+    if (msg.replyText) {
+      const quoteName = msg.replySenderName ?? "Unknown";
+      promptText += `> ${quoteName}: ${msg.replyText}\n`;
+    }
+    promptText += msg.text;
+
+    // Handle attachments if present
+    const allAttachments = [...(msg.attachments ?? []), ...(msg.replyAttachments ?? [])];
+    if (this.telegram && allAttachments.length > 0) {
+      const downloadsDir = join(this.dataDir, "downloads", this.botId, msg.chatId);
+      for (const att of allAttachments) {
+        try {
+          const localPath = await this.telegram.downloadFile(att.fileId, downloadsDir, att.fileName);
+          promptText += `\n[Attached ${att.type}: ${localPath}]`;
+        } catch (err) {
+          this.log.error({ error: err }, "Failed to download attachment");
+        }
+      }
+    }
+
     // Record turn in session history
     this.sessionManager.addTurn(session.sessionId, {
       role: "user",
@@ -600,7 +626,7 @@ export class BotInstance {
     try {
       for await (const event of this.engineManager.sendMessage(
         session,
-        msg.text,
+        promptText,
         this.botId,
         this.config.extraArgs,
         this.botIdentity(),
@@ -610,6 +636,7 @@ export class BotInstance {
         } else if (event.type === "tool_started") {
           tracker.toolStart(event.name, event.detail);
         } else if (event.type === "text") {
+          tracker.appendText(event.text);
           fullResponse += event.text;
         } else if (event.type === "result") {
           if (event.result && !fullResponse) {
@@ -618,12 +645,23 @@ export class BotInstance {
         }
       }
 
-      // Check for inline buttons markup: [button: Opt1 | Opt2]
+      if (!fullResponse && tracker.getBuffer()) {
+        fullResponse = tracker.getBuffer();
+      }
+
+      // Check for inline buttons markup: [button: Opt1 | Opt2] or <<Opt1>>
+      const btnList: string[] = [];
       const buttonMatch = fullResponse.match(/\[button:\s*([^\]]+)\]/i);
       if (buttonMatch) {
-        buttons = buttonMatch[1].split("|").map((b) => b.trim()).filter(Boolean);
+        btnList.push(...buttonMatch[1].split("|").map((b) => b.trim()).filter(Boolean));
         fullResponse = fullResponse.replace(buttonMatch[0], "").trim();
       }
+      const angleButtons = [...fullResponse.matchAll(/<<([^>]+)>>/g)].map((m) => m[1]);
+      if (angleButtons.length > 0) {
+        btnList.push(...angleButtons);
+        fullResponse = fullResponse.replace(/<<[^>]+>>/g, "").trim();
+      }
+      if (btnList.length > 0) buttons = btnList;
 
       // Record assistant turn in session history
       this.sessionManager.addTurn(session.sessionId, {

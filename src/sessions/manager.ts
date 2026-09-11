@@ -82,8 +82,16 @@ export class SessionManager {
     defaultModel?: string,
     defaultEffort?: string,
   ): Session {
-    const state = this.chats.get(chatId);
-    if (!state) throw new Error(`No sessions for chat ${chatId}`);
+    let state = this.chats.get(chatId);
+    if (!state) {
+      return this.createFirst({
+        chatId,
+        channelType: "telegram",
+        defaultEngine,
+        defaultModel,
+        defaultEffort,
+      });
+    }
 
     for (const s of state.sessions) {
       s.isActive = false;

@@ -177,6 +177,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
         // Map events
         if (event.type === "thinking_start" || event.subtype === "thinking") {
           yield { type: "thinking_started" };
+        } else if (event.type === "stream_event" && (event.event as any)?.type === "content_block_start" && (event.event as any)?.content_block?.type === "thinking") {
+          yield { type: "thinking_started" };
         } else if (event.type === "tool_use" || (event.type === "content_block_start" && (event.content_block as any)?.type === "tool_use")) {
           const tool = (event.content_block as any) ?? event;
           yield { type: "tool_started", name: tool.name ?? "tool", detail: JSON.stringify(tool.input ?? {}) };
@@ -184,6 +186,22 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           yield { type: "text", text: event.text };
         } else if (event.type === "content_block_delta" && (event.delta as any)?.type === "text_delta") {
           yield { type: "text", text: (event.delta as any).text };
+        } else if (event.type === "assistant" && event.message) {
+          const content = (event.message as any).content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block && typeof block === "object") {
+                if (block.type === "tool_use" && typeof block.name === "string") {
+                  yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
+                }
+                if (block.type === "text" && typeof block.text === "string") {
+                  yield { type: "text", text: block.text };
+                }
+              }
+            }
+          } else if (typeof content === "string") {
+            yield { type: "text", text: content };
+          }
         } else if (event.type === "result") {
           yield {
             type: "result",

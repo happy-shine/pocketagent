@@ -1,0 +1,44 @@
+# PocketAgent Configuration Example
+# Connects Telegram & Discord to Claude Code, Codex, and Antigravity (agy)
+
+gateway:
+  port: 18790
+  dataDir: "~/.pocketagent"
+  logLevel: "info"
+  logFormat: "pretty"
+
+# CLI Engines configuration
+engines:
+  default: "claude" # Default engine: claude | codex | agy
+  maxProcesses: 10
+  idleTimeoutMs: 600000
+
+  claude:
+    binary: "claude"
+    # model: "sonnet" # default alias or specific model
+    extraArgs: []
+    customModels: []
+
+  codex:
+    binary: "codex"
+    sandbox: "danger-full-access" # read-only | workspace-write | danger-full-access
+    approvalPolicy: "never"       # untrusted | on-request | never
+    extraArgs: []
+    customModels: []
+
+  agy:
+    binary: "agy"
+    # model: "gemini-3.8-flash-high"
+    extraArgs: []
+    customModels: []
+
+auth:
+  defaultPolicy: "pairing" # open | pairing | allowlist | disabled
+
+bots:
+  - name: "my-pocket-bot"
+    token: "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" # From @BotFather
+    engine: "claude" # claude | codex | agy (switchable dynamically via /engine)
+    # model: "sonnet"
+    # effort: "high"
+    # discordToken: "MTE..." # Optional: connect Discord bot simultaneously

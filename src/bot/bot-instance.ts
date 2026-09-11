@@ -443,15 +443,12 @@ export class BotInstance {
     });
 
     const targetEngine = explicitEngine ?? currentSession.activeEngine ?? this.config.engine;
-    const sameEngine = targetEngine === currentSession.activeEngine;
-    const targetModel = sameEngine ? currentSession.model : (targetEngine === this.config.engine ? this.config.model : undefined);
-    const targetEffort = sameEngine ? currentSession.effort : (targetEngine === this.config.engine ? this.config.effort : undefined);
 
     const session = this.sessionManager.createNew(
       msg.chatId,
       targetEngine,
-      targetModel,
-      targetEffort,
+      undefined,
+      undefined,
       title,
     );
     this.messageStore.advanceCursorToLatest(msg.chatId, session.sessionId);

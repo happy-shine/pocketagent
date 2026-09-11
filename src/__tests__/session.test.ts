@@ -69,4 +69,38 @@ describe("SessionManager Multi-Engine Functionality", () => {
     expect(session2.model).toBe("claude-3-7-sonnet");
     expect(session2.effort).toBe("high");
   });
+
+  it("isolates models and efforts per engine when switching engines", () => {
+    const sm = new SessionManager();
+    const session = sm.resolve({
+      chatId: "user3",
+      channelType: "telegram",
+      defaultEngine: "agy",
+      defaultModel: "gemini-3.8-flash-high",
+      defaultEffort: "high",
+    });
+
+    expect(session.activeEngine).toBe("agy");
+    expect(session.model).toBe("gemini-3.8-flash-high");
+
+    // Switch engine to codex
+    sm.setEngine(session.sessionId, "codex");
+    expect(session.activeEngine).toBe("codex");
+    // Should NOT leak gemini model to codex!
+    expect(session.model).toBeUndefined();
+
+    // Set model for codex
+    sm.setModel(session.sessionId, "gpt-5.5");
+    expect(session.model).toBe("gpt-5.5");
+
+    // Switch back to agy
+    sm.setEngine(session.sessionId, "agy");
+    expect(session.activeEngine).toBe("agy");
+    expect(session.model).toBe("gemini-3.8-flash-high");
+
+    // Switch back to codex
+    sm.setEngine(session.sessionId, "codex");
+    expect(session.activeEngine).toBe("codex");
+    expect(session.model).toBe("gpt-5.5");
+  });
 });

@@ -65,13 +65,20 @@ export class SessionManager {
   private createFirst(opts: SessionResolveOptions): Session {
     const state = this.chats.get(opts.chatId);
     const engine = state?.preferredEngine ?? opts.defaultEngine ?? "claude";
+    const engineModels: Partial<Record<EngineType, string>> = { ...(state?.preferredModels ?? {}) };
+    const engineEfforts: Partial<Record<EngineType, string>> = { ...(state?.preferredEfforts ?? {}) };
+    if (opts.defaultModel) engineModels[engine] = opts.defaultModel;
+    if (opts.defaultEffort) engineEfforts[engine] = opts.defaultEffort;
+
     const session: Session = {
       sessionId: randomUUID(),
       chatId: opts.chatId,
       channelType: opts.channelType,
       activeEngine: engine,
-      model: opts.defaultModel,
-      effort: opts.defaultEffort,
+      model: engineModels[engine],
+      effort: engineEfforts[engine],
+      engineModels,
+      engineEfforts,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       isActive: true,
@@ -84,8 +91,8 @@ export class SessionManager {
       activeSessionId: session.sessionId,
       sessions: [session],
       preferredEngine: engine,
-      preferredModel: opts.defaultModel,
-      preferredEffort: opts.defaultEffort,
+      preferredModels: engineModels,
+      preferredEfforts: engineEfforts,
     };
     this.chats.set(opts.chatId, newState);
     return session;
@@ -120,15 +127,34 @@ export class SessionManager {
     const prev = state.sessions[0];
 
     const activeEngine = defaultEngine ?? prevActive?.activeEngine ?? state.preferredEngine ?? "claude";
-    const sameEngine = prevActive && prevActive.activeEngine === activeEngine;
+
+    // Inherit engine-specific model and effort maps
+    const engineModels: Partial<Record<EngineType, string>> = {
+      ...(state.preferredModels ?? {}),
+      ...(prevActive?.engineModels ?? {}),
+    };
+    if (prevActive?.activeEngine && prevActive.model) {
+      engineModels[prevActive.activeEngine] = prevActive.model;
+    }
+
+    const engineEfforts: Partial<Record<EngineType, string>> = {
+      ...(state.preferredEfforts ?? {}),
+      ...(prevActive?.engineEfforts ?? {}),
+    };
+    if (prevActive?.activeEngine && prevActive.effort) {
+      engineEfforts[prevActive.activeEngine] = prevActive.effort;
+    }
 
     const model = defaultModel !== undefined
       ? defaultModel
-      : (sameEngine ? prevActive?.model : undefined);
+      : engineModels[activeEngine];
 
     const effort = defaultEffort !== undefined
       ? defaultEffort
-      : (sameEngine ? prevActive?.effort : undefined);
+      : engineEfforts[activeEngine];
+
+    if (model) engineModels[activeEngine] = model;
+    if (effort) engineEfforts[activeEngine] = effort;
 
     const session: Session = {
       sessionId: randomUUID(),
@@ -137,6 +163,8 @@ export class SessionManager {
       activeEngine,
       model,
       effort,
+      engineModels,
+      engineEfforts,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       isActive: true,
@@ -149,8 +177,14 @@ export class SessionManager {
     state.sessions.push(session);
     state.activeSessionId = session.sessionId;
     state.preferredEngine = activeEngine;
-    if (model) state.preferredModel = model;
-    if (effort) state.preferredEffort = effort;
+    if (model) {
+      if (!state.preferredModels) state.preferredModels = {};
+      state.preferredModels[activeEngine] = model;
+    }
+    if (effort) {
+      if (!state.preferredEfforts) state.preferredEfforts = {};
+      state.preferredEfforts[activeEngine] = effort;
+    }
 
     return session;
   }
@@ -211,9 +245,22 @@ export class SessionManager {
     if (!session) return false;
 
     if (session.activeEngine !== engine) {
+      if (!session.engineModels) session.engineModels = {};
+      if (!session.engineEfforts) session.engineEfforts = {};
+      if (session.model) {
+        session.engineModels[session.activeEngine] = session.model;
+      }
+      if (session.effort) {
+        session.engineEfforts[session.activeEngine] = session.effort;
+      }
+
       session.lastEngine = session.activeEngine;
       session.activeEngine = engine;
       session.lastActiveAt = Date.now();
+
+      const state = this.chats.get(session.chatId);
+      session.model = session.engineModels[engine] ?? state?.preferredModels?.[engine];
+      session.effort = session.engineEfforts[engine] ?? state?.preferredEfforts?.[engine];
     }
     const state = this.chats.get(session.chatId);
     if (state) {
@@ -225,11 +272,14 @@ export class SessionManager {
   setModel(sessionId: string, model: string): boolean {
     const session = this.findSession(sessionId);
     if (!session) return false;
+    if (!session.engineModels) session.engineModels = {};
+    session.engineModels[session.activeEngine] = model;
     session.model = model;
     session.lastActiveAt = Date.now();
     const state = this.chats.get(session.chatId);
     if (state) {
-      state.preferredModel = model;
+      if (!state.preferredModels) state.preferredModels = {};
+      state.preferredModels[session.activeEngine] = model;
     }
     return true;
   }
@@ -237,11 +287,14 @@ export class SessionManager {
   setEffort(sessionId: string, effort: string): boolean {
     const session = this.findSession(sessionId);
     if (!session) return false;
+    if (!session.engineEfforts) session.engineEfforts = {};
+    session.engineEfforts[session.activeEngine] = effort;
     session.effort = effort;
     session.lastActiveAt = Date.now();
     const state = this.chats.get(session.chatId);
     if (state) {
-      state.preferredEffort = effort;
+      if (!state.preferredEfforts) state.preferredEfforts = {};
+      state.preferredEfforts[session.activeEngine] = effort;
     }
     return true;
   }

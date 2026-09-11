@@ -112,11 +112,20 @@ export class CodexEngineAdapter implements EngineAdapter {
     const extraArgs = [...this.config.extraArgs];
     if (botExtraArgs) extraArgs.push(...botExtraArgs);
 
-    const activeModel = session.model ?? this.config.model;
+    const isForeignModel = (m?: string) => {
+      if (!m) return false;
+      const lower = m.toLowerCase();
+      return lower.startsWith("gemini") || lower.startsWith("claude") || lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku");
+    };
+
+    const rawModel = session.engineModels?.codex ?? (!isForeignModel(session.model) ? session.model : undefined);
+    const activeModel = rawModel ?? (!isForeignModel(this.config.model) ? this.config.model : undefined);
     if (activeModel) extraArgs.push("--model", activeModel);
 
-    const activeEffort = session.effort ?? this.config.effort;
-    if (activeEffort) extraArgs.push("-c", `model_reasoning_effort=${activeEffort}`);
+    const activeEffort = session.engineEfforts?.codex ?? session.effort ?? this.config.effort;
+    if (activeEffort && ["low", "medium", "high", "xhigh"].includes(activeEffort.toLowerCase())) {
+      extraArgs.push("-c", `model_reasoning_effort=${activeEffort.toLowerCase()}`);
+    }
 
     const spawnCmd = buildCodexSpawnArgs({
       binary: this.config.binary,

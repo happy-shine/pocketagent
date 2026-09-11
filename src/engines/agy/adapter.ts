@@ -76,14 +76,22 @@ export class AgyEngineAdapter implements EngineAdapter {
       args.push("--conversation", session.agySessionId);
     }
 
-    const activeModel = session.model ?? this.config.model;
+    const isForeignModel = (m?: string) => {
+      if (!m) return false;
+      const lower = m.toLowerCase();
+      return lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3");
+    };
+
+    const rawModel = session.engineModels?.agy ?? (!isForeignModel(session.model) ? session.model : undefined);
+    const activeModel = rawModel ?? (!isForeignModel(this.config.model) ? this.config.model : undefined);
     if (activeModel) {
       args.push("--model", activeModel);
     }
 
-    const activeEffort = session.effort ?? this.config.effort;
-    if (activeEffort) {
-      args.push("--effort", activeEffort);
+    const rawEffort = session.engineEfforts?.agy ?? session.effort;
+    const activeEffort = rawEffort ?? this.config.effort;
+    if (activeEffort && ["low", "medium", "high"].includes(activeEffort.toLowerCase())) {
+      args.push("--effort", activeEffort.toLowerCase());
     }
 
     args.push(...this.config.extraArgs);

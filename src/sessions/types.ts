@@ -34,6 +34,10 @@ export interface Session {
   sessionNum: number;
   isGroup?: boolean;
 
+  // Per-engine model and effort tracking
+  engineModels?: Partial<Record<EngineType, string>>;
+  engineEfforts?: Partial<Record<EngineType, string>>;
+
   // In-session turns history
   turns: SessionHistoryItem[];
 }
@@ -43,6 +47,8 @@ export interface ChatSessionState {
   activeSessionId: string;
   sessions: Session[];
   preferredEngine?: EngineType;
+  preferredModels?: Partial<Record<EngineType, string>>;
+  preferredEfforts?: Partial<Record<EngineType, string>>;
   preferredModel?: string;
   preferredEffort?: string;
 }

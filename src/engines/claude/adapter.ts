@@ -76,7 +76,14 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       args.push("--resume", session.claudeSessionId);
     }
 
-    const activeModel = session.model ?? this.config.model;
+    const isForeignModel = (m?: string) => {
+      if (!m) return false;
+      const lower = m.toLowerCase();
+      return lower.startsWith("gemini") || lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3");
+    };
+
+    const rawModel = session.engineModels?.claude ?? (!isForeignModel(session.model) ? session.model : undefined);
+    const activeModel = rawModel ?? (!isForeignModel(this.config.model) ? this.config.model : undefined);
     if (activeModel) {
       args.push("--model", activeModel);
     }

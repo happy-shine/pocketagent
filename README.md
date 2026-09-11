@@ -1,16 +1,14 @@
 # PocketAgent 🎒
 
 <p align="center">
-  <strong>The Unified 3-in-1 AI Gateway: Bridging Chat Platforms to CLI Coding Agents</strong><br>
-  Run <strong>Claude Code</strong>, <strong>OpenAI Codex</strong>, and <strong>Google Antigravity (agy)</strong> directly from your pocket via <strong>Telegram</strong> & <strong>Discord</strong>.
+  <strong>Control Claude Code, OpenAI Codex, and Antigravity from Telegram & Discord</strong><br>
+  Turn terminal coding agents into an always-on mobile companion on your phone.
 </p>
 
 <p align="center">
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.0.0-339933?logo=node.js&logoColor=white" alt="Node Version"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
-  <img src="https://img.shields.io/badge/Engines-Claude%20%7C%20Codex%20%7C%20Agy-orange" alt="Engines">
-  <img src="https://img.shields.io/badge/Channels-Telegram%20%7C%20Discord-blue" alt="Channels">
 </p>
 
 <p align="center">
@@ -19,44 +17,38 @@
 
 ---
 
-## 🌟 Overview
+## 💡 What is this?
 
-**PocketAgent** turns command-line AI coding agents—normally tethered to your desktop—into an always-on mobile companion. Manage repositories, inspect PRs, query codebase architecture, and generate code directly from your smartphone or tablet through Telegram or Discord.
+Normally, running **Claude Code**, **OpenAI Codex**, or Google **Antigravity (agy)** requires sitting at your desktop staring at a terminal.
+
+**PocketAgent** is a local gateway that connects those CLI agents to **Telegram** (and Discord). Wherever you are—commuting, in a meeting, or lying on the couch—send a message on your phone, and your local machine writes code, runs terminal commands, and edits files for you.
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                 Telegram   /   Discord                      │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────┐
-│                    PocketAgent Gateway                      │
-│  • Universal Session Ledger    • Dynamic Engine Switching   │
-│  • Live Model & Effort Probing • Context Handover Primer    │
-│  • Background IPC Daemon       • REST Agent API Server      │
-└──────────────────────────────┬──────────────────────────────┘
-               ┌───────────────┼───────────────┐
-               ▼               ▼               ▼
-         Claude Code CLI   Codex CLI       Agy CLI
-         (Anthropic)       (OpenAI)        (Google DeepMind)
-               │               │               │
-               └───────────────┼───────────────┘
-                               ▼
-            Shared Local Workspace & Git Repository
+   Telegram / Discord (on your phone)
+                   │
+                   ▼
+     PocketAgent Gateway (local daemon)
+                   │
+        ┌──────────┼──────────┐
+        ▼          ▼          ▼
+     Claude      Codex       Agy
+      Code        CLI        CLI
+        │          │          │
+        └──────────┴──────────┘
+                   ▼
+       Your Local Git Repository
 ```
 
 ---
 
-## ✨ Key Features
+## ✨ Features
 
-- **3-in-1 Native Engine Aggregation**: Simultaneously connects to Anthropic's **Claude Code**, OpenAI's **Codex**, and Google's **Antigravity (agy)** CLI engines.
-- **Dynamic Hot-Swapping (`/engine`)**: Switch between engines in Telegram or Discord on the fly with interactive inline buttons.
-- **Seamless Context Handover (Handover Primer)**: When switching engines, PocketAgent formats prior turns, architectural decisions, and repository changes into a structured primer injected into the new engine. Returning to a previous engine resumes its native session with zero context loss.
-- **Zero-Hardcoding Dynamic Discovery (`/model`)**: No rigid, hardcoded model lists. PocketAgent live-probes CLI engines (e.g. `agy models`, Codex models cache, Claude modern stack) and renders adaptive interactive buttons. Custom model inputs are always accepted.
-- **Adaptive Thinking Effort (`/effort`)**: Intelligently senses the active engine's supported reasoning levels (`low`, `medium`, `high`, `max`) and lets you toggle depth with a single tap.
-- **Production-Grade Background Daemon**: `pa start` launches an asynchronous background daemon by default with IPC readiness handshake. Supports `-f / --foreground` for live debugging, plus `pa restart`, `pa stop`, and `pa status`.
-- **Multi-Tenant Session Multiplexing**: Maintain multiple concurrent tasks per chat (`/new`, `/sessions`) with isolated physical workspaces.
-- **Secure Pairing Authentication**: Fine-grained pairing codes (`pa pairing approve <code>`) preventing unauthorized bot usage, with separate policies for direct messages and group chats.
-- **Local Gateway REST API**: CLI agents can curl local endpoints inside active turns to send files, download attachments, read conversation history, or update their own personality (`SOUL.md`).
+- **3-in-1 CLI Gateway**: Run Claude Code, OpenAI Codex, and Antigravity (agy) seamlessly through a single bot.
+- **Switch Engines Mid-Conversation (`/engine`)**: Switch between Claude, Codex, and Agy anytime. PocketAgent automatically carries over conversation context and file changes so you don't have to re-explain anything.
+- **Real Local Execution**: Runs real CLI processes on your machine with full bash commands, file editing, and git permissions—not a watered-down web API.
+- **Zero-Fuss Background Daemon**: `pa start` runs in the background by default. Check status with `pa status`, restart with `pa restart`, or use `pa start -f` for foreground debugging.
+- **Pairing Code Security**: First-time chats require approving a 6-digit code (`pa pairing approve <code>`) in your terminal, preventing unauthorized access.
+- **Multi-Sessions & Side Questions**: Open separate session workspaces (`/new`, `/sessions`), or ask quick questions without interrupting running tasks (`/btw`).
 
 ---
 
@@ -64,37 +56,30 @@
 
 ### 1. Prerequisites
 
-- **Node.js** >= 22.0.0
-- At least one CLI coding engine installed:
-  - **Claude Code**: `npm install -g @anthropic-ai/claude-code` (or local binary)
-  - **Antigravity (agy)**: `agy` CLI installed and authenticated
-  - **OpenAI Codex**: `npm install -g @openai/codex`
+- **Node.js** >= 22
+- At least one CLI installed:
+  - Claude Code (`claude`)
+  - Google Antigravity (`agy`)
+  - OpenAI Codex (`codex`)
 - A Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 
-### 2. Installation & Build
+### 2. Install & Build
 
 ```bash
-# Clone repository
 git clone https://github.com/happy-shine/pocketagent.git
 cd pocketagent
-
-# Install dependencies and build
 npm install
 npm run build
-
-# Register global `pocketagent` and short alias `pa`
-npm link
+npm link        # Registers global `pa` and `pocketagent` commands
 ```
 
-### 3. System & Engine Health Check
-
-Verify your installed CLI engines and environment:
+### 3. Check Environment
 
 ```bash
 pa doctor
-# or:
-pocketagent doctor
 ```
+
+Inspects Node.js version and detects which CLI engines are installed.
 
 ### 4. Configuration
 
@@ -104,18 +89,14 @@ Edit `~/.pocketagent/config.yaml` (auto-generated on first run):
 gateway:
   port: 18790
   dataDir: "~/.pocketagent"
-  logLevel: "info"
-  logFormat: "pretty"
 
 engines:
   default: "claude" # Default engine: claude | codex | agy
   claude:
     binary: "claude"
-    model: "sonnet"
   agy:
     binary: "agy"
     model: "gemini-3.8-flash-high"
-    effort: "high"
   codex:
     binary: "codex"
 
@@ -123,46 +104,39 @@ auth:
   defaultPolicy: "pairing" # pairing | open | allowlist
 
 bots:
-  - name: "my-pocket-bot"
+  - name: "my-bot"
     token: "123456:ABC-DEF..."    # Telegram Bot Token
-    engine: "claude"              # Default engine for this bot
+    engine: "claude"
 ```
 
-### 5. Running PocketAgent
-
-PocketAgent runs as a background daemon by default:
+### 5. Start & Manage
 
 ```bash
-# Start in background (daemon mode with IPC readiness check):
+# Start background daemon (default):
 pa start
 
-# Check service status & PID:
+# Check status:
 pa status
 
-# Inspect live background logs:
-tail -f ~/.pocketagent/logs/gateway.log
-
-# Restart background service:
+# Restart or stop:
 pa restart
-
-# Stop background service:
 pa stop
 
-# Run in foreground for real-time terminal debugging:
+# Tail live logs:
+tail -f ~/.pocketagent/logs/gateway.log
+
+# Run in foreground for debugging:
 pa start -f
-# or:
-pa start --foreground
 ```
 
-### 6. Pair Your Telegram Account
+### 6. Pair Your Bot
 
-If `auth.defaultPolicy` is set to `pairing`:
-1. Send `/start` or any message to your bot on Telegram.
-2. The bot will respond with a 6-digit pairing code (e.g. `123456`).
-3. In your terminal, approve the user:
-   ```bash
-   pa pairing approve 123456
-   ```
+When you first message your bot on Telegram, it replies with a 6-digit code (e.g. `123456`).  
+Approve it in your terminal:
+
+```bash
+pa pairing approve 123456
+```
 
 ---
 
@@ -170,42 +144,40 @@ If `auth.defaultPolicy` is set to `pairing`:
 
 | Command | Description |
 | :--- | :--- |
-| `/engine [claude\|codex\|agy]` | Open engine selection menu, hot-swap active engine with context handover |
-| `/model [name]` | Live-probe engine for supported models or manually specify any model |
-| `/effort [level]` | Toggle thinking / reasoning effort (`low`, `medium`, `high`, `max`) |
-| `/status` | View current session details, active engine, model, effort, and turn count |
-| `/new` | Create a new isolated session workspace |
-| `/sessions [num]` | Display session list with interactive switch buttons |
+| `/engine` | Interactive menu to switch active CLI engine with context handover |
+| `/model` | Probe and pick available models for current engine |
+| `/effort` | Set reasoning effort (`low`, `medium`, `high`, `max`) |
+| `/status` | View active engine, model, workspace, and turn count |
+| `/new` | Start a fresh session in a new workspace |
+| `/sessions` | List sessions with inline switch buttons |
 | `/btw <question>` | Ask a quick side question without interrupting active tasks |
-| `/stop` | Abort the currently running turn or task |
-| `/help` | Display command guide and quick tips |
+| `/stop` | Abort current turn |
+| `/help` | Display command help |
 
 ---
 
-## 💻 CLI Commands Reference
+## 💻 CLI Commands
 
-| CLI Command | Description |
+| Command | Description |
 | :--- | :--- |
-| `pa start` | Start PocketAgent as a background daemon |
-| `pa start -f` | Start in foreground with real-time colored log output |
-| `pa status` | Check if PocketAgent daemon is running and view PID |
-| `pa restart` | Gracefully restart running daemon instance |
-| `pa stop` | Stop running background daemon |
-| `pa doctor` | Run comprehensive system, Node.js, and engine binary diagnosis |
-| `pa pairing list` | List pending bot access pairing requests |
-| `pa pairing approve <code>` | Approve a pairing code to authorize user access |
-| `pa daemon <action>` | Manage daemon (`start`, `stop`, `restart`, `status`) |
+| `pa start` | Start PocketAgent daemon (add `-f` for foreground) |
+| `pa status` | Check running daemon status and PID |
+| `pa restart` | Restart running daemon |
+| `pa stop` | Stop daemon |
+| `pa doctor` | Health check for Node and installed CLI engines |
+| `pa pairing list` | List pending pairing requests |
+| `pa pairing approve <code>` | Approve a pairing code |
 
 ---
 
 ## 🔄 How Context Handover Works
 
-Different AI CLIs have fundamentally incompatible internal state stores. PocketAgent solves this through a four-pillar design:
+Different CLIs have separate, non-compatible session databases. When you switch engines with `/engine`:
 
-1. **Universal History Ledger**: The gateway records every turn, sender, model output, and timestamp in an engine-agnostic log.
-2. **Handover Primer**: When switching to an engine for the first time in a session, PocketAgent synthesizes recent key history and workspace state into an introductory primer, enabling immediate task continuation.
-3. **Round-trip Resume**: Switching back to a previously used engine resumes its native session directly, injecting only the delta messages that occurred in the interim.
-4. **Physical Workspace Continuity**: All engines operate inside the same underlying workspace directory on disk, ensuring file changes and git commits remain consistent across engines.
+1. **Universal Ledger**: The gateway independently logs every message, turn, and executed action.
+2. **Handover Primer**: When switching to a new engine, PocketAgent summarizes previous turns, modified files, and workspace state into an introductory prompt so the new engine picks up immediately.
+3. **Round-trip Resume**: Switching back to a previously used engine resumes its native session and syncs intermediate turns.
+4. **Shared Workspace**: All engines operate in the exact same local folder on your disk, so file modifications are always visible.
 
 ---
 

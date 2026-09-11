@@ -126,6 +126,60 @@ export class EngineManager {
     return adapter?.getWorkspaceDir(sessionId);
   }
 
+  updateConfig(config: GatewayConfig): void {
+    const maxProcesses = config.engines.maxProcesses;
+    const idleTimeoutMs = config.engines.idleTimeoutMs;
+
+    const claude = this.adapters.get("claude");
+    claude?.updateConfig({
+      binary: config.engines.claude.binary,
+      model: config.engines.claude.model,
+      effort: config.engines.claude.effort,
+      extraArgs: config.engines.claude.extraArgs,
+      customModels: config.engines.claude.customModels,
+      maxProcesses,
+      idleTimeoutMs,
+    });
+
+    const agy = this.adapters.get("agy");
+    agy?.updateConfig({
+      binary: config.engines.agy.binary,
+      model: config.engines.agy.model,
+      effort: config.engines.agy.effort,
+      extraArgs: config.engines.agy.extraArgs,
+      customModels: config.engines.agy.customModels,
+      maxProcesses,
+      idleTimeoutMs,
+    });
+
+    const codex = this.adapters.get("codex");
+    codex?.updateConfig({
+      binary: config.engines.codex.binary,
+      model: config.engines.codex.model,
+      effort: config.engines.codex.effort,
+      extraArgs: config.engines.codex.extraArgs,
+      customModels: config.engines.codex.customModels,
+      maxProcesses,
+      idleTimeoutMs,
+      codex: {
+        sandbox: config.engines.codex.sandbox,
+        approvalPolicy: config.engines.codex.approvalPolicy,
+      },
+    });
+  }
+
+  async getAllCapabilities(forceRefresh?: boolean): Promise<Record<string, EngineCapabilities>> {
+    const result: Record<string, EngineCapabilities> = {};
+    for (const [type, adapter] of this.adapters.entries()) {
+      try {
+        result[type] = await adapter.getCapabilities(forceRefresh);
+      } catch {
+        result[type] = { models: [], efforts: [], supportsEffort: false, supportsCustomModel: false };
+      }
+    }
+    return result;
+  }
+
   async shutdown(): Promise<void> {
     for (const adapter of this.adapters.values()) {
       await adapter.shutdown();

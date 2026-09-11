@@ -5,6 +5,10 @@ import type { Logger } from "pino";
 import type { TelegramAdapter } from "../channels/telegram/adapter.js";
 import type { ChannelAdapter } from "../channels/types.js";
 import type { MessageStore } from "../sessions/message-store.js";
+import type { GatewayConfig } from "../config/types.js";
+import type { EngineManager } from "../engines/manager.js";
+import { SkillRegistry } from "../skills/index.js";
+import { getDashboardHtml } from "./dashboard-html.js";
 
 export interface ApiServerConfig {
   port: number;
@@ -14,7 +18,28 @@ export interface ApiServerConfig {
   log: Logger;
   messageStore?: MessageStore;
   allowedChatIds?: Set<string>;
+  configPath?: string;
+  getConfig?: () => GatewayConfig;
+  onSaveConfig?: (newConfigOrYaml: GatewayConfig | string) => Promise<{ ok: boolean; changes: string[]; error?: string }>;
   onReloadConfig?: () => Promise<{ ok: boolean; changes: string[] }>;
+  getBotsInfo?: () => Array<{
+    name: string;
+    channel: "telegram" | "discord";
+    botId: string;
+    username?: string;
+    status: "online" | "stopped" | "error";
+    engine: string;
+    model?: string;
+    effort?: string;
+    dmPolicy: string;
+    groupPolicy: string;
+    guildPolicy?: string;
+    allowFrom: string[];
+    groups: Record<string, any>;
+  }>;
+  getEngineManager?: () => EngineManager;
+  getPendingPairings?: () => Array<{ botName: string; botId: string; req: any }>;
+  approvePairing?: (code: string) => Promise<{ ok: boolean; senderId?: string; botName?: string; error?: string }>;
 }
 
 export class ApiServer {
@@ -46,8 +71,44 @@ export class ApiServer {
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.config.port}`);
 
+    // Enable local CORS
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     try {
-      if (req.method === "POST" && url.pathname === "/api/send-file") {
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/index.html")) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        if (req.method === "HEAD") {
+          res.end();
+        } else {
+          res.end(getDashboardHtml());
+        }
+      } else if (req.method === "GET" && url.pathname === "/api/config") {
+        await this.handleGetConfig(res);
+      } else if ((req.method === "POST" || req.method === "PUT") && url.pathname === "/api/config") {
+        await this.handleSaveConfig(req, res);
+      } else if (req.method === "GET" && url.pathname === "/api/status") {
+        await this.handleGetStatus(res);
+      } else if (req.method === "GET" && url.pathname === "/api/models") {
+        await this.handleGetModels(res, url);
+      } else if (req.method === "GET" && url.pathname === "/api/skills") {
+        await this.handleGetSkills(res);
+      } else if (req.method === "POST" && url.pathname === "/api/skills/sync") {
+        await this.handleSyncSkills(res);
+      } else if (req.method === "POST" && url.pathname === "/api/skills/new") {
+        await this.handleNewSkill(req, res);
+      } else if (req.method === "GET" && url.pathname === "/api/pairings") {
+        await this.handleGetPairings(res);
+      } else if (req.method === "POST" && url.pathname === "/api/pairings/approve") {
+        await this.handleApprovePairing(req, res);
+      } else if (req.method === "POST" && url.pathname === "/api/send-file") {
         await this.handleSendFile(req, res, url);
       } else if (req.method === "POST" && url.pathname === "/api/send-message") {
         await this.handleSendMessage(req, res, url);
@@ -70,6 +131,148 @@ export class ApiServer {
       this.log.error({ error: err instanceof Error ? err.message : String(err) }, "API error");
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Internal server error" }));
+    }
+  }
+
+  private async handleGetConfig(res: ServerResponse): Promise<void> {
+    const cfg = this.config.getConfig?.();
+    const cfgPath = this.config.configPath ?? join(this.config.dataDir, "config.yaml");
+    let yamlStr = "";
+    if (existsSync(cfgPath)) {
+      yamlStr = readFileSync(cfgPath, "utf-8");
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      ok: true,
+      config: cfg,
+      yaml: yamlStr,
+      configPath: cfgPath,
+    }));
+  }
+
+  private async handleSaveConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.config.onSaveConfig) {
+      res.writeHead(501, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Save config not configured" }));
+      return;
+    }
+
+    const body = await readBody(req);
+    let payload: GatewayConfig | string;
+    try {
+      const parsed = JSON.parse(body);
+      payload = parsed.yaml !== undefined ? parsed.yaml : (parsed.config !== undefined ? parsed.config : parsed);
+    } catch {
+      payload = body;
+    }
+
+    const result = await this.config.onSaveConfig(payload);
+    if (!result.ok) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: result.error, changes: result.changes }));
+      return;
+    }
+
+    const cfgPath = this.config.configPath ?? join(this.config.dataDir, "config.yaml");
+    const yamlStr = existsSync(cfgPath) ? readFileSync(cfgPath, "utf-8") : "";
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      ok: true,
+      changes: result.changes,
+      config: this.config.getConfig?.(),
+      yaml: yamlStr,
+    }));
+  }
+
+  private async handleGetStatus(res: ServerResponse): Promise<void> {
+    const cfg = this.config.getConfig?.();
+    const defaultEngine = cfg?.defaultEngine ?? cfg?.engine ?? cfg?.engines?.default ?? "claude";
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      ok: true,
+      gateway: {
+        status: "online",
+        port: this.config.port,
+        pid: process.pid,
+        uptime: Math.floor(process.uptime()),
+        memory: process.memoryUsage(),
+        nodeVersion: process.version,
+        configPath: this.config.configPath ?? join(this.config.dataDir, "config.yaml"),
+      },
+      bots: this.config.getBotsInfo?.() ?? [],
+      defaultEngine,
+    }));
+  }
+
+  private async handleGetModels(res: ServerResponse, url: URL): Promise<void> {
+    const forceRefresh = url.searchParams.get("refresh") === "true";
+    const em = this.config.getEngineManager?.();
+    const capabilities = em ? await em.getAllCapabilities(forceRefresh) : {};
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, capabilities }));
+  }
+
+  private async handleGetSkills(res: ServerResponse): Promise<void> {
+    try {
+      const reg = SkillRegistry.getInstance();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, hubDir: reg.hubDir, skills: reg.list() }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleSyncSkills(res: ServerResponse): Promise<void> {
+    try {
+      const reg = SkillRegistry.getInstance();
+      const skills = reg.sync();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, skills }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleNewSkill(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.name) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Skill name is required" }));
+        return;
+      }
+      const reg = SkillRegistry.getInstance();
+      const skill = reg.createSkill(body.name, body.description ?? "");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, skill }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleGetPairings(res: ServerResponse): Promise<void> {
+    const pending = this.config.getPendingPairings?.() ?? [];
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, pending }));
+  }
+
+  private async handleApprovePairing(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.code) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Pairing code is required" }));
+        return;
+      }
+      const result = await (this.config.approvePairing?.(body.code) ?? Promise.resolve({ ok: false, error: "Pairing not supported" }));
+      res.writeHead(result.ok ? 200 : 400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
     }
   }
 

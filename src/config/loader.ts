@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { parse as parseYaml, parseDocument } from "yaml";
+import { parse as parseYaml, parseDocument, stringify as stringifyYaml } from "yaml";
 import { configSchema } from "./schema.js";
 import type { GatewayConfig, ResolvedBotConfig, BotConfig } from "./types.js";
 
@@ -235,4 +235,35 @@ export function syncPairingToConfig(
     // Non-fatal if config rewrite fails
   }
   return false;
+}
+
+export function saveConfig(
+  configPath: string,
+  input: GatewayConfig | string,
+): { ok: boolean; config: GatewayConfig; yaml: string; error?: string } {
+  try {
+    let rawObj: any;
+    let yamlStr: string;
+
+    if (typeof input === "string") {
+      yamlStr = input;
+      const expanded = expandEnvVars(yamlStr);
+      rawObj = parseYaml(expanded);
+    } else {
+      rawObj = input;
+      yamlStr = stringifyYaml(rawObj, { indent: 2 });
+    }
+
+    const validated = configSchema.parse(rawObj) as GatewayConfig;
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(configPath, yamlStr, "utf-8");
+    return { ok: true, config: validated, yaml: yamlStr };
+  } catch (err) {
+    return {
+      ok: false,
+      config: {} as any,
+      yaml: typeof input === "string" ? input : "",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

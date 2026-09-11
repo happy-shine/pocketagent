@@ -19,8 +19,8 @@ const SESSIONS_PER_PAGE = 10;
 
 export class BotInstance {
   readonly botId: string;
-  readonly name: string;
-  readonly config: ResolvedBotConfig;
+  name: string;
+  config: ResolvedBotConfig;
   readonly telegram?: TelegramAdapter;
   readonly discord?: DiscordAdapter;
   private sessionManager: SessionManager;
@@ -74,6 +74,43 @@ export class BotInstance {
 
   setPeerBots(peers: Array<{ name: string; username: string }>): void {
     this.peerBots = peers.filter((b) => b.name !== this.name);
+  }
+
+  getUsername(): string | undefined {
+    return this.telegram?.username ?? this.discord?.username;
+  }
+
+  getAllowFrom(): string[] {
+    return [...this.allowFrom];
+  }
+
+  getRuntimeGroups(): Record<string, { enabled: boolean; allowFrom?: string[] }> {
+    return { ...this.runtimeGroups };
+  }
+
+  getPendingPairings() {
+    return this.pairingManager.listPending();
+  }
+
+  approvePairing(code: string): { senderId: string; chatId?: string } | null {
+    const res = this.pairingManager.approve(code);
+    if (res) {
+      this.allowFrom.add(res.senderId);
+      this.saveAllowFrom();
+      if (res.chatId && res.chatId !== res.senderId) {
+        this.runtimeGroups[res.chatId] = { enabled: true };
+        this.saveRuntimeGroups();
+      }
+    }
+    return res;
+  }
+
+  updateConfig(newConfig: ResolvedBotConfig): void {
+    this.config = newConfig;
+    this.name = newConfig.name;
+    this.allowFrom = this.loadAllowFrom();
+    this.runtimeGroups = this.loadRuntimeGroups();
+    this.log.info({ bot: this.name }, "Bot configuration hot-reloaded");
   }
 
   private loadAllowFrom(): Set<string> {

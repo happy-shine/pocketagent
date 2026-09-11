@@ -209,7 +209,10 @@ async function startDaemon(opts: { config?: string }): Promise<void> {
         settled = true;
         clearTimeout(timer);
         child.unref();
+        let port = 18790;
+        try { port = loadConfig(opts.config).gateway.port; } catch {}
         console.log(`PocketAgent daemon started in background (PID: ${child.pid})`);
+        console.log(`Dashboard: http://127.0.0.1:${port}`);
         console.log(`Logs: ${outLog}`);
         resolve();
       }
@@ -269,7 +272,10 @@ function printStatus(configPath?: string): void {
   const dataDir = getDataDir(configPath);
   const pid = getRunningPid(dataDir);
   if (pid) {
+    let port = 18790;
+    try { port = loadConfig(configPath).gateway.port; } catch {}
     console.log(`PocketAgent is active in background (PID: ${pid})`);
+    console.log(`Dashboard: http://127.0.0.1:${port}`);
   } else {
     console.log("PocketAgent is not running");
   }
@@ -521,6 +527,35 @@ program
         console.log(`  Scripts: ${s.scripts.join(", ")}`);
       }
       console.log(`  Path: ${s.dir}\n`);
+    }
+  });
+
+program
+  .command("dashboard")
+  .alias("ui")
+  .alias("web")
+  .description("Open the PocketAgent web dashboard and hot-config UI in your browser")
+  .option("-c, --config <path>", "Path to config file")
+  .action((opts) => {
+    let port = 18790;
+    try {
+      port = loadConfig(opts.config).gateway.port;
+    } catch {}
+    const url = `http://127.0.0.1:${port}`;
+    console.log(`\n  ⚡ PocketAgent Dashboard: ${url}\n`);
+
+    const dataDir = getDataDir(opts.config);
+    const pid = getRunningPid(dataDir);
+    if (!pid) {
+      console.log(`  Note: Gateway is not currently running. Start it with 'pa start' to access the dashboard.`);
+    }
+
+    try {
+      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      spawn(openCmd, [url], { detached: true, stdio: "ignore" }).unref();
+      console.log(`  Opened in default browser.`);
+    } catch {
+      console.log(`  Open ${url} in your browser.`);
     }
   });
 

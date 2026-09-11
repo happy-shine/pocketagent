@@ -7,8 +7,12 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  REST,
+  Routes,
+  SlashCommandBuilder,
   type Message,
   type ButtonInteraction,
+  type ChatInputCommandInteraction,
 } from "discord.js";
 import type { Logger } from "pino";
 import type {
@@ -51,6 +55,7 @@ export class DiscordAdapter implements ChannelAdapter {
   private messageHandler?: MessageHandler;
   private commandHandlers = new Map<string, CommandHandler>();
   private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
+  private activeSlashInteractions = new Map<string, ChatInputCommandInteraction>();
   private stopped = false;
   username?: string;
 
@@ -109,6 +114,10 @@ export class DiscordAdapter implements ChannelAdapter {
     this.client = client;
     this.username = client.user?.tag || client.user?.username;
     this.log.info({ username: this.username }, "Discord bot connected successfully");
+
+    this.registerSlashCommands().catch((err) => {
+      this.log.warn({ error: err }, "Failed to register Discord slash commands");
+    });
 
     client.on("messageCreate", async (message: Message) => {
       if (message.author.bot) return;
@@ -184,6 +193,52 @@ export class DiscordAdapter implements ChannelAdapter {
     });
 
     client.on("interactionCreate", async (interaction) => {
+      if (interaction.isChatInputCommand()) {
+        const cmd = interaction.commandName.toLowerCase();
+        const handler = this.commandHandlers.get(cmd);
+        if (!handler) {
+          await interaction.reply({ content: `Unknown command: /${cmd}`, ephemeral: true }).catch(() => {});
+          return;
+        }
+
+        let textArg = "";
+        const sub = interaction.options.getSubcommand(false);
+        if (sub) textArg += sub + " ";
+        const options = interaction.options.data;
+        if (options && options.length > 0) {
+          textArg += options.map((o) => String(o.value ?? "")).filter(Boolean).join(" ");
+        }
+        textArg = textArg.trim();
+
+        await interaction.deferReply().catch(() => {});
+
+        const inbound: InboundMessage = {
+          channelType: "discord",
+          chatId: interaction.channelId,
+          senderId: interaction.user.id,
+          senderName: interaction.user.displayName || interaction.user.username,
+          messageId: interaction.id,
+          text: textArg,
+          isGroup: interaction.guildId !== null,
+          timestamp: Math.floor(interaction.createdTimestamp / 1000),
+          raw: interaction,
+        };
+
+        this.activeSlashInteractions.set(interaction.channelId, interaction);
+        setTimeout(() => {
+          if (this.activeSlashInteractions.get(interaction.channelId) === interaction) {
+            this.activeSlashInteractions.delete(interaction.channelId);
+          }
+        }, 15000);
+
+        try {
+          await handler(inbound);
+        } catch (err) {
+          this.log.error({ error: err instanceof Error ? err.message : String(err), cmd }, "Discord slash command failed");
+        }
+        return;
+      }
+
       if (!interaction.isButton()) return;
       const btnInteraction = interaction as ButtonInteraction;
       const customId = btnInteraction.customId;
@@ -251,6 +306,30 @@ export class DiscordAdapter implements ChannelAdapter {
 
   async send(msg: OutboundMessage): Promise<string> {
     if (!this.client) return "";
+
+    const slashInteraction = this.activeSlashInteractions.get(msg.chatId);
+    if (slashInteraction) {
+      this.activeSlashInteractions.delete(msg.chatId);
+      const chunks = splitDiscordText(msg.text);
+      const firstChunk = chunks[0] || msg.text;
+      const files = msg.attachments?.map((a) => ({
+        attachment: a.path,
+        name: a.caption,
+      })) ?? [];
+      const payload: any = { content: firstChunk };
+      if (files.length > 0) payload.files = files;
+      const res = await slashInteraction.editReply(payload).catch(() => null);
+      if (chunks.length > 1) {
+        const channel = await this.client.channels.fetch(msg.chatId).catch(() => null);
+        if (channel && channel.isTextBased()) {
+          for (let i = 1; i < chunks.length; i++) {
+            await (channel as any).send({ content: chunks[i] }).catch(() => {});
+          }
+        }
+      }
+      return (res as any)?.id ?? "";
+    }
+
     const channel = await this.client.channels.fetch(msg.chatId).catch(() => null);
     if (!channel || !channel.isTextBased()) return "";
 
@@ -282,8 +361,6 @@ export class DiscordAdapter implements ChannelAdapter {
 
   async sendWithButtons(chatId: string, text: string, buttons: InlineButton[][]): Promise<string> {
     if (!this.client) return "";
-    const channel = await this.client.channels.fetch(chatId).catch(() => null);
-    if (!channel || !channel.isTextBased()) return "";
 
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
     for (const buttonRow of buttons.slice(0, 5)) {
@@ -303,6 +380,19 @@ export class DiscordAdapter implements ChannelAdapter {
 
     const chunks = splitDiscordText(text);
     const mainText = chunks[0] || text;
+
+    const slashInteraction = this.activeSlashInteractions.get(chatId);
+    if (slashInteraction) {
+      this.activeSlashInteractions.delete(chatId);
+      const res = await slashInteraction.editReply({
+        content: mainText,
+        components: rows,
+      }).catch(() => null);
+      return (res as any)?.id ?? "";
+    }
+
+    const channel = await this.client.channels.fetch(chatId).catch(() => null);
+    if (!channel || !channel.isTextBased()) return "";
 
     const sent = await (channel as any).send({
       content: mainText,
@@ -359,6 +449,63 @@ export class DiscordAdapter implements ChannelAdapter {
     const channel = await this.client.channels.fetch(chatId).catch(() => null);
     if (channel && channel.isTextBased()) {
       await (channel as any).sendTyping().catch(() => {});
+    }
+  }
+
+  private async registerSlashCommands(): Promise<void> {
+    if (!this.client?.user) return;
+    const rest = new REST().setToken(this.token);
+    const slashCommands = [
+      new SlashCommandBuilder()
+        .setName("engine")
+        .setDescription("Switch active CLI engine (claude, codex, agy)")
+        .addStringOption((opt) => opt.setName("name").setDescription("Engine name (claude, codex, agy)").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("model")
+        .setDescription("Choose or view models supported by current engine")
+        .addStringOption((opt) => opt.setName("name").setDescription("Model name or id").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("effort")
+        .setDescription("Set reasoning effort depth (low, medium, high)")
+        .addStringOption((opt) => opt.setName("level").setDescription("Effort level").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("status")
+        .setDescription("View current session, engine, model & status"),
+      new SlashCommandBuilder()
+        .setName("new")
+        .setDescription("Start a fresh session in a new workspace")
+        .addStringOption((opt) => opt.setName("title").setDescription("Session title or engine").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("sessions")
+        .setDescription("List and switch sessions")
+        .addIntegerOption((opt) => opt.setName("number").setDescription("Session number to switch to").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("title")
+        .setDescription("Set session title")
+        .addStringOption((opt) => opt.setName("text").setDescription("New session title").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("btw")
+        .setDescription("Ask a quick side question without modifying workspace files")
+        .addStringOption((opt) => opt.setName("question").setDescription("Your question").setRequired(true)),
+      new SlashCommandBuilder()
+        .setName("stop")
+        .setDescription("Interrupt current running task"),
+      new SlashCommandBuilder()
+        .setName("help")
+        .setDescription("Show command help message"),
+    ];
+
+    const body = slashCommands.map((c) => c.toJSON());
+    const userId = this.client.user.id;
+
+    try {
+      await rest.put(Routes.applicationCommands(userId), { body });
+      for (const [guildId] of this.client.guilds.cache) {
+        await rest.put(Routes.applicationGuildCommands(userId, guildId), { body }).catch(() => {});
+      }
+      this.log.info("Discord slash commands registered successfully");
+    } catch (err) {
+      this.log.warn({ error: err }, "Failed to register Discord slash commands");
     }
   }
 }

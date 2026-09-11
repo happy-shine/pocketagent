@@ -57,6 +57,7 @@ export class AgyEngineAdapter implements EngineAdapter {
       botId,
       apiPort: this.config.apiPort,
       chatId: session.chatId,
+      channelType: session.channelType,
       isGroup: Boolean(session.isGroup),
       identity,
     });

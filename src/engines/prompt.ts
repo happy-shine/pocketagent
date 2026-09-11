@@ -5,6 +5,7 @@ import {
   getSoulEditorSkill,
   getTelegramButtonsSkill,
   getTelegramFormatSkill,
+  getDiscordFormatSkill,
   getChatHistorySkill,
 } from "../skills/index.js";
 import type { BotIdentity } from "./types.js";
@@ -14,6 +15,7 @@ export interface SystemPromptPartsInput {
   botId: string;
   apiPort: number;
   chatId: string;
+  channelType?: string;
   isGroup: boolean;
   identity?: BotIdentity;
 }
@@ -45,7 +47,11 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   parts.push(getTelegramFileSkill(input.apiPort, input.chatId, input.botId, input.isGroup));
   parts.push(getSoulEditorSkill(input.apiPort, input.botId));
   parts.push(getTelegramButtonsSkill());
-  parts.push(getTelegramFormatSkill());
+  if (input.channelType === "discord") {
+    parts.push(getDiscordFormatSkill());
+  } else {
+    parts.push(getTelegramFormatSkill());
+  }
   if (input.isGroup) {
     parts.push(getChatHistorySkill(input.apiPort, input.chatId));
   }

@@ -1,4 +1,5 @@
 import type { ChannelAdapter } from "../channels/types.js";
+import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 
 const TICK_INTERVAL = 3000;
 const FLUSH_MIN = 3000;
@@ -125,9 +126,27 @@ export class ProgressTracker {
     this.stop();
     await this.pendingFlush;
 
+    const isTelegram = this.channel.type === "telegram";
+    let textToSend = finalText;
+    let parseMode: "HTML" | undefined;
+    let plainFallback: string | undefined;
+
+    if (isTelegram) {
+      textToSend = markdownToTelegramHtml(finalText);
+      parseMode = "HTML";
+      plainFallback = stripHtml(textToSend);
+    }
+
     if (this.messageId) {
       try {
-        await this.channel.editMessage(this.chatId, this.messageId, finalText, buttons);
+        await this.channel.editMessage(
+          this.chatId,
+          this.messageId,
+          textToSend,
+          buttons,
+          parseMode,
+          plainFallback,
+        );
         return;
       } catch {
         // Fall back to sending new message if edit fails
@@ -135,8 +154,10 @@ export class ProgressTracker {
     }
     await this.channel.send({
       chatId: this.chatId,
-      text: finalText,
+      text: textToSend,
       replyToMessageId: this.replyToMessageId,
+      parseMode,
+      plainFallback,
     });
   }
 

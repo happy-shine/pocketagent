@@ -51,17 +51,19 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
-    // Inject system prompt & skills into CLAUDE.md in workspace
+    // Inject system prompt & skills into CLAUDE.md in workspace and via --append-system-prompt
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
       apiPort: this.config.apiPort,
       chatId: session.chatId,
+      channelType: session.channelType,
       isGroup: Boolean(session.isGroup),
       identity,
     });
-    if (systemParts.length > 0) {
-      writeFileSync(join(sessionDir, "CLAUDE.md"), systemParts.join("\n\n---\n\n"));
+    const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
+    if (promptContent) {
+      writeFileSync(join(sessionDir, "CLAUDE.md"), promptContent);
     }
 
     const args = [
@@ -71,6 +73,10 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       "--verbose",
       "--permission-mode", "bypassPermissions",
     ];
+
+    if (promptContent) {
+      args.push("--append-system-prompt", promptContent);
+    }
 
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);

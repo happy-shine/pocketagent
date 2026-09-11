@@ -44,16 +44,7 @@ The gateway will automatically convert these into tappable Telegram buttons.
 `.trim();
 }
 
-export function getTelegramFormatSkill(): string {
-  return `
-## Telegram Formatting Guidelines
-
-Format your responses cleanly for Telegram:
-- Use standard Markdown (*bold*, _italic_, \`code\`, \`\`\`code blocks\`\`\`).
-- Avoid deeply nested tables or unsupported HTML tags.
-- Keep paragraphs concise for comfortable mobile reading.
-`.trim();
-}
+export { getTelegramFormatSkill, getDiscordFormatSkill } from "./telegram-format.js";
 
 export function getSoulEditorSkill(apiPort: number, botId: string): string {
   return `

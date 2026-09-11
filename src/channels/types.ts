@@ -63,6 +63,7 @@ export interface ChannelAdapter {
     parseMode?: "MarkdownV2" | "HTML",
     plainFallback?: string,
   ): Promise<void>;
+  downloadFile?(fileId: string, destDir: string, fileName?: string): Promise<string>;
   onMessage(handler: MessageHandler): void;
   onCommand(command: string, handler: CommandHandler): void;
   onCallback?(prefix: string, handler: (ctx: any) => Promise<void>): void;

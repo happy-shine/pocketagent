@@ -65,6 +65,7 @@ export class Gateway {
     this.apiServer = new ApiServer({
       port: this.config.gateway.port,
       getBotTelegram: (botId) => this.bots.get(botId)?.telegram,
+      getBotChannel: (botId) => this.bots.get(botId)?.telegram ?? this.bots.get(botId)?.discord,
       dataDir: this.dataDir,
       log: this.log,
       messageStore: this.messageStore,
@@ -78,6 +79,7 @@ export class Gateway {
     for (const bot of this.bots.values()) {
       await bot.start();
     }
+    this.syncPeerBots();
 
     this.startConfigWatcher();
     this.log.info("PocketAgent Gateway running successfully");
@@ -86,8 +88,9 @@ export class Gateway {
   private syncPeerBots(): void {
     const peers: Array<{ name: string; username: string }> = [];
     for (const bot of this.bots.values()) {
-      if (bot.telegram?.username) {
-        peers.push({ name: bot.name, username: bot.telegram.username });
+      const username = bot.telegram?.username ?? bot.discord?.username;
+      if (username) {
+        peers.push({ name: bot.name, username });
       }
     }
     for (const bot of this.bots.values()) {

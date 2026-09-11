@@ -101,9 +101,17 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
     }
 
     const engine = bot.engine ?? defaultEngine;
-    const botId = tgToken
-      ? tgToken.split(":")[0]
-      : (dcToken ? dcToken.slice(0, 10) : bot.name);
+    let botId = bot.name;
+    if (tgToken) {
+      botId = tgToken.split(":")[0];
+    } else if (dcToken) {
+      try {
+        const decoded = Buffer.from(dcToken.split(".")[0], "base64").toString("utf-8");
+        if (/^\d+$/.test(decoded)) {
+          botId = decoded;
+        }
+      } catch {}
+    }
 
     const dmPolicy = (bot.dmPolicy ?? bot.auth?.dmPolicy ?? defaultPolicy) as "open" | "pairing" | "allowlist" | "disabled";
     const groupPolicy = (bot.groupPolicy ?? bot.auth?.groupPolicy ?? defaultPolicy) as "open" | "pairing" | "allowlist" | "disabled";

@@ -118,13 +118,14 @@ export class BotInstance {
   async start(): Promise<void> {
     if (this.telegram) {
       this.registerCommands(this.telegram);
-      this.registerCallbacks(this.telegram);
+      this.registerCallbacks(this.telegram, "telegram");
       this.telegram.onMessage((msg) => this.handleMessage(msg, this.telegram!));
       await this.telegram.start();
     }
 
     if (this.discord) {
       this.registerCommands(this.discord);
+      this.registerCallbacks(this.discord, "discord");
       this.discord.onMessage((msg) => this.handleMessage(msg, this.discord!));
       await this.discord.start();
     }
@@ -151,17 +152,19 @@ export class BotInstance {
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
   }
 
-  private registerCallbacks(telegram: TelegramAdapter): void {
+  private registerCallbacks(channel: ChannelAdapter, channelType: string): void {
+    if (!channel.onCallback) return;
+
     // Engine picker callback
-    telegram.onCallback("engine", async (ctx) => {
-      const data = ctx.callbackQuery?.data ?? "";
+    channel.onCallback("engine", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
       const engine = data.split(":")[1] as EngineType;
-      const chatId = String(ctx.callbackQuery?.message?.chat.id);
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
       if (!engine || !chatId) return;
 
       const session = this.sessionManager.resolve({
         chatId,
-        channelType: "telegram",
+        channelType,
         defaultEngine: this.config.engine,
       });
 
@@ -177,15 +180,15 @@ export class BotInstance {
     });
 
     // Model picker callback
-    telegram.onCallback("model", async (ctx) => {
-      const data = ctx.callbackQuery?.data ?? "";
+    channel.onCallback("model", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
       const model = data.slice("model:".length);
-      const chatId = String(ctx.callbackQuery?.message?.chat.id);
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
       if (!model || !chatId) return;
 
       const session = this.sessionManager.resolve({
         chatId,
-        channelType: "telegram",
+        channelType,
         defaultEngine: this.config.engine,
       });
 
@@ -217,15 +220,15 @@ export class BotInstance {
     });
 
     // Effort picker callback
-    telegram.onCallback("effort", async (ctx) => {
-      const data = ctx.callbackQuery?.data ?? "";
+    channel.onCallback("effort", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
       const effort = data.slice("effort:".length);
-      const chatId = String(ctx.callbackQuery?.message?.chat.id);
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
       if (!effort || !chatId) return;
 
       const session = this.sessionManager.resolve({
         chatId,
-        channelType: "telegram",
+        channelType,
         defaultEngine: this.config.engine,
       });
 
@@ -242,10 +245,10 @@ export class BotInstance {
     });
 
     // Sessions switcher callback
-    telegram.onCallback("sw", async (ctx) => {
-      const data = ctx.callbackQuery?.data ?? "";
+    channel.onCallback("sw", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
       const idx = Number(data.split(":")[1]);
-      const chatId = String(ctx.callbackQuery?.message?.chat.id);
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
       if (isNaN(idx) || !chatId) return;
 
       const target = this.sessionManager.switchTo(chatId, idx);
@@ -764,11 +767,12 @@ export class BotInstance {
 
     // Handle attachments if present
     const allAttachments = [...(msg.attachments ?? []), ...(msg.replyAttachments ?? [])];
-    if (this.telegram && allAttachments.length > 0) {
+    const adapter = msg.channelType === "discord" ? this.discord : this.telegram;
+    if (adapter?.downloadFile && allAttachments.length > 0) {
       const downloadsDir = join(this.dataDir, "downloads", this.botId, msg.chatId);
       for (const att of allAttachments) {
         try {
-          const localPath = await this.telegram.downloadFile(att.fileId, downloadsDir, att.fileName);
+          const localPath = await adapter.downloadFile(att.fileId, downloadsDir, att.fileName);
           promptText += `\n[Attached ${att.type}: ${localPath}]`;
         } catch (err) {
           this.log.error({ error: err }, "Failed to download attachment");
@@ -864,7 +868,7 @@ export class BotInstance {
   private botIdentity() {
     return {
       name: this.name,
-      username: this.telegram?.username ?? this.name,
+      username: this.telegram?.username ?? this.discord?.username ?? this.name,
       peerBots: this.peerBots,
     };
   }

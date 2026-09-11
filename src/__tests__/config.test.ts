@@ -130,5 +130,15 @@ bots:
     expect(bots[1].discordToken).toBe("MTE3...");
     expect(bots[1].token).toBeUndefined();
     expect(bots[1].engine).toBe("codex");
+
+    // Discord botId extraction from base64 prefix
+    const discordUserYaml = `
+bots:
+  - name: "atri"
+    channel: discord
+    token: "MTIzNDU2Nzg5MDEyMzQ1Njc4.xxxxxx.yyyyyy"
+`;
+    const resolvedUserBots = resolveBots(parseConfig(discordUserYaml));
+    expect(resolvedUserBots[0].botId).toBe("123456789012345678");
   });
 });

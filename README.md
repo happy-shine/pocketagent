@@ -61,7 +61,7 @@ Normally, running **Claude Code**, **OpenAI Codex**, or Google **Antigravity (ag
   - Claude Code (`claude`)
   - Google Antigravity (`agy`)
   - OpenAI Codex (`codex`)
-- A Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+- A Telegram Bot Token from [@BotFather](https://t.me/BotFather) and/or a Discord Bot Token from [Discord Developer Portal](https://discord.com/developers/applications) (make sure to enable **MESSAGE CONTENT INTENT** under the Bot tab)
 
 ### 2. Install & Build
 

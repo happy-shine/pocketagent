@@ -61,7 +61,7 @@
   - Claude Code (`claude`)
   - Google Antigravity (`agy`)
   - OpenAI Codex (`codex`)
-- 一个 Telegram Bot Token（从 [@BotFather](https://t.me/BotFather) 免费获取）
+- 一个 Telegram Bot Token（从 [@BotFather](https://t.me/BotFather) 获取）或 Discord Bot Token（从 [Discord Developer Portal](https://discord.com/developers/applications) 获取，在 Bot 页面开启 **MESSAGE CONTENT INTENT**）
 
 ### 2. 安装与构建
 

@@ -3,11 +3,13 @@ import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync } from "
 import { join, basename } from "node:path";
 import type { Logger } from "pino";
 import type { TelegramAdapter } from "../channels/telegram/adapter.js";
+import type { ChannelAdapter } from "../channels/types.js";
 import type { MessageStore } from "../sessions/message-store.js";
 
 export interface ApiServerConfig {
   port: number;
   getBotTelegram: (botId: string) => TelegramAdapter | undefined;
+  getBotChannel?: (botId: string) => ChannelAdapter | undefined;
   dataDir: string;
   log: Logger;
   messageStore?: MessageStore;
@@ -83,8 +85,8 @@ export class ApiServer {
       return;
     }
 
-    const telegram = botId ? this.config.getBotTelegram(botId) : undefined;
-    if (!telegram) {
+    const channel = botId ? (this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId)) : undefined;
+    if (!channel) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Missing or unknown bot_id" }));
       return;
@@ -94,13 +96,17 @@ export class ApiServer {
     const ext = fileName.toLowerCase().split(".").pop() ?? "";
     const photoExts = ["jpg", "jpeg", "png", "gif", "webp"];
 
-    if (photoExts.includes(ext)) {
-      await telegram.sendPhoto(chatId, filePath, caption);
-    } else {
-      await telegram.sendDocument(chatId, filePath, caption);
-    }
+    await channel.send({
+      chatId,
+      text: caption ?? "",
+      attachments: [{
+        type: photoExts.includes(ext) ? "photo" : "file",
+        path: filePath,
+        caption,
+      }],
+    });
 
-    this.log.info({ chatId, filePath }, "Sent file to Telegram");
+    this.log.info({ chatId, filePath }, "Sent file to channel");
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, file: fileName }));
   }
@@ -124,14 +130,14 @@ export class ApiServer {
       return;
     }
 
-    const telegram = botId ? this.config.getBotTelegram(botId) : undefined;
-    if (!telegram) {
+    const channel = botId ? (this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId)) : undefined;
+    if (!channel) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Missing or unknown bot_id" }));
       return;
     }
 
-    await telegram.send({ chatId, text });
+    await channel.send({ chatId, text });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
   }

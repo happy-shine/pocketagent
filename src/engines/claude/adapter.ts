@@ -88,6 +88,12 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       args.push("--model", activeModel);
     }
 
+    const rawEffort = session.engineEfforts?.claude ?? session.effort;
+    const activeEffort = rawEffort ?? this.config.effort;
+    if (activeEffort) {
+      args.push("--effort", activeEffort.toLowerCase());
+    }
+
     args.push(...this.config.extraArgs);
     if (botExtraArgs) {
       args.push(...botExtraArgs);

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
@@ -33,7 +33,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     return discoverCodexCapabilities(this.config.binary, this.config.customModels, forceRefresh);
   }
 
-  acquire(session: Session, botId: string): EngineProcess {
+  acquire(session: Session, botId: string, botExtraArgs?: string[], identity?: BotIdentity): EngineProcess {
     const existing = this.processes.get(session.sessionId);
     if (existing) {
       this.resetIdleTimer(session.sessionId);
@@ -51,6 +51,20 @@ export class CodexEngineAdapter implements EngineAdapter {
       `${safeChatId}_${session.sessionId}`,
     );
     mkdirSync(sessionDir, { recursive: true });
+
+    // Inject system prompt & skills into AGENTS.md in workspace
+    const systemParts = buildSystemPromptParts({
+      agentsDir: this.config.agentsDir,
+      botId,
+      apiPort: this.config.apiPort,
+      chatId: session.chatId,
+      channelType: session.channelType,
+      isGroup: Boolean(session.isGroup),
+      identity,
+    });
+    if (systemParts.length > 0) {
+      writeFileSync(join(sessionDir, "AGENTS.md"), systemParts.join("\n\n---\n\n"));
+    }
 
     const ep: EngineProcess = {
       sessionId: session.sessionId,
@@ -73,17 +87,28 @@ export class CodexEngineAdapter implements EngineAdapter {
     botExtraArgs?: string[],
     identity?: BotIdentity,
   ): AsyncGenerator<EngineEvent> {
-    const ep = this.acquire(session, botId);
+    const ep = this.acquire(session, botId, botExtraArgs, identity);
     ep.busy = true;
     ep.lastActiveAt = Date.now();
     this.clearIdleTimer(session.sessionId);
 
     // Context Handover check
     let fullPrompt = text;
-    if (!session.codexSessionId && session.turns && session.turns.length > 0) {
-      const primer = buildContextHandoverPrimer(session, "codex", ep.workspaceDir);
-      if (primer) {
-        fullPrompt = `${primer}\n\n${text}`;
+    if (!session.codexSessionId) {
+      let agentsMdContent = "";
+      try {
+        agentsMdContent = readFileSync(join(ep.workspaceDir, "AGENTS.md"), "utf-8");
+      } catch {}
+
+      if (session.turns && session.turns.length > 0) {
+        const primer = buildContextHandoverPrimer(session, "codex", ep.workspaceDir);
+        if (primer) {
+          fullPrompt = `${primer}\n\n${text}`;
+        }
+      }
+
+      if (agentsMdContent) {
+        fullPrompt = `<pocketagent-system>\n${agentsMdContent}\n</pocketagent-system>\n\n${fullPrompt}`;
       }
     } else if (session.codexSessionId && session.lastEngine && session.lastEngine !== "codex") {
       const deltaTurns = getDeltaTurnsForEngine(session, "codex");
@@ -95,20 +120,7 @@ export class CodexEngineAdapter implements EngineAdapter {
       }
     }
 
-    // Compose system prompt
-    const systemParts = buildSystemPromptParts({
-      agentsDir: this.config.agentsDir,
-      botId,
-      apiPort: this.config.apiPort,
-      chatId: session.chatId,
-      channelType: session.channelType,
-      isGroup: Boolean(session.isGroup),
-      identity,
-    });
-
-    const finalPrompt = systemParts.length > 0
-      ? `<pocketagent-system>\n${systemParts.join("\n\n---\n\n")}\n</pocketagent-system>\n\n${fullPrompt}`
-      : fullPrompt;
+    const finalPrompt = fullPrompt;
 
     const extraArgs = [...this.config.extraArgs];
     if (botExtraArgs) extraArgs.push(...botExtraArgs);

@@ -96,7 +96,6 @@ engines:
     binary: "claude"
   agy:
     binary: "agy"
-    model: "gemini-3.8-flash-high"
   codex:
     binary: "codex"
 

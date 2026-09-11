@@ -31,6 +31,10 @@ export class SessionManager {
           if (!s.turns) s.turns = [];
           if (!s.activeEngine) s.activeEngine = "claude";
         }
+        if (!state.preferredEngine && state.sessions.length > 0) {
+          const active = state.sessions.find((s) => s.sessionId === state.activeSessionId);
+          state.preferredEngine = active?.activeEngine ?? state.sessions[state.sessions.length - 1]?.activeEngine;
+        }
         this.chats.set(chatId, state);
       }
     }
@@ -45,19 +49,27 @@ export class SessionManager {
           active.isGroup = opts.isGroup;
         }
         if (!active.turns) active.turns = [];
-        if (!active.activeEngine) active.activeEngine = opts.defaultEngine ?? "claude";
+        if (!active.activeEngine) active.activeEngine = state.preferredEngine ?? opts.defaultEngine ?? "claude";
         return active;
       }
     }
     return this.createFirst(opts);
   }
 
+  getActiveSession(chatId: string): Session | undefined {
+    const state = this.chats.get(chatId);
+    if (!state) return undefined;
+    return state.sessions.find((s) => s.sessionId === state.activeSessionId) ?? state.sessions[state.sessions.length - 1];
+  }
+
   private createFirst(opts: SessionResolveOptions): Session {
+    const state = this.chats.get(opts.chatId);
+    const engine = state?.preferredEngine ?? opts.defaultEngine ?? "claude";
     const session: Session = {
       sessionId: randomUUID(),
       chatId: opts.chatId,
       channelType: opts.channelType,
-      activeEngine: opts.defaultEngine ?? "claude",
+      activeEngine: engine,
       model: opts.defaultModel,
       effort: opts.defaultEffort,
       createdAt: Date.now(),
@@ -67,31 +79,38 @@ export class SessionManager {
       isGroup: opts.isGroup,
       turns: [],
     };
-    const state: ChatSessionState = {
+    const newState: ChatSessionState = {
       chatId: opts.chatId,
       activeSessionId: session.sessionId,
       sessions: [session],
+      preferredEngine: engine,
+      preferredModel: opts.defaultModel,
+      preferredEffort: opts.defaultEffort,
     };
-    this.chats.set(opts.chatId, state);
+    this.chats.set(opts.chatId, newState);
     return session;
   }
 
   createNew(
     chatId: string,
-    defaultEngine: EngineType = "claude",
+    defaultEngine?: EngineType,
     defaultModel?: string,
     defaultEffort?: string,
+    title?: string,
   ): Session {
     let state = this.chats.get(chatId);
     if (!state) {
       return this.createFirst({
         chatId,
         channelType: "telegram",
-        defaultEngine,
+        defaultEngine: defaultEngine ?? "claude",
         defaultModel,
         defaultEffort,
       });
     }
+
+    const prevActive = state.sessions.find((s) => s.sessionId === state.activeSessionId)
+      ?? state.sessions[state.sessions.length - 1];
 
     for (const s of state.sessions) {
       s.isActive = false;
@@ -100,23 +119,39 @@ export class SessionManager {
     const maxNum = Math.max(...state.sessions.map((s) => s.sessionNum ?? 0));
     const prev = state.sessions[0];
 
+    const activeEngine = defaultEngine ?? prevActive?.activeEngine ?? state.preferredEngine ?? "claude";
+    const sameEngine = prevActive && prevActive.activeEngine === activeEngine;
+
+    const model = defaultModel !== undefined
+      ? defaultModel
+      : (sameEngine ? prevActive?.model : undefined);
+
+    const effort = defaultEffort !== undefined
+      ? defaultEffort
+      : (sameEngine ? prevActive?.effort : undefined);
+
     const session: Session = {
       sessionId: randomUUID(),
       chatId,
       channelType: prev ? prev.channelType : "telegram",
-      activeEngine: defaultEngine,
-      model: defaultModel,
-      effort: defaultEffort,
+      activeEngine,
+      model,
+      effort,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       isActive: true,
       sessionNum: maxNum + 1,
       isGroup: prev ? prev.isGroup : false,
+      title,
       turns: [],
     };
 
     state.sessions.push(session);
     state.activeSessionId = session.sessionId;
+    state.preferredEngine = activeEngine;
+    if (model) state.preferredModel = model;
+    if (effort) state.preferredEffort = effort;
+
     return session;
   }
 
@@ -132,6 +167,9 @@ export class SessionManager {
     }
     target.isActive = true;
     state.activeSessionId = target.sessionId;
+    state.preferredEngine = target.activeEngine;
+    if (target.model) state.preferredModel = target.model;
+    if (target.effort) state.preferredEffort = target.effort;
     return target;
   }
 
@@ -177,6 +215,10 @@ export class SessionManager {
       session.activeEngine = engine;
       session.lastActiveAt = Date.now();
     }
+    const state = this.chats.get(session.chatId);
+    if (state) {
+      state.preferredEngine = engine;
+    }
     return true;
   }
 
@@ -185,6 +227,10 @@ export class SessionManager {
     if (!session) return false;
     session.model = model;
     session.lastActiveAt = Date.now();
+    const state = this.chats.get(session.chatId);
+    if (state) {
+      state.preferredModel = model;
+    }
     return true;
   }
 
@@ -193,6 +239,10 @@ export class SessionManager {
     if (!session) return false;
     session.effort = effort;
     session.lastActiveAt = Date.now();
+    const state = this.chats.get(session.chatId);
+    if (state) {
+      state.preferredEffort = effort;
+    }
     return true;
   }
 

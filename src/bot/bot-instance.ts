@@ -416,18 +416,47 @@ export class BotInstance {
     const access = this.checkAccess(msg);
     if (!access.allowed) return;
 
+    const arg = msg.text.trim();
+    let explicitEngine: EngineType | undefined;
+    let title: string | undefined;
+
+    if (arg) {
+      const lower = arg.toLowerCase();
+      if (["claude", "codex", "agy"].includes(lower)) {
+        explicitEngine = lower as EngineType;
+      } else {
+        title = arg;
+      }
+    }
+
+    // Resolve current session to inspect user's current engine, model, and effort preferences
+    const currentSession = this.sessionManager.resolve({
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      defaultEngine: this.config.engine,
+      defaultModel: this.config.model,
+      defaultEffort: this.config.effort,
+    });
+
+    const targetEngine = explicitEngine ?? currentSession.activeEngine ?? this.config.engine;
+    const sameEngine = targetEngine === currentSession.activeEngine;
+    const targetModel = sameEngine ? currentSession.model : (targetEngine === this.config.engine ? this.config.model : undefined);
+    const targetEffort = sameEngine ? currentSession.effort : (targetEngine === this.config.engine ? this.config.effort : undefined);
+
     const session = this.sessionManager.createNew(
       msg.chatId,
-      this.config.engine,
-      this.config.model,
-      this.config.effort,
+      targetEngine,
+      targetModel,
+      targetEffort,
+      title,
     );
     this.messageStore.advanceCursorToLatest(msg.chatId, session.sessionId);
     await this.sessionManager.flush(msg.chatId);
 
+    const titleSuffix = session.title ? ` (${session.title})` : "";
     await channel.send({
       chatId: msg.chatId,
-      text: `✨ New session started: Session #${session.sessionNum} [${session.activeEngine.toUpperCase()}]`,
+      text: `✨ New session started: Session #${session.sessionNum} [${session.activeEngine.toUpperCase()}]${titleSuffix}`,
     });
   }
 

@@ -51,4 +51,22 @@ describe("SessionManager Multi-Engine Functionality", () => {
     expect(session2.model).toBe("gpt-5.4");
     expect(session2.effort).toBe("low");
   });
+
+  it("inherits active session engine and settings when creating new session without overrides", () => {
+    const sm = new SessionManager();
+    const session1 = sm.resolve({ chatId: "user2", channelType: "telegram", defaultEngine: "agy" });
+    expect(session1.activeEngine).toBe("agy");
+
+    // User switches engine to claude
+    sm.setEngine(session1.sessionId, "claude");
+    sm.setModel(session1.sessionId, "claude-3-7-sonnet");
+    sm.setEffort(session1.sessionId, "high");
+
+    // User creates new session without overrides
+    const session2 = sm.createNew("user2");
+    expect(session2.sessionNum).toBe(2);
+    expect(session2.activeEngine).toBe("claude");
+    expect(session2.model).toBe("claude-3-7-sonnet");
+    expect(session2.effort).toBe("high");
+  });
 });

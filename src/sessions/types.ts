@@ -42,4 +42,7 @@ export interface ChatSessionState {
   chatId: string;
   activeSessionId: string;
   sessions: Session[];
+  preferredEngine?: EngineType;
+  preferredModel?: string;
+  preferredEffort?: string;
 }

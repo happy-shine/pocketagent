@@ -241,20 +241,19 @@ export class DiscordAdapter implements ChannelAdapter {
         raw: message,
       };
 
-      if (text.startsWith("/")) {
-        const parts = text.slice(1).trim().split(/\s+/);
-        const cmd = parts[0]?.toLowerCase();
-        const args = text.slice(1).trim().slice(cmd.length).trim();
-        const handler = this.commandHandlers.get(cmd);
-        if (handler) {
-          inbound.text = args;
-          try {
-            await handler(inbound);
-          } catch (err) {
-            this.log.error({ error: err instanceof Error ? err.message : String(err), cmd }, "Discord command handler failed");
-          }
-          return;
+      const cmdText = text.startsWith("/") ? text.slice(1).trim() : text;
+      const parts = cmdText.split(/\s+/);
+      const cmd = parts[0]?.toLowerCase();
+      const args = cmdText.slice(cmd.length).trim();
+      const handler = this.commandHandlers.get(cmd);
+      if (handler && (text.startsWith("/") || isMentioned || isDM)) {
+        inbound.text = args;
+        try {
+          await handler(inbound);
+        } catch (err) {
+          this.log.error({ error: err instanceof Error ? err.message : String(err), cmd }, "Discord command handler failed");
         }
+        return;
       }
 
       if (this.messageHandler) {

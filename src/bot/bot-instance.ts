@@ -145,6 +145,7 @@ export class BotInstance {
     channel.onCommand("status", (msg) => this.handleStatus(msg, channel));
     channel.onCommand("new", (msg) => this.handleNew(msg, channel));
     channel.onCommand("sessions", (msg) => this.handleSessions(msg, channel));
+    channel.onCommand("title", (msg) => this.handleTitle(msg, channel));
     channel.onCommand("btw", (msg) => this.handleBtw(msg, channel));
     channel.onCommand("stop", (msg) => this.handleStop(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
@@ -503,6 +504,34 @@ export class BotInstance {
       await channel.sendWithButtons(msg.chatId, `Sessions:\n${lines.join("\n")}`, buttons);
     } else {
       await channel.send({ chatId: msg.chatId, text: `Sessions:\n${lines.join("\n")}\n\nUse \`/sessions <num>\` to switch.` });
+    }
+  }
+
+  private async handleTitle(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+    const access = this.checkAccess(msg);
+    if (!access.allowed) return;
+
+    const session = this.sessionManager.resolve({
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      defaultEngine: this.config.engine,
+    });
+
+    const title = msg.text.trim();
+    if (title) {
+      this.sessionManager.update(session.sessionId, { title: title.slice(0, 80) });
+      await this.sessionManager.flush(msg.chatId);
+      await channel.send({
+        chatId: msg.chatId,
+        text: `Session #${session.sessionNum} title set to: "${title.slice(0, 80)}"`,
+      });
+    } else {
+      await channel.send({
+        chatId: msg.chatId,
+        text: session.title
+          ? `Current session #${session.sessionNum} title: "${session.title}"\nUse \`/title <name>\` to rename.`
+          : `Session #${session.sessionNum} has no title set. Use \`/title <name>\` to set one.`,
+      });
     }
   }
 

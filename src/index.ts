@@ -45,13 +45,23 @@ function getLogDir(dataDir: string): string {
   return logDir;
 }
 
+function isPidRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getRunningPid(dataDir: string): number | null {
   const lockPath = join(dataDir, "gateway.lock");
   if (!existsSync(lockPath)) return null;
   try {
     const lockData = JSON.parse(readFileSync(lockPath, "utf-8"));
-    process.kill(lockData.pid, 0);
-    return lockData.pid;
+    if (isPidRunning(lockData.pid)) return lockData.pid;
+    try { unlinkSync(lockPath); } catch {}
+    return null;
   } catch {
     try { unlinkSync(lockPath); } catch {}
     return null;
@@ -148,16 +158,31 @@ program
         console.log("PocketAgent is not running");
         return;
       }
-      process.kill(runningPid, "SIGTERM");
+      try { process.kill(runningPid, "SIGTERM"); } catch {}
+      console.log(`Stopping PocketAgent (PID: ${runningPid})...`);
+      const start = Date.now();
+      while (isPidRunning(runningPid) && Date.now() - start < 5000) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (isPidRunning(runningPid)) {
+        try { process.kill(runningPid, "SIGKILL"); } catch {}
+      }
       console.log(`Stopped PocketAgent (PID: ${runningPid})`);
       return;
     }
 
     if (action === "start" || action === "restart") {
       if (runningPid) {
-        process.kill(runningPid, "SIGTERM");
+        try { process.kill(runningPid, "SIGTERM"); } catch {}
+        console.log(`Stopping existing instance (PID: ${runningPid})...`);
+        const start = Date.now();
+        while (isPidRunning(runningPid) && Date.now() - start < 5000) {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        if (isPidRunning(runningPid)) {
+          try { process.kill(runningPid, "SIGKILL"); } catch {}
+        }
         console.log(`Stopped existing instance (PID: ${runningPid})`);
-        await new Promise((r) => setTimeout(r, 1000));
       }
 
       const logDir = getLogDir(dataDir);

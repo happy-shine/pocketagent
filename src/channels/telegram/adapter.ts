@@ -81,17 +81,32 @@ export class TelegramAdapter implements ChannelAdapter {
       { command: "engine", description: "Switch CLI engine (Claude / Codex / Agy)" },
       { command: "model", description: "Switch model for active engine" },
       { command: "effort", description: "Set reasoning depth for active engine" },
+      { command: "status", description: "Show session & engine status" },
       { command: "new", description: "Start a new session" },
       { command: "sessions", description: "List or switch sessions" },
+      { command: "title", description: "Set session title" },
       { command: "btw", description: "Quick side question without interrupting" },
       { command: "stop", description: "Interrupt current task" },
       { command: "help", description: "Show help" },
     ];
 
-    try {
-      await this.bot.api.setMyCommands(commands);
-    } catch (err) {
-      this.log.warn({ error: err }, "Failed to set Telegram bot commands");
+    const scopes = [
+      undefined,
+      { type: "all_group_chats" as const },
+      { type: "all_private_chats" as const },
+      { type: "all_chat_administrators" as const },
+    ];
+
+    for (const scope of scopes) {
+      try {
+        if (scope) {
+          await this.bot.api.setMyCommands(commands, { scope });
+        } else {
+          await this.bot.api.setMyCommands(commands);
+        }
+      } catch (err) {
+        this.log.warn({ error: err, scope }, "Failed to set Telegram bot commands for scope");
+      }
     }
 
     const me = await this.bot.api.getMe();

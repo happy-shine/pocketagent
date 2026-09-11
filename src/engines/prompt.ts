@@ -7,6 +7,7 @@ import {
   getTelegramFormatSkill,
   getDiscordFormatSkill,
   getChatHistorySkill,
+  SkillRegistry,
 } from "../skills/index.js";
 import type { BotIdentity } from "./types.js";
 
@@ -54,6 +55,15 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   }
   if (input.isGroup) {
     parts.push(getChatHistorySkill(input.apiPort, input.chatId));
+  }
+
+  try {
+    const customSkillsPrompt = SkillRegistry.getInstance().generateSkillsPrompt();
+    if (customSkillsPrompt) {
+      parts.push(customSkillsPrompt);
+    }
+  } catch {
+    // Ignore skills error
   }
 
   return parts;

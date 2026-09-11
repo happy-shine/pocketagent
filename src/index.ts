@@ -11,6 +11,7 @@ import { loadConfig, resolveBots, resolveDataDir, syncPairingToConfig } from "./
 import type { GatewayConfig } from "./config/types.js";
 import { Gateway } from "./gateway/gateway.js";
 import { PairingManager } from "./auth/pairing.js";
+import { SkillRegistry } from "./skills/index.js";
 import { spawn, spawnSync } from "node:child_process";
 import {
   writeFileSync,
@@ -134,6 +135,18 @@ async function startForeground(opts: { config?: string }): Promise<void> {
     console.error("Uncaught exception:", err);
     process.exit(1);
   });
+
+  try {
+    const syncedSkills = SkillRegistry.getInstance().sync();
+    if (syncedSkills.length > 0) {
+      log.info(
+        { count: syncedSkills.length, skills: syncedSkills.map((s) => s.name) },
+        "Synchronized custom skills across Claude, Codex, and AGY",
+      );
+    }
+  } catch (err) {
+    log.warn({ error: err instanceof Error ? err.message : String(err) }, "Failed to synchronize custom skills");
+  }
 
   await gateway.start();
   if (process.send) {
@@ -444,6 +457,70 @@ program
       for (const { botName, p } of allPending) {
         console.log(`  • [${botName}] Code: ${p.code} | User: ${p.senderName} (${p.senderId}) | Channel: ${p.channelType}`);
       }
+    }
+  });
+
+program
+  .command("skills [action] [name]")
+  .description("Manage custom skills interoperability across Claude, Codex, and AGY (list, sync, new)")
+  .option("-d, --description <desc>", "Description for new skill")
+  .action(async (action = "list", name, opts) => {
+    const registry = SkillRegistry.getInstance();
+    const act = (action || "list").toLowerCase();
+
+    if (act === "sync") {
+      console.log("Synchronizing custom skills across Claude, Codex, and AGY...");
+      const skills = registry.sync();
+      console.log(`\n✓ Synchronized ${skills.length} skills (Hub: ${registry.hubDir}):`);
+      for (const s of skills) {
+        const agy = s.synced.agy ? "✓ AGY" : "✗ AGY";
+        const claude = s.synced.claude ? "✓ Claude" : "✗ Claude";
+        const codex = s.synced.codex ? "✓ Codex" : "✗ Codex";
+        console.log(`  • ${s.name} [${claude} | ${codex} | ${agy}]`);
+      }
+      return;
+    }
+
+    if (act === "new") {
+      if (!name) {
+        console.error("Error: Skill name is required. Example: pa skills new my-skill -d 'Description'");
+        process.exit(1);
+      }
+      const desc = opts.description || `Custom skill for ${name}`;
+      try {
+        const created = registry.createSkill(name, desc);
+        console.log(`✓ Created new skill: ${created.name}`);
+        console.log(`  Location: ${created.dir}`);
+        console.log(`  Definition: ${created.skillMdPath}`);
+        console.log(`  Synchronized to Claude, Codex, and AGY successfully.`);
+      } catch (err) {
+        console.error("Failed to create skill:", err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Default: list
+    const skills = registry.list();
+    if (skills.length === 0) {
+      console.log(`No custom skills found in ${registry.hubDir}`);
+      console.log(`Use 'pa skills sync' to ingest existing skills from Claude/AGY/Codex or 'pa skills new <name>' to create one.`);
+      return;
+    }
+
+    console.log(`Custom skills (${skills.length} loaded, Hub: ${registry.hubDir}):\n`);
+    for (const s of skills) {
+      const agy = s.synced.agy ? "✓ AGY" : "✗ AGY";
+      const claude = s.synced.claude ? "✓ Claude" : "✗ Claude";
+      const codex = s.synced.codex ? "✓ Codex" : "✗ Codex";
+      console.log(`• ${s.name} [${claude} | ${codex} | ${agy}]`);
+      if (s.description) {
+        console.log(`  ${s.description}`);
+      }
+      if (s.scripts.length > 0) {
+        console.log(`  Scripts: ${s.scripts.join(", ")}`);
+      }
+      console.log(`  Path: ${s.dir}\n`);
     }
   });
 

@@ -45,6 +45,7 @@ The gateway will automatically convert these into tappable Telegram buttons.
 }
 
 export { getTelegramFormatSkill, getDiscordFormatSkill } from "./telegram-format.js";
+export { SkillRegistry, type SkillInfo, type SkillRegistryOptions } from "./registry.js";
 
 export function getSoulEditorSkill(apiPort: number, botId: string): string {
   return `

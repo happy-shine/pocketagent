@@ -78,7 +78,7 @@ export class TelegramAdapter implements ChannelAdapter {
     registerHandlers(this.bot, this.messageHandler, this.commandHandlers, this.log, this.callbackHandlers);
 
     const commands = [
-      { command: "engine", description: "Switch CLI engine (Claude / Codex / Agy)" },
+      { command: "engine", description: "Switch CLI engine (Claude / Codex / Antigravity)" },
       { command: "model", description: "Switch model for active engine" },
       { command: "effort", description: "Set reasoning depth for active engine" },
       { command: "status", description: "Show session & engine status" },

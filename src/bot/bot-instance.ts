@@ -271,7 +271,7 @@ export class BotInstance {
       const buttons: InlineButton[][] = [
         [{ text: mark("claude", "Claude Code"), data: "engine:claude" }],
         [{ text: mark("codex", "OpenAI Codex"), data: "engine:codex" }],
-        [{ text: mark("agy", "Google Antigravity (agy)"), data: "engine:agy" }],
+        [{ text: mark("agy", "Google Antigravity"), data: "engine:agy" }],
       ];
       await channel.sendWithButtons(
         msg.chatId,

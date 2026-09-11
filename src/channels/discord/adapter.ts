@@ -153,6 +153,37 @@ export class DiscordAdapter implements ChannelAdapter {
         }
       }
 
+      let replyText: string | undefined;
+      let replySenderName: string | undefined;
+      const replyAttachments: Attachment[] = [];
+
+      if (message.reference?.messageId) {
+        try {
+          const refMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+          if (refMsg) {
+            replySenderName = refMsg.author?.displayName || refMsg.author?.username || undefined;
+            replyText = refMsg.content || undefined;
+
+            if (refMsg.attachments && refMsg.attachments.size > 0) {
+              for (const [, att] of refMsg.attachments) {
+                const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
+                replyAttachments.push({
+                  type: isPhoto ? "photo" : "document",
+                  fileId: att.url,
+                  fileName: att.name,
+                  mimeType: att.contentType ?? undefined,
+                });
+              }
+              if (!replyText) {
+                replyText = replyAttachments[0]?.type === "photo" ? "[Photo]" : `[File: ${replyAttachments[0]?.fileName || "Document"}]`;
+              }
+            }
+          }
+        } catch {
+          // Ignore reference fetch errors
+        }
+      }
+
       const inbound: InboundMessage = {
         channelType: "discord",
         chatId: message.channelId,
@@ -163,6 +194,9 @@ export class DiscordAdapter implements ChannelAdapter {
         isGroup: message.guildId !== null,
         timestamp: Math.floor(message.createdTimestamp / 1000),
         replyToMessageId: message.reference?.messageId,
+        replyText,
+        replySenderName,
+        replyAttachments: replyAttachments.length > 0 ? replyAttachments : undefined,
         attachments: inboundAttachments.length > 0 ? inboundAttachments : undefined,
         raw: message,
       };

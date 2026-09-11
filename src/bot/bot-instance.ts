@@ -769,7 +769,8 @@ export class BotInstance {
     let promptText = `[${ts}] ${msg.senderName}:\n`;
     if (msg.replyText) {
       const quoteName = msg.replySenderName ?? "Unknown";
-      promptText += `> ${quoteName}: ${msg.replyText}\n`;
+      const quoted = msg.replyText.split("\n").map((l) => `> ${l}`).join("\n");
+      promptText += `[In reply to ${quoteName}]:\n${quoted}\n\n`;
     }
     promptText += msg.text;
 
@@ -789,9 +790,12 @@ export class BotInstance {
     }
 
     // Record turn in session history
+    const historyText = msg.replyText
+      ? `[In reply to ${msg.replySenderName ?? "Unknown"}: ${msg.replyText}]\n${msg.text}`
+      : msg.text;
     this.sessionManager.addTurn(session.sessionId, {
       role: "user",
-      text: msg.text,
+      text: historyText,
       author: msg.senderName,
     });
 

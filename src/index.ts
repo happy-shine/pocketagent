@@ -368,46 +368,63 @@ program
     const dataDir = getDataDir(opts.config);
     const config = loadConfig(opts.config);
     const bots = resolveBots(config);
-    const bot = opts.bot ? bots.find((b) => b.name === opts.bot) : bots[0];
-    if (!bot) {
+    const targetBots = opts.bot ? bots.filter((b) => b.name === opts.bot) : bots;
+    if (targetBots.length === 0) {
       console.error("No matching bot found");
       return;
     }
-
-    const pairingPath = join(dataDir, "credentials", bot.botId, "telegram-pairing.json");
-    const pm = new PairingManager(pairingPath);
 
     if (action === "approve") {
       if (!code) {
         console.error("Provide a pairing code to approve: `pocketagent pairing approve <code>`");
         return;
       }
-      const result = pm.approve(code);
-      if (result) {
-        // Add to allowFrom
-        const allowPath = join(dataDir, "credentials", bot.botId, "telegram-allowFrom.json");
-        let list: string[] = [];
-        if (existsSync(allowPath)) {
-          try { list = JSON.parse(readFileSync(allowPath, "utf-8")).allowFrom ?? []; } catch {}
+      let approvedBotName: string | undefined;
+      let approvedSenderId: string | undefined;
+
+      for (const bot of targetBots) {
+        const pairingPath = join(dataDir, "credentials", bot.botId, "telegram-pairing.json");
+        const pm = new PairingManager(pairingPath);
+        const result = pm.approve(code);
+        if (result) {
+          const allowPath = join(dataDir, "credentials", bot.botId, "telegram-allowFrom.json");
+          let list: string[] = [];
+          if (existsSync(allowPath)) {
+            try { list = JSON.parse(readFileSync(allowPath, "utf-8")).allowFrom ?? []; } catch {}
+          }
+          if (!list.includes(result.senderId)) {
+            list.push(result.senderId);
+            writeFileSync(allowPath, JSON.stringify({ allowFrom: list }, null, 2));
+          }
+          approvedBotName = bot.name;
+          approvedSenderId = result.senderId;
+          break;
         }
-        if (!list.includes(result.senderId)) {
-          list.push(result.senderId);
-          writeFileSync(allowPath, JSON.stringify({ allowFrom: list }, null, 2));
-        }
-        console.log(`Approved pairing code ${code} for user ${result.senderId}`);
+      }
+
+      if (approvedSenderId) {
+        console.log(`Approved pairing code ${code} for user ${approvedSenderId} (bot: ${approvedBotName})`);
       } else {
         console.error(`Pairing code ${code} not found or expired`);
       }
       return;
     }
 
-    const pending = pm.listPending();
-    if (pending.length === 0) {
+    const allPending: Array<{ botName: string; p: any }> = [];
+    for (const bot of targetBots) {
+      const pairingPath = join(dataDir, "credentials", bot.botId, "telegram-pairing.json");
+      const pm = new PairingManager(pairingPath);
+      for (const p of pm.listPending()) {
+        allPending.push({ botName: bot.name, p });
+      }
+    }
+
+    if (allPending.length === 0) {
       console.log("No pending pairing requests");
     } else {
       console.log("Pending pairing requests:");
-      for (const p of pending) {
-        console.log(`  • Code: ${p.code} | User: ${p.senderName} (${p.senderId}) | Chat: ${p.chatId}`);
+      for (const { botName, p } of allPending) {
+        console.log(`  • [${botName}] Code: ${p.code} | User: ${p.senderName} (${p.senderId}) | Channel: ${p.channelType}`);
       }
     }
   });

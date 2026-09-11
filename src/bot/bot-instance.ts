@@ -723,13 +723,21 @@ export class BotInstance {
   private async handleMessage(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
     const access = this.checkAccess(msg);
     if (!access.allowed) {
-      if (access.reason === "needs_pairing") {
+      if (access.reason === "needs_pairing" || access.reason === "needs_group_pairing") {
         const req = this.pairingManager.challenge(msg.senderId, msg.senderName, msg.channelType, msg.chatId);
         await channel.send({
           chatId: msg.chatId,
-          text: `🔒 Access restricted. Your pairing code is:\n\n*${req.code}*\n\nApprove via admin to begin.`,
+          text: `🔒 Access restricted. Your pairing code is:\n\n*${req.code}*\n\nApprove via terminal:\n\`pa pairing approve ${req.code}\``,
         });
       }
+      return;
+    }
+
+    if (!msg.text.trim()) {
+      await channel.send({
+        chatId: msg.chatId,
+        text: `👋 Hi! I received your mention, but I cannot read the message content.\n\n⚠️ **Please enable \`MESSAGE CONTENT INTENT\`** in [Discord Developer Portal](https://discord.com/developers/applications) under **Bot -> Privileged Gateway Intents**, then run \`pa restart\`.`,
+      });
       return;
     }
 

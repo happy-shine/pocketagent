@@ -396,6 +396,17 @@ program
             list.push(result.senderId);
             writeFileSync(allowPath, JSON.stringify({ allowFrom: list }, null, 2));
           }
+
+          if (result.chatId && result.chatId !== result.senderId) {
+            const groupsPath = join(dataDir, "credentials", bot.botId, "telegram-groups.json");
+            let groups: Record<string, { enabled: boolean; allowFrom?: string[] }> = {};
+            if (existsSync(groupsPath)) {
+              try { groups = JSON.parse(readFileSync(groupsPath, "utf-8")).groups ?? {}; } catch {}
+            }
+            groups[result.chatId] = { enabled: true };
+            writeFileSync(groupsPath, JSON.stringify({ groups }, null, 2));
+          }
+
           approvedBotName = bot.name;
           approvedSenderId = result.senderId;
           break;

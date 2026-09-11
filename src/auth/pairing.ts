@@ -52,14 +52,14 @@ export class PairingManager {
     return req;
   }
 
-  approve(code: string): { senderId: string } | null {
+  approve(code: string): { senderId: string; chatId?: string } | null {
     this.cleanup();
     const idx = this.requests.findIndex((r) => r.code === code.toUpperCase());
     if (idx === -1) return null;
     const req = this.requests[idx];
     this.requests.splice(idx, 1);
     this.persist();
-    return { senderId: req.senderId };
+    return { senderId: req.senderId, chatId: req.chatId };
   }
 
   listPending(): PairingRequest[] {

@@ -74,10 +74,6 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       "--permission-mode", "bypassPermissions",
     ];
 
-    if (promptContent) {
-      args.push("--append-system-prompt", promptContent);
-    }
-
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);
     }

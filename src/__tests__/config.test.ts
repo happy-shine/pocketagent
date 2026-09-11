@@ -89,4 +89,46 @@ bots:
     const bots = resolveBots(config);
     expect(bots[0].model).toBeUndefined();
   });
+
+  it("supports declarative Bot-First config with defaultEngine and multi-channel bots", () => {
+    const yaml = `
+defaultEngine: "agy"
+
+bots:
+  - name: "tg-bot"
+    channel: telegram
+    token: "888:TTT"
+    allowFrom:
+      - "123456"
+    groups:
+      "-100111222": true
+
+  - name: "dc-bot"
+    channel: discord
+    token: "MTE3..."
+    engine: "codex"
+`;
+    const config = parseConfig(yaml);
+    expect(config.defaultEngine).toBe("agy");
+    expect(config.engines.default).toBe("agy");
+
+    const bots = resolveBots(config);
+    expect(bots.length).toBe(2);
+
+    // Bot 1: Telegram
+    expect(bots[0].name).toBe("tg-bot");
+    expect(bots[0].channel).toBe("telegram");
+    expect(bots[0].token).toBe("888:TTT");
+    expect(bots[0].discordToken).toBeUndefined();
+    expect(bots[0].engine).toBe("agy");
+    expect(bots[0].allowFrom).toEqual(["123456"]);
+    expect(bots[0].groups["-100111222"]).toEqual({ enabled: true });
+
+    // Bot 2: Discord
+    expect(bots[1].name).toBe("dc-bot");
+    expect(bots[1].channel).toBe("discord");
+    expect(bots[1].discordToken).toBe("MTE3...");
+    expect(bots[1].token).toBeUndefined();
+    expect(bots[1].engine).toBe("codex");
+  });
 });

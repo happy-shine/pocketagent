@@ -98,12 +98,19 @@ const botAuthSchema = z.object({
 
 const botSchema = z.object({
   name: z.string().min(1, "bot name is required"),
-  token: z.string().optional(), // Telegram Bot Token
-  discordToken: z.string().optional(), // Discord Bot Token
+  channel: z.enum(["telegram", "discord"]).optional(),
+  token: z.string().optional(), // Telegram or Discord Bot Token
+  discordToken: z.string().optional(), // For backward compatibility
   engine: EngineTypeSchema.optional(), // Default engine for this bot
   model: z.string().optional(),
   effort: z.string().optional(),
   extraArgs: z.array(z.string()).optional(),
+  dmPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).optional(),
+  groupPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).optional(),
+  guildPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).optional(),
+  allowFrom: z.array(z.string()).optional(),
+  groups: z.record(z.string(), z.union([z.boolean(), telegramGroupSchema])).optional(),
+  guilds: z.record(z.string(), z.union([z.boolean(), discordGuildSchema])).optional(),
   auth: botAuthSchema.optional(),
   soul: z.string().optional(),
   skills: z.union([z.boolean(), z.array(z.string())]).optional(),
@@ -113,8 +120,14 @@ export const configSchema = z.preprocess((input) => {
   const raw = (input ?? {}) as Record<string, unknown>;
   const engines = { ...((raw.engines as Record<string, unknown> | undefined) ?? {}) };
 
+  // Support top-level `defaultEngine` or `engine`
+  const topEngine = (raw.defaultEngine ?? raw.engine) as string | undefined;
+  if (topEngine && ["claude", "codex", "agy"].includes(topEngine)) {
+    engines.default ??= topEngine;
+  }
+
   // Compatibility with single `engine` or `claude` block
-  const oldEngine = raw.engine as Record<string, unknown> | undefined;
+  const oldEngine = typeof raw.engine === "object" ? (raw.engine as Record<string, unknown>) : undefined;
   const oldClaude = raw.claude as Record<string, unknown> | undefined;
 
   if (oldEngine?.type && typeof oldEngine.type === "string") {
@@ -138,6 +151,8 @@ export const configSchema = z.preprocess((input) => {
 
   return { ...raw, engines };
 }, z.object({
+  defaultEngine: EngineTypeSchema.optional(),
+  engine: EngineTypeSchema.optional(),
   gateway: gatewaySchema.default(gatewaySchema.parse({})),
   engines: enginesSchema.default(enginesSchema.parse({})),
   auth: authSchema.default(authSchema.parse({})),

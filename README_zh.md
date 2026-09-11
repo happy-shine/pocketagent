@@ -86,26 +86,21 @@ pa doctor
 修改 `~/.pocketagent/config.yaml`（首次运行会自动生成）：
 
 ```yaml
-gateway:
-  port: 18790
-  dataDir: "~/.pocketagent"
-
-engines:
-  default: "claude" # 默认引擎: claude | codex | agy
-  claude:
-    binary: "claude"
-  agy:
-    binary: "agy"
-  codex:
-    binary: "codex"
-
-auth:
-  defaultPolicy: "pairing" # 访问认证: pairing (配对码) | open | allowlist
+defaultEngine: "claude" # 全局默认引擎: claude | codex | agy
 
 bots:
-  - name: "my-bot"
-    token: "123456:ABC-DEF..."    # Telegram Bot Token
-    engine: "claude"
+  - name: "my-telegram-bot"
+    channel: telegram # telegram | discord
+    token: "123456:ABC-DEF..." # Telegram Bot Token
+    # allowFrom:
+    #   - "1465542100"
+    # groups:
+    #   "-1003981923249": true
+
+  # 也支持同时接入 Discord Bot
+  # - name: "my-discord-bot"
+  #   channel: discord
+  #   token: "MTE3..."
 ```
 
 ### 5. 启动与管理

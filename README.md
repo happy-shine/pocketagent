@@ -86,26 +86,21 @@ Inspects Node.js version and detects which CLI engines are installed.
 Edit `~/.pocketagent/config.yaml` (auto-generated on first run):
 
 ```yaml
-gateway:
-  port: 18790
-  dataDir: "~/.pocketagent"
-
-engines:
-  default: "claude" # Default engine: claude | codex | agy
-  claude:
-    binary: "claude"
-  agy:
-    binary: "agy"
-  codex:
-    binary: "codex"
-
-auth:
-  defaultPolicy: "pairing" # pairing | open | allowlist
+defaultEngine: "claude" # Global default engine: claude | codex | agy
 
 bots:
-  - name: "my-bot"
-    token: "123456:ABC-DEF..."    # Telegram Bot Token
-    engine: "claude"
+  - name: "my-telegram-bot"
+    channel: telegram # telegram | discord
+    token: "123456:ABC-DEF..." # Telegram Bot Token
+    # allowFrom:
+    #   - "1465542100"
+    # groups:
+    #   "-1003981923249": true
+
+  # Connect a Discord Bot simultaneously:
+  # - name: "my-discord-bot"
+  #   channel: discord
+  #   token: "MTE3..."
 ```
 
 ### 5. Start & Manage

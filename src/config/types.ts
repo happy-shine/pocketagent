@@ -5,6 +5,7 @@ export type { BotConfig, EngineType };
 
 export interface ResolvedBotConfig {
   name: string;
+  channel: "telegram" | "discord";
   token?: string; // Telegram bot token
   discordToken?: string; // Discord bot token
   botId: string;

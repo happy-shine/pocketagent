@@ -65,6 +65,7 @@ export class BotInstance {
 
     if (opts.botConfig.discordToken) {
       this.discord = new DiscordAdapter(opts.botConfig.discordToken, this.log);
+      this.discord.setMessageStore(this.messageStore, this.name);
     }
 
     this.allowFrom = this.loadAllowFrom();
@@ -733,12 +734,21 @@ export class BotInstance {
       return;
     }
 
+    const hasAttachments = (msg.attachments && msg.attachments.length > 0) || (msg.replyAttachments && msg.replyAttachments.length > 0);
     if (!msg.text.trim()) {
-      await channel.send({
-        chatId: msg.chatId,
-        text: `👋 Hi! I received your mention, but I cannot read the message content.\n\n⚠️ **Please enable \`MESSAGE CONTENT INTENT\`** in [Discord Developer Portal](https://discord.com/developers/applications) under **Bot -> Privileged Gateway Intents**, then run \`pa restart\`.`,
-      });
-      return;
+      if (hasAttachments) {
+        msg.text = (msg.attachments?.[0]?.type === "photo" || msg.replyAttachments?.[0]?.type === "photo")
+          ? "Please inspect the attached image."
+          : "Please inspect the attached file.";
+      } else {
+        if (msg.channelType === "discord") {
+          await channel.send({
+            chatId: msg.chatId,
+            text: `👋 Hi! I received your message, but I cannot read the message content.\n\n⚠️ **Please enable \`MESSAGE CONTENT INTENT\`** in [Discord Developer Portal](https://discord.com/developers/applications) under **Bot -> Privileged Gateway Intents**, then run \`pa restart\`.`,
+          });
+        }
+        return;
+      }
     }
 
     const prevQueue = this.chatQueues.get(msg.chatId) ?? Promise.resolve();

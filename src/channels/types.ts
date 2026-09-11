@@ -63,7 +63,13 @@ export interface ChannelAdapter {
     parseMode?: "MarkdownV2" | "HTML",
     plainFallback?: string,
   ): Promise<void>;
+  deleteMessage?(chatId: string, messageId: string): Promise<void>;
+  sendPhoto?(chatId: string, filePath: string, caption?: string): Promise<string>;
+  sendDocument?(chatId: string, filePath: string, caption?: string): Promise<string>;
+  sendFile?(chatId: string, filePath: string, caption?: string): Promise<void>;
   downloadFile?(fileId: string, destDir: string, fileName?: string): Promise<string>;
+  setMessageStore?(store: any, botName?: string): void;
+  advanceCursorForSession?(sessionId: string, messageId: string): void;
   onMessage(handler: MessageHandler): void;
   onCommand(command: string, handler: CommandHandler): void;
   onCallback?(prefix: string, handler: (ctx: any) => Promise<void>): void;

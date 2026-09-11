@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import {
   Client,
   GatewayIntentBits,
@@ -24,6 +24,7 @@ import type {
   InboundMessage,
   Attachment,
 } from "../types.js";
+import type { MessageStore } from "../../sessions/message-store.js";
 
 function splitDiscordText(text: string, limit = 1900): string[] {
   if (text.length <= limit) return [text];
@@ -57,11 +58,38 @@ export class DiscordAdapter implements ChannelAdapter {
   private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
   private activeSlashInteractions = new Map<string, ChatInputCommandInteraction>();
   private stopped = false;
+  private messageStore?: MessageStore;
+  private botName = "PocketAgent";
+  private outboundCallback?: (chatId: string, text: string, messageId: string) => void;
   username?: string;
 
   constructor(token: string, log: Logger) {
     this.token = token;
     this.log = log.child({ module: "discord" });
+  }
+
+  setMessageStore(store: MessageStore, botName?: string): void {
+    this.messageStore = store;
+    if (botName) this.botName = botName;
+  }
+
+  private recordOutbound(chatId: string, messageId: string, text: string): void {
+    if (!this.messageStore) return;
+    this.messageStore.append(chatId, {
+      id: messageId,
+      ts: Math.floor(Date.now() / 1000),
+      sender: this.botName,
+      senderId: this.client?.user?.id ?? "bot",
+      text,
+    });
+  }
+
+  onOutbound(cb: (chatId: string, text: string, messageId: string) => void): void {
+    this.outboundCallback = cb;
+  }
+
+  advanceCursorForSession(sessionId: string, messageId: string): void {
+    this.messageStore?.advanceCursor(sessionId, messageId);
   }
 
   onMessage(handler: MessageHandler): void {
@@ -128,18 +156,6 @@ export class DiscordAdapter implements ChannelAdapter {
         text = text.replace(new RegExp(`<@!?${client.user.id}>`, "g"), "").trim();
       }
 
-      // In guild channels, respond if:
-      // 1) In Direct Message (DM), OR
-      // 2) Bot is mentioned in a guild, OR
-      // 3) Message is a reply to one of bot's own messages, OR
-      // 4) Message starts with command slash '/'
-      const isDM = !message.guildId;
-      const isReply = message.reference?.messageId ? true : false;
-
-      if (!isDM && !isMentioned && !isReply && !text.startsWith("/")) {
-        return;
-      }
-
       const inboundAttachments: Attachment[] = [];
       if (message.attachments.size > 0) {
         for (const [, att] of message.attachments) {
@@ -155,12 +171,14 @@ export class DiscordAdapter implements ChannelAdapter {
 
       let replyText: string | undefined;
       let replySenderName: string | undefined;
+      let isReplyToBot = false;
       const replyAttachments: Attachment[] = [];
 
       if (message.reference?.messageId) {
         try {
           const refMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
           if (refMsg) {
+            isReplyToBot = client.user ? refMsg.author?.id === client.user.id : false;
             replySenderName = refMsg.author?.displayName || refMsg.author?.username || undefined;
             replyText = refMsg.content || undefined;
 
@@ -182,6 +200,28 @@ export class DiscordAdapter implements ChannelAdapter {
         } catch {
           // Ignore reference fetch errors
         }
+      }
+
+      // Record message in group MessageStore for conversation history tracking
+      if (this.messageStore && message.guildId) {
+        this.messageStore.append(message.channelId, {
+          id: message.id,
+          ts: Math.floor(message.createdTimestamp / 1000),
+          sender: message.author.displayName || message.author.username,
+          senderId: message.author.id,
+          text: message.content,
+          media: inboundAttachments.map((a) => `${a.type}:${a.fileId}:${a.fileName ?? ""}`),
+        });
+      }
+
+      // In guild channels, respond only if:
+      // 1) In Direct Message (DM), OR
+      // 2) Bot is explicitly mentioned, OR
+      // 3) Message is a reply specifically to the bot's message, OR
+      // 4) Message starts with command slash '/'
+      const isDM = !message.guildId;
+      if (!isDM && !isMentioned && !isReplyToBot && !text.startsWith("/")) {
+        return;
       }
 
       const inbound: InboundMessage = {
@@ -263,7 +303,7 @@ export class DiscordAdapter implements ChannelAdapter {
           if (this.activeSlashInteractions.get(interaction.channelId) === interaction) {
             this.activeSlashInteractions.delete(interaction.channelId);
           }
-        }, 15000);
+        }, 600000);
 
         try {
           await handler(inbound);
@@ -304,7 +344,13 @@ export class DiscordAdapter implements ChannelAdapter {
         }
       } else {
         // If no callback handler matched, it's an interactive user button (e.g. from an AI prompt)
-        await btnInteraction.deferUpdate().catch(() => {});
+        const prevContent = btnInteraction.message?.content || "";
+        await btnInteraction.update({
+          content: prevContent ? `${prevContent}\n\n→ **${customId}**` : `→ **${customId}**`,
+          components: [],
+        }).catch(async () => {
+          await btnInteraction.deferUpdate().catch(() => {});
+        });
         const inbound: InboundMessage = {
           channelType: "discord",
           chatId: btnInteraction.channelId,
@@ -341,37 +387,45 @@ export class DiscordAdapter implements ChannelAdapter {
   async send(msg: OutboundMessage): Promise<string> {
     if (!this.client) return "";
 
+    const chunks = splitDiscordText(msg.text);
+    const firstChunk = chunks[0] || msg.text;
+    const files = msg.attachments?.map((a) => {
+      const fileName = a.caption && /\.[a-z0-9]+$/i.test(a.caption) ? a.caption : basename(a.path);
+      return {
+        attachment: a.path,
+        name: fileName,
+        description: a.caption,
+      };
+    }) ?? [];
+
     const slashInteraction = this.activeSlashInteractions.get(msg.chatId);
     if (slashInteraction) {
       this.activeSlashInteractions.delete(msg.chatId);
-      const chunks = splitDiscordText(msg.text);
-      const firstChunk = chunks[0] || msg.text;
-      const files = msg.attachments?.map((a) => ({
-        attachment: a.path,
-        name: a.caption,
-      })) ?? [];
       const payload: any = { content: firstChunk };
       if (files.length > 0) payload.files = files;
       const res = await slashInteraction.editReply(payload).catch(() => null);
+      const resId = (res as any)?.id ?? "";
+      if (resId) {
+        this.recordOutbound(msg.chatId, resId, firstChunk);
+        this.outboundCallback?.(msg.chatId, firstChunk, resId);
+      }
       if (chunks.length > 1) {
         const channel = await this.client.channels.fetch(msg.chatId).catch(() => null);
         if (channel && channel.isTextBased()) {
           for (let i = 1; i < chunks.length; i++) {
-            await (channel as any).send({ content: chunks[i] }).catch(() => {});
+            const followUp = await (channel as any).send({ content: chunks[i] }).catch(() => null);
+            if (followUp?.id) {
+              this.recordOutbound(msg.chatId, followUp.id, chunks[i]);
+              this.outboundCallback?.(msg.chatId, chunks[i], followUp.id);
+            }
           }
         }
       }
-      return (res as any)?.id ?? "";
+      return resId;
     }
 
     const channel = await this.client.channels.fetch(msg.chatId).catch(() => null);
     if (!channel || !channel.isTextBased()) return "";
-
-    const chunks = splitDiscordText(msg.text);
-    const files = msg.attachments?.map((a) => ({
-      attachment: a.path,
-      name: a.caption,
-    })) ?? [];
 
     let lastMsg: Message | undefined;
     for (let i = 0; i < chunks.length; i++) {
@@ -389,6 +443,10 @@ export class DiscordAdapter implements ChannelAdapter {
         this.log.error({ error: err?.message, chatId: msg.chatId }, "Failed to send message to Discord channel");
         return undefined;
       });
+      if (lastMsg) {
+        this.recordOutbound(msg.chatId, lastMsg.id, chunk);
+        this.outboundCallback?.(msg.chatId, chunk, lastMsg.id);
+      }
     }
     return lastMsg?.id ?? "";
   }
@@ -422,15 +480,24 @@ export class DiscordAdapter implements ChannelAdapter {
         content: mainText,
         components: rows,
       }).catch(() => null);
+      const resId = (res as any)?.id ?? "";
+      if (resId) {
+        this.recordOutbound(chatId, resId, mainText);
+        this.outboundCallback?.(chatId, mainText, resId);
+      }
       if (chunks.length > 1) {
         const channel = await this.client.channels.fetch(chatId).catch(() => null);
         if (channel && channel.isTextBased()) {
           for (let i = 1; i < chunks.length; i++) {
-            await (channel as any).send({ content: chunks[i] }).catch(() => {});
+            const followUp = await (channel as any).send({ content: chunks[i] }).catch(() => null);
+            if (followUp?.id) {
+              this.recordOutbound(chatId, followUp.id, chunks[i]);
+              this.outboundCallback?.(chatId, chunks[i], followUp.id);
+            }
           }
         }
       }
-      return (res as any)?.id ?? "";
+      return resId;
     }
 
     const channel = await this.client.channels.fetch(chatId).catch(() => null);
@@ -444,9 +511,18 @@ export class DiscordAdapter implements ChannelAdapter {
       return null;
     });
 
+    if (sent?.id) {
+      this.recordOutbound(chatId, sent.id, mainText);
+      this.outboundCallback?.(chatId, mainText, sent.id);
+    }
+
     if (chunks.length > 1) {
       for (let i = 1; i < chunks.length; i++) {
-        await (channel as any).send({ content: chunks[i] }).catch(() => {});
+        const followUp = await (channel as any).send({ content: chunks[i] }).catch(() => null);
+        if (followUp?.id) {
+          this.recordOutbound(chatId, followUp.id, chunks[i]);
+          this.outboundCallback?.(chatId, chunks[i], followUp.id);
+        }
       }
     }
 
@@ -477,15 +553,63 @@ export class DiscordAdapter implements ChannelAdapter {
       await msg.edit(payload).catch((err: any) => {
         this.log.error({ error: err?.message, chatId, messageId }, "Failed to edit Discord message");
       });
+      this.recordOutbound(chatId, messageId, firstChunk);
+      this.outboundCallback?.(chatId, firstChunk, messageId);
 
       if (chunks.length > 1) {
         for (let i = 1; i < chunks.length; i++) {
-          await (channel as any).send({ content: chunks[i] }).catch((err: any) => {
+          const followUp = await (channel as any).send({ content: chunks[i] }).catch((err: any) => {
             this.log.error({ error: err?.message, chatId }, "Failed to send follow-up Discord chunk");
+            return null;
           });
+          if (followUp?.id) {
+            this.recordOutbound(chatId, followUp.id, chunks[i]);
+            this.outboundCallback?.(chatId, chunks[i], followUp.id);
+          }
         }
       }
     }
+  }
+
+  async deleteMessage(chatId: string, messageId: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      const channel = await this.client.channels.fetch(chatId).catch(() => null);
+      if (channel && channel.isTextBased()) {
+        const msg = await (channel as any).messages.fetch(messageId).catch(() => null);
+        if (msg) await msg.delete().catch(() => {});
+      }
+    } catch {
+      // Ignore delete errors
+    }
+  }
+
+  async sendPhoto(chatId: string, filePath: string, caption?: string): Promise<string> {
+    if (!existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
+    const channel = await this.client?.channels.fetch(chatId).catch(() => null);
+    if (!channel || !channel.isTextBased()) throw new Error("Channel not found or not text-based");
+    const sent = await (channel as any).send({
+      content: caption || undefined,
+      files: [{ attachment: filePath, name: basename(filePath) }],
+    });
+    this.recordOutbound(chatId, sent.id, `[Photo] ${caption ?? ""}`);
+    return sent.id;
+  }
+
+  async sendDocument(chatId: string, filePath: string, caption?: string): Promise<string> {
+    if (!existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
+    const channel = await this.client?.channels.fetch(chatId).catch(() => null);
+    if (!channel || !channel.isTextBased()) throw new Error("Channel not found or not text-based");
+    const sent = await (channel as any).send({
+      content: caption || undefined,
+      files: [{ attachment: filePath, name: basename(filePath) }],
+    });
+    this.recordOutbound(chatId, sent.id, `[Document] ${caption ?? ""}`);
+    return sent.id;
+  }
+
+  async sendFile(chatId: string, filePath: string, caption?: string): Promise<void> {
+    await this.sendDocument(chatId, filePath, caption);
   }
 
   async downloadFile(fileId: string, destDir: string, fileName?: string): Promise<string> {

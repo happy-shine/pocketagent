@@ -388,6 +388,14 @@ export class DiscordAdapter implements ChannelAdapter {
         content: mainText,
         components: rows,
       }).catch(() => null);
+      if (chunks.length > 1) {
+        const channel = await this.client.channels.fetch(chatId).catch(() => null);
+        if (channel && channel.isTextBased()) {
+          for (let i = 1; i < chunks.length; i++) {
+            await (channel as any).send({ content: chunks[i] }).catch(() => {});
+          }
+        }
+      }
       return (res as any)?.id ?? "";
     }
 
@@ -402,6 +410,12 @@ export class DiscordAdapter implements ChannelAdapter {
       return null;
     });
 
+    if (chunks.length > 1) {
+      for (let i = 1; i < chunks.length; i++) {
+        await (channel as any).send({ content: chunks[i] }).catch(() => {});
+      }
+    }
+
     return sent?.id ?? "";
   }
 
@@ -411,7 +425,9 @@ export class DiscordAdapter implements ChannelAdapter {
     if (!channel || !channel.isTextBased()) return;
     const msg = await (channel as any).messages.fetch(messageId).catch(() => null);
     if (msg) {
-      const payload: any = { content: text.slice(0, 1900) };
+      const chunks = splitDiscordText(text);
+      const firstChunk = chunks[0] || text;
+      const payload: any = { content: firstChunk };
       if (buttons && buttons.length > 0) {
         const row = new ActionRowBuilder<ButtonBuilder>();
         for (const btn of buttons.slice(0, 5)) {
@@ -424,7 +440,17 @@ export class DiscordAdapter implements ChannelAdapter {
         }
         payload.components = [row];
       }
-      await msg.edit(payload).catch(() => {});
+      await msg.edit(payload).catch((err: any) => {
+        this.log.error({ error: err?.message, chatId, messageId }, "Failed to edit Discord message");
+      });
+
+      if (chunks.length > 1) {
+        for (let i = 1; i < chunks.length; i++) {
+          await (channel as any).send({ content: chunks[i] }).catch((err: any) => {
+            this.log.error({ error: err?.message, chatId }, "Failed to send follow-up Discord chunk");
+          });
+        }
+      }
     }
   }
 

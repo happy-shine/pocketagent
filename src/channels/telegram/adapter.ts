@@ -199,6 +199,8 @@ export class TelegramAdapter implements ChannelAdapter {
     _parseMode?: "MarkdownV2" | "HTML",
     plainFallback?: string,
   ): Promise<void> {
+    const chunks = splitMessage(text);
+    const firstChunk = chunks[0] || text;
     const replyMarkup = buttons && buttons.length > 0
       ? {
           inline_keyboard: [
@@ -208,17 +210,29 @@ export class TelegramAdapter implements ChannelAdapter {
       : undefined;
 
     try {
-      await this.bot.api.editMessageText(chatId, Number(messageId), text, {
+      await this.bot.api.editMessageText(chatId, Number(messageId), firstChunk, {
         reply_markup: replyMarkup,
       });
-      this.recordOutbound(chatId, messageId, text);
+      this.recordOutbound(chatId, messageId, firstChunk);
     } catch (err) {
       if (plainFallback) {
         try {
-          await this.bot.api.editMessageText(chatId, Number(messageId), plainFallback, {
+          const fallbackChunks = splitMessage(plainFallback);
+          await this.bot.api.editMessageText(chatId, Number(messageId), fallbackChunks[0] || plainFallback, {
             reply_markup: replyMarkup,
           });
-          this.recordOutbound(chatId, messageId, plainFallback);
+          this.recordOutbound(chatId, messageId, fallbackChunks[0] || plainFallback);
+        } catch {
+          // Ignore
+        }
+      }
+    }
+
+    if (chunks.length > 1) {
+      for (let i = 1; i < chunks.length; i++) {
+        try {
+          const sent = await this.bot.api.sendMessage(chatId, chunks[i]);
+          this.recordOutbound(chatId, String(sent.message_id), chunks[i]);
         } catch {
           // Ignore
         }

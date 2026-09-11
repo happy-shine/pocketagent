@@ -298,11 +298,26 @@ export class BotInstance {
 
     const input = msg.text.trim();
     if (input) {
-      this.sessionManager.setModel(session.sessionId, input);
+      let resolvedModel = input;
+      try {
+        const caps = await this.engineManager.getCapabilities(session.activeEngine);
+        const lowerInput = input.toLowerCase();
+        const matched = caps.models.find(
+          (m) =>
+            m.id.toLowerCase() === lowerInput ||
+            m.id.toLowerCase().includes(lowerInput) ||
+            m.label.toLowerCase().includes(lowerInput),
+        );
+        if (matched) {
+          resolvedModel = matched.id;
+        }
+      } catch {}
+
+      this.sessionManager.setModel(session.sessionId, resolvedModel);
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
+        text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${resolvedModel}\``,
       });
       return;
     }

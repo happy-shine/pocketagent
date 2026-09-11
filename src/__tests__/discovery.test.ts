@@ -25,9 +25,11 @@ describe("Engine Capabilities Discovery", () => {
     expect(caps.efforts.map((e) => e.id)).toContain("high");
   });
 
-  it("discovers Codex capabilities", async () => {
-    const caps = await discoverCodexCapabilities("codex");
-    expect(caps.models.some((m) => m.id.includes("gpt"))).toBe(true);
+  it("discovers Codex capabilities dynamically including live models", async () => {
+    const caps = await discoverCodexCapabilities("codex", [], true);
+    expect(caps.models.length).toBeGreaterThan(0);
+    // Real models include gpt-6-astra or gpt-5.x
+    expect(caps.models.some((m) => m.id === "gpt-6-astra" || m.id.includes("gpt"))).toBe(true);
     expect(caps.efforts.some((e) => e.id === "high")).toBe(true);
   });
 });

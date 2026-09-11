@@ -109,8 +109,21 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     }
 
-    const me = await this.bot.api.getMe();
-    this.username = me.username;
+    let me;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        me = await this.bot.api.getMe();
+        break;
+      } catch (err) {
+        this.log.warn(
+          { attempt, error: err instanceof Error ? err.message : String(err) },
+          `Connecting to Telegram API attempt ${attempt}/5 failed, retrying in 1.5s...`
+        );
+        if (attempt === 5) throw err;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    this.username = me!.username;
     this.log.info({ username: this.username }, "Telegram bot started");
 
     this.bot.start({

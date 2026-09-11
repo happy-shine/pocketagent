@@ -3,7 +3,11 @@ import { apiThrottler } from "@grammyjs/transformer-throttler";
 import https from "node:https";
 import type { Logger } from "pino";
 
-const ipv4Agent = new https.Agent({ family: 4 });
+const ipv4Agent = new https.Agent({
+  family: 4,
+  keepAlive: true,
+  keepAliveMsecs: 10000,
+});
 
 export function createBot(token: string, log: Logger): Bot {
   const bot = new Bot(token, {

@@ -19,6 +19,7 @@ import {
   readFileSync,
   unlinkSync,
   openSync,
+  closeSync,
 } from "node:fs";
 import { resolve, join } from "node:path";
 
@@ -93,46 +94,185 @@ function checkEngineClis(config: GatewayConfig): void {
   }
 }
 
-program
-  .command("start")
-  .description("Start the PocketAgent gateway in the foreground")
-  .option("-c, --config <path>", "Path to config file")
-  .action(async (opts) => {
-    printBanner();
-    const config = loadConfig(opts.config);
-    const dataDir = getDataDir(opts.config);
+async function startForeground(opts: { config?: string }): Promise<void> {
+  printBanner();
+  const config = loadConfig(opts.config);
+  const dataDir = getDataDir(opts.config);
 
-    const existingPid = getRunningPid(dataDir);
-    if (existingPid) {
-      console.error(`Gateway is already running (PID: ${existingPid})`);
-      process.exit(1);
+  const existingPid = getRunningPid(dataDir);
+  if (existingPid) {
+    console.error(`Gateway is already running (PID: ${existingPid})`);
+    console.error(`Use 'pa stop' to stop it before running in the foreground.`);
+    process.exit(1);
+  }
+
+  mkdirSync(dataDir, { recursive: true });
+  const lockPath = join(dataDir, "gateway.lock");
+  writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+
+  const log = pino({
+    level: config.gateway.logLevel,
+    transport:
+      config.gateway.logFormat === "pretty"
+        ? { target: "pino-pretty", options: { colorize: true } }
+        : undefined,
+  });
+
+  const gateway = new Gateway(config, log, opts.config);
+
+  const cleanup = async () => {
+    console.log("\nShutting down PocketAgent Gateway...");
+    try { unlinkSync(lockPath); } catch {}
+    await gateway.stop();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+  process.on("uncaughtException", (err) => {
+    try { unlinkSync(lockPath); } catch {}
+    console.error("Uncaught exception:", err);
+    process.exit(1);
+  });
+
+  await gateway.start();
+  if (process.send) {
+    process.send({ type: "ready" });
+    process.disconnect?.();
+  }
+}
+
+async function startDaemon(opts: { config?: string }): Promise<void> {
+  const dataDir = getDataDir(opts.config);
+  const runningPid = getRunningPid(dataDir);
+  if (runningPid) {
+    console.log(`PocketAgent is already running (PID: ${runningPid})`);
+    console.log(`Use 'pa restart' to restart or 'pa stop' to stop.`);
+    return;
+  }
+
+  try {
+    loadConfig(opts.config);
+  } catch (err) {
+    console.error(`Failed to load config: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
+  const logDir = getLogDir(dataDir);
+  const outLog = join(logDir, "gateway.log");
+  const errLog = join(logDir, "gateway.err");
+
+  const out = openSync(outLog, "a");
+  const err = openSync(errLog, "a");
+
+  const child = spawn(
+    process.argv[0],
+    [process.argv[1], "start", "-f", ...(opts.config ? ["-c", opts.config] : [])],
+    {
+      detached: true,
+      stdio: ["ignore", out, err, "ipc"],
+      env: { ...process.env },
     }
+  );
 
-    mkdirSync(dataDir, { recursive: true });
-    const lockPath = join(dataDir, "gateway.lock");
-    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  closeSync(out);
+  closeSync(err);
 
-    const log = pino({
-      level: config.gateway.logLevel,
-      transport:
-        config.gateway.logFormat === "pretty"
-          ? { target: "pino-pretty", options: { colorize: true } }
-          : undefined,
+  await new Promise<void>((resolve) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        child.unref();
+        console.log(`PocketAgent daemon started in background (PID: ${child.pid})`);
+        console.log(`Logs: ${outLog}`);
+        resolve();
+      }
+    }, 10000);
+
+    child.on("message", (msg: { type?: string }) => {
+      if (msg?.type === "ready") {
+        settled = true;
+        clearTimeout(timer);
+        child.unref();
+        console.log(`PocketAgent daemon started in background (PID: ${child.pid})`);
+        console.log(`Logs: ${outLog}`);
+        resolve();
+      }
     });
 
-    const gateway = new Gateway(config, log, opts.config);
+    child.on("exit", (code) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        console.error(`PocketAgent daemon failed to start (exit code: ${code}).`);
+        if (existsSync(errLog)) {
+          const errContent = readFileSync(errLog, "utf-8").trim();
+          if (errContent) {
+            const lines = errContent.split("\n");
+            const lastLines = lines.slice(-10).join("\n");
+            console.error(`\nError details:\n${lastLines}\n`);
+          }
+        }
+        console.error(`Check error log: ${errLog}`);
+        process.exit(1);
+      }
+    });
+  });
+}
 
-    const cleanup = async () => {
-      console.log("\nShutting down PocketAgent Gateway...");
-      try { unlinkSync(lockPath); } catch {}
-      await gateway.stop();
-      process.exit(0);
-    };
+async function stopDaemon(dataDir: string): Promise<boolean> {
+  const runningPid = getRunningPid(dataDir);
+  if (!runningPid) {
+    console.log("PocketAgent is not running");
+    return false;
+  }
+  console.log(`Stopping PocketAgent (PID: ${runningPid})...`);
+  try { process.kill(runningPid, "SIGTERM"); } catch {}
+  const start = Date.now();
+  while (isPidRunning(runningPid) && Date.now() - start < 5000) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  if (isPidRunning(runningPid)) {
+    try { process.kill(runningPid, "SIGKILL"); } catch {}
+  }
+  const lockPath = join(dataDir, "gateway.lock");
+  try { unlinkSync(lockPath); } catch {}
+  console.log(`Stopped PocketAgent (PID: ${runningPid})`);
+  return true;
+}
 
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
+async function restartDaemon(opts: { config?: string }): Promise<void> {
+  const dataDir = getDataDir(opts.config);
+  const runningPid = getRunningPid(dataDir);
+  if (runningPid) {
+    await stopDaemon(dataDir);
+  }
+  await startDaemon(opts);
+}
 
-    await gateway.start();
+function printStatus(configPath?: string): void {
+  const dataDir = getDataDir(configPath);
+  const pid = getRunningPid(dataDir);
+  if (pid) {
+    console.log(`PocketAgent is active in background (PID: ${pid})`);
+  } else {
+    console.log("PocketAgent is not running");
+  }
+}
+
+program
+  .command("start")
+  .description("Start the PocketAgent gateway (daemon by default, use -f for foreground)")
+  .option("-f, --foreground", "Run in foreground with real-time log output")
+  .option("-c, --config <path>", "Path to config file")
+  .action(async (opts) => {
+    if (opts.foreground) {
+      await startForeground(opts);
+    } else {
+      await startDaemon(opts);
+    }
   });
 
 program
@@ -142,93 +282,53 @@ program
   .option("-c, --config <path>", "Path to config file")
   .action(async (action, opts) => {
     const dataDir = getDataDir(opts.config);
-    const runningPid = getRunningPid(dataDir);
 
     if (action === "status") {
-      if (runningPid) {
-        console.log(`PocketAgent is running in background (PID: ${runningPid})`);
-      } else {
-        console.log("PocketAgent is stopped");
-      }
+      printStatus(opts.config);
       return;
     }
 
     if (action === "stop") {
-      if (!runningPid) {
-        console.log("PocketAgent is not running");
-        return;
-      }
-      try { process.kill(runningPid, "SIGTERM"); } catch {}
-      console.log(`Stopping PocketAgent (PID: ${runningPid})...`);
-      const start = Date.now();
-      while (isPidRunning(runningPid) && Date.now() - start < 5000) {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-      if (isPidRunning(runningPid)) {
-        try { process.kill(runningPid, "SIGKILL"); } catch {}
-      }
-      console.log(`Stopped PocketAgent (PID: ${runningPid})`);
+      await stopDaemon(dataDir);
       return;
     }
 
-    if (action === "start" || action === "restart") {
-      if (runningPid) {
-        try { process.kill(runningPid, "SIGTERM"); } catch {}
-        console.log(`Stopping existing instance (PID: ${runningPid})...`);
-        const start = Date.now();
-        while (isPidRunning(runningPid) && Date.now() - start < 5000) {
-          await new Promise((r) => setTimeout(r, 200));
-        }
-        if (isPidRunning(runningPid)) {
-          try { process.kill(runningPid, "SIGKILL"); } catch {}
-        }
-        console.log(`Stopped existing instance (PID: ${runningPid})`);
-      }
-
-      const logDir = getLogDir(dataDir);
-      const outLog = join(logDir, "gateway.log");
-      const errLog = join(logDir, "gateway.err");
-
-      const out = openSync(outLog, "a");
-      const err = openSync(errLog, "a");
-
-      const child = spawn(process.argv[0], [process.argv[1], "start", ...(opts.config ? ["-c", opts.config] : [])], {
-        detached: true,
-        stdio: ["ignore", out, err],
-        env: { ...process.env },
-      });
-
-      child.unref();
-      console.log(`PocketAgent daemon started in background (PID: ${child.pid})`);
-      console.log(`Logs: ${outLog}`);
+    if (action === "restart") {
+      await restartDaemon(opts);
+      return;
     }
+
+    if (action === "start") {
+      await startDaemon(opts);
+      return;
+    }
+
+    console.error(`Unknown action: ${action}. Available actions: start, stop, restart, status`);
   });
 
 program
   .command("stop")
   .description("Stop running PocketAgent daemon")
-  .action(async () => {
-    const dataDir = getDataDir();
-    const runningPid = getRunningPid(dataDir);
-    if (!runningPid) {
-      console.log("PocketAgent is not running");
-      return;
-    }
-    process.kill(runningPid, "SIGTERM");
-    console.log(`Stopped PocketAgent (PID: ${runningPid})`);
+  .option("-c, --config <path>", "Path to config file")
+  .action(async (opts) => {
+    const dataDir = getDataDir(opts.config);
+    await stopDaemon(dataDir);
+  });
+
+program
+  .command("restart")
+  .description("Restart running PocketAgent daemon")
+  .option("-c, --config <path>", "Path to config file")
+  .action(async (opts) => {
+    await restartDaemon(opts);
   });
 
 program
   .command("status")
   .description("Check running status")
-  .action(() => {
-    const dataDir = getDataDir();
-    const pid = getRunningPid(dataDir);
-    if (pid) {
-      console.log(`PocketAgent is active (PID: ${pid})`);
-    } else {
-      console.log("PocketAgent is not running");
-    }
+  .option("-c, --config <path>", "Path to config file")
+  .action((opts) => {
+    printStatus(opts.config);
   });
 
 program

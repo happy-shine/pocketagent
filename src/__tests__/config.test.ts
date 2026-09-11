@@ -64,4 +64,29 @@ channels:
     expect(bots[0].token).toBe("333:CCC");
     expect(bots[0].dmPolicy).toBe("open");
   });
+
+  it("handles clean configs without any model fields", () => {
+    const yaml = `
+gateway:
+  port: 18790
+engines:
+  default: "claude"
+  claude:
+    binary: "claude"
+  agy:
+    binary: "agy"
+  codex:
+    binary: "codex"
+bots:
+  - name: "my-bot"
+    token: "123:ABC"
+    engine: "claude"
+`;
+    const config = parseConfig(yaml);
+    expect(config.engines.claude.model).toBeUndefined();
+    expect(config.engines.agy.model).toBeUndefined();
+    expect(config.engines.codex.model).toBeUndefined();
+    const bots = resolveBots(config);
+    expect(bots[0].model).toBeUndefined();
+  });
 });

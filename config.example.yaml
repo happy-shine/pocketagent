@@ -15,7 +15,6 @@ engines:
 
   claude:
     binary: "claude"
-    # model: "sonnet" # default alias or specific model
     extraArgs: []
     customModels: []
 
@@ -28,7 +27,6 @@ engines:
 
   agy:
     binary: "agy"
-    # model: "gemini-3.8-flash-high"
     extraArgs: []
     customModels: []
 
@@ -39,6 +37,4 @@ bots:
   - name: "my-pocket-bot"
     token: "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" # From @BotFather
     engine: "claude" # claude | codex | agy (switchable dynamically via /engine)
-    # model: "sonnet"
-    # effort: "high"
     # discordToken: "MTE..." # Optional: connect Discord bot simultaneously

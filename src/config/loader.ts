@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, parseDocument } from "yaml";
 import { configSchema } from "./schema.js";
 import type { GatewayConfig, ResolvedBotConfig, BotConfig } from "./types.js";
 
@@ -178,4 +178,61 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
       skills: bot.skills,
     };
   });
+}
+
+export function syncPairingToConfig(
+  configPath: string,
+  botName: string,
+  senderId: string,
+  chatId?: string,
+): boolean {
+  if (!existsSync(configPath)) return false;
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    const doc = parseDocument(raw);
+    const bots = doc.get("bots");
+    if (!bots || typeof (bots as any).items === "undefined") return false;
+
+    let modified = false;
+    for (const b of (bots as any).items) {
+      if (b?.get?.("name") === botName) {
+        // Update allowFrom
+        const allowNode = b.get("allowFrom");
+        if (!allowNode) {
+          b.set("allowFrom", doc.createNode([String(senderId)]));
+          modified = true;
+        } else {
+          const items: string[] = allowNode.toJSON?.() ?? [];
+          if (!items.map(String).includes(String(senderId))) {
+            allowNode.add(doc.createNode(String(senderId)));
+            modified = true;
+          }
+        }
+
+        // Update groups if channel / group
+        if (chatId && chatId !== senderId) {
+          const groupsNode = b.get("groups");
+          if (!groupsNode) {
+            b.set("groups", doc.createNode({ [String(chatId)]: true }));
+            modified = true;
+          } else {
+            const groupMap = groupsNode.toJSON?.() ?? {};
+            if (!groupMap[String(chatId)]) {
+              groupsNode.set(doc.createNode(String(chatId)), true);
+              modified = true;
+            }
+          }
+        }
+        break;
+      }
+    }
+
+    if (modified) {
+      writeFileSync(configPath, doc.toString());
+      return true;
+    }
+  } catch {
+    // Non-fatal if config rewrite fails
+  }
+  return false;
 }

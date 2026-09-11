@@ -7,7 +7,7 @@ net.setDefaultAutoSelectFamily(false);
 
 import { Command } from "commander";
 import pino from "pino";
-import { loadConfig, resolveBots, resolveDataDir } from "./config/loader.js";
+import { loadConfig, resolveBots, resolveDataDir, syncPairingToConfig } from "./config/loader.js";
 import type { GatewayConfig } from "./config/types.js";
 import { Gateway } from "./gateway/gateway.js";
 import { PairingManager } from "./auth/pairing.js";
@@ -381,6 +381,7 @@ program
       }
       let approvedBotName: string | undefined;
       let approvedSenderId: string | undefined;
+      let approvedChatId: string | undefined;
 
       for (const bot of targetBots) {
         const pairingPath = join(dataDir, "credentials", bot.botId, "telegram-pairing.json");
@@ -409,12 +410,18 @@ program
 
           approvedBotName = bot.name;
           approvedSenderId = result.senderId;
+          approvedChatId = result.chatId;
           break;
         }
       }
 
       if (approvedSenderId) {
+        const cfgPath = opts.config ?? join(dataDir, "config.yaml");
+        const synced = syncPairingToConfig(cfgPath, approvedBotName!, approvedSenderId, approvedChatId);
         console.log(`Approved pairing code ${code} for user ${approvedSenderId} (bot: ${approvedBotName})`);
+        if (synced) {
+          console.log(`✓ Automatically synchronized allowlist and groups to config.yaml`);
+        }
       } else {
         console.error(`Pairing code ${code} not found or already approved/expired.`);
       }

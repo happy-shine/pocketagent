@@ -868,8 +868,8 @@ export class BotInstance {
       isGroup: msg.isGroup,
       dmPolicy: this.config.dmPolicy,
       groupPolicy: this.config.groupPolicy,
-      allowFrom: [...this.allowFrom],
-      groups: this.runtimeGroups,
+      allowFrom: [...this.loadAllowFrom()],
+      groups: this.loadRuntimeGroups(),
     });
   }
 

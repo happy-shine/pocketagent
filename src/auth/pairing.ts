@@ -20,9 +20,13 @@ export class PairingManager {
 
   constructor(storePath?: string) {
     this.storePath = storePath;
-    if (storePath && existsSync(storePath)) {
+    this.load();
+  }
+
+  private load(): void {
+    if (this.storePath && existsSync(this.storePath)) {
       try {
-        const data = JSON.parse(readFileSync(storePath, "utf-8"));
+        const data = JSON.parse(readFileSync(this.storePath, "utf-8"));
         this.requests = data.requests ?? [];
       } catch {
         this.requests = [];
@@ -31,6 +35,7 @@ export class PairingManager {
   }
 
   challenge(senderId: string, senderName: string, channelType: string, chatId: string): PairingRequest {
+    this.load();
     this.cleanup();
     const existing = this.requests.find((r) => r.senderId === senderId && r.channelType === channelType);
     if (existing) return existing;
@@ -53,6 +58,7 @@ export class PairingManager {
   }
 
   approve(code: string): { senderId: string; chatId?: string } | null {
+    this.load();
     this.cleanup();
     const idx = this.requests.findIndex((r) => r.code === code.toUpperCase());
     if (idx === -1) return null;
@@ -63,6 +69,7 @@ export class PairingManager {
   }
 
   listPending(): PairingRequest[] {
+    this.load();
     this.cleanup();
     return [...this.requests];
   }

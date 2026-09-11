@@ -416,7 +416,7 @@ program
       if (approvedSenderId) {
         console.log(`Approved pairing code ${code} for user ${approvedSenderId} (bot: ${approvedBotName})`);
       } else {
-        console.error(`Pairing code ${code} not found or expired`);
+        console.error(`Pairing code ${code} not found or already approved/expired.`);
       }
       return;
     }

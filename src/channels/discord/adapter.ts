@@ -501,7 +501,7 @@ export class DiscordAdapter implements ChannelAdapter {
     try {
       await rest.put(Routes.applicationCommands(userId), { body });
       for (const [guildId] of this.client.guilds.cache) {
-        await rest.put(Routes.applicationGuildCommands(userId, guildId), { body }).catch(() => {});
+        await rest.put(Routes.applicationGuildCommands(userId, guildId), { body: [] }).catch(() => {});
       }
       this.log.info("Discord slash commands registered successfully");
     } catch (err) {

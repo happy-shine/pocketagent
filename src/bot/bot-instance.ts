@@ -169,7 +169,7 @@ export class BotInstance {
       await this.sessionManager.flush(chatId);
 
       try {
-        await ctx.editMessageText(`✅ Active engine switched to *${engine.toUpperCase()}*\nContext from previous turns is preserved.`, {
+        await ctx.editMessageText(`Active engine switched to *${engine.toUpperCase()}*\nContext from previous turns is preserved.`, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: [] },
         });
@@ -193,7 +193,7 @@ export class BotInstance {
       await this.sessionManager.flush(chatId);
 
       try {
-        await ctx.editMessageText(`✅ Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})`, {
+        await ctx.editMessageText(`Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})`, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: [] },
         });
@@ -217,7 +217,7 @@ export class BotInstance {
       await this.sessionManager.flush(chatId);
 
       try {
-        await ctx.editMessageText(`✅ Reasoning effort set to: *${effort}* (${session.activeEngine.toUpperCase()})`, {
+        await ctx.editMessageText(`Reasoning effort set to: *${effort}* (${session.activeEngine.toUpperCase()})`, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: [] },
         });
@@ -248,37 +248,40 @@ export class BotInstance {
     const access = this.checkAccess(msg);
     if (!access.allowed) return;
 
+    const session = this.sessionManager.resolve({
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      defaultEngine: this.config.engine,
+    });
+
     const input = msg.text.trim().toLowerCase();
     if (["claude", "codex", "agy"].includes(input)) {
-      const session = this.sessionManager.resolve({
-        chatId: msg.chatId,
-        channelType: msg.channelType,
-        defaultEngine: this.config.engine,
-      });
       this.sessionManager.setEngine(session.sessionId, input as EngineType);
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `✅ Engine switched to *${input.toUpperCase()}*. Historical context is retained for handover.`,
+        text: `Engine switched to *${input.toUpperCase()}*. Historical context is retained for handover.`,
       });
       return;
     }
 
     if (channel.sendWithButtons) {
+      const cur = session.activeEngine;
+      const mark = (engine: EngineType, label: string) => (cur === engine ? `${label} [Active]` : label);
       const buttons: InlineButton[][] = [
-        [
-          { text: "🟣 Claude Code", data: "engine:claude" },
-          { text: "🟢 OpenAI Codex", data: "engine:codex" },
-        ],
-        [
-          { text: "🔵 Google Antigravity (agy)", data: "engine:agy" },
-        ],
+        [{ text: mark("claude", "Claude Code"), data: "engine:claude" }],
+        [{ text: mark("codex", "OpenAI Codex"), data: "engine:codex" }],
+        [{ text: mark("agy", "Google Antigravity (agy)"), data: "engine:agy" }],
       ];
-      await channel.sendWithButtons(msg.chatId, "Select CLI Engine to run for this session:", buttons);
+      await channel.sendWithButtons(
+        msg.chatId,
+        `Current engine: *${session.activeEngine.toUpperCase()}*\nSelect CLI Engine to run for this session:`,
+        buttons,
+      );
     } else {
       await channel.send({
         chatId: msg.chatId,
-        text: "Switch engine using: `/engine claude`, `/engine codex`, or `/engine agy`",
+        text: `Current engine: *${session.activeEngine.toUpperCase()}*\nSwitch engine using: \`/engine claude\`, \`/engine codex\`, or \`/engine agy\``,
       });
     }
   }
@@ -299,7 +302,7 @@ export class BotInstance {
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `✅ Model for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
+        text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
       });
       return;
     }
@@ -365,7 +368,7 @@ export class BotInstance {
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `✅ Effort for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
+        text: `Effort for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
       });
       return;
     }
@@ -400,7 +403,7 @@ export class BotInstance {
     });
 
     const statusText = [
-      `🤖 *PocketAgent Status*`,
+      `*PocketAgent Status*`,
       `• Bot: *${this.name}*`,
       `• Active Engine: *${session.activeEngine.toUpperCase()}*`,
       `• Model: \`${session.model || "(default)"}\``,
@@ -457,7 +460,7 @@ export class BotInstance {
     const titleSuffix = session.title ? ` (${session.title})` : "";
     await channel.send({
       chatId: msg.chatId,
-      text: `✨ New session started: Session #${session.sessionNum} [${session.activeEngine.toUpperCase()}]${titleSuffix}`,
+      text: `New session started: Session #${session.sessionNum} [${session.activeEngine.toUpperCase()}]${titleSuffix}`,
     });
   }
 

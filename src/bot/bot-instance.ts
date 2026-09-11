@@ -190,10 +190,26 @@ export class BotInstance {
       });
 
       this.sessionManager.setModel(session.sessionId, model);
+
+      let effortAdjustNote = "";
+      try {
+        const caps = await this.engineManager.getCapabilities(session.activeEngine);
+        const m = caps.models.find((mod) => mod.id.toLowerCase() === model.toLowerCase());
+        if (m && m.supportedEfforts && m.supportedEfforts.length > 0) {
+          const currentEffort = session.engineEfforts?.[session.activeEngine] || session.effort;
+          const isSupported = currentEffort && m.supportedEfforts.some((e) => e.id.toLowerCase() === currentEffort.toLowerCase());
+          if (!isSupported) {
+            const fallbackEffort = m.defaultEffort || m.supportedEfforts.find((e) => e.isDefault)?.id || m.supportedEfforts[0].id;
+            this.sessionManager.setEffort(session.sessionId, fallbackEffort);
+            effortAdjustNote = ` (Reasoning effort: \`${fallbackEffort}\`)`;
+          }
+        }
+      } catch {}
+
       await this.sessionManager.flush(chatId);
 
       try {
-        await ctx.editMessageText(`Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})`, {
+        await ctx.editMessageText(`Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})${effortAdjustNote}`, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: [] },
         });
@@ -216,8 +232,9 @@ export class BotInstance {
       this.sessionManager.setEffort(session.sessionId, effort);
       await this.sessionManager.flush(chatId);
 
+      const activeModel = session.engineModels?.[session.activeEngine] || session.model || "default";
       try {
-        await ctx.editMessageText(`Reasoning effort set to: *${effort}* (${session.activeEngine.toUpperCase()})`, {
+        await ctx.editMessageText(`Reasoning effort set to: *${effort}* for *${session.activeEngine.toUpperCase()}* (\`${activeModel}\`)`, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: [] },
         });
@@ -299,25 +316,45 @@ export class BotInstance {
     const input = msg.text.trim();
     if (input) {
       let resolvedModel = input;
+      let matchedModel: ModelInfo | undefined;
       try {
         const caps = await this.engineManager.getCapabilities(session.activeEngine);
         const lowerInput = input.toLowerCase();
-        const matched = caps.models.find(
+        matchedModel = caps.models.find(
           (m) =>
             m.id.toLowerCase() === lowerInput ||
             m.id.toLowerCase().includes(lowerInput) ||
             m.label.toLowerCase().includes(lowerInput),
         );
-        if (matched) {
-          resolvedModel = matched.id;
+        if (matchedModel) {
+          resolvedModel = matchedModel.id;
         }
       } catch {}
 
       this.sessionManager.setModel(session.sessionId, resolvedModel);
+
+      let effortAdjustNote = "";
+      if (matchedModel?.supportedEfforts && matchedModel.supportedEfforts.length > 0) {
+        const currentEffort = session.engineEfforts?.[session.activeEngine] || session.effort;
+        const isSupported =
+          currentEffort &&
+          matchedModel.supportedEfforts.some(
+            (e) => e.id.toLowerCase() === currentEffort.toLowerCase(),
+          );
+        if (!isSupported) {
+          const fallbackEffort =
+            matchedModel.defaultEffort ||
+            matchedModel.supportedEfforts.find((e) => e.isDefault)?.id ||
+            matchedModel.supportedEfforts[0].id;
+          this.sessionManager.setEffort(session.sessionId, fallbackEffort);
+          effortAdjustNote = `\nReasoning effort: \`${fallbackEffort}\``;
+        }
+      }
+
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${resolvedModel}\``,
+        text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${resolvedModel}\`${effortAdjustNote}`,
       });
       return;
     }
@@ -325,11 +362,16 @@ export class BotInstance {
     // Dynamic discovery for active engine
     try {
       const caps = await this.engineManager.getCapabilities(session.activeEngine);
+      const activeModelId = session.engineModels?.[session.activeEngine] || session.model;
       const rows: InlineButton[][] = [];
       let currentRow: InlineButton[] = [];
 
       for (const m of caps.models) {
-        currentRow.push({ text: m.label, data: `model:${m.id}` });
+        const isCurrent =
+          (activeModelId && m.id.toLowerCase() === activeModelId.toLowerCase()) ||
+          (!activeModelId && m.isDefault);
+        const label = isCurrent ? `${m.label} [Active]` : m.label;
+        currentRow.push({ text: label, data: `model:${m.id}` });
         if (currentRow.length === 2) {
           rows.push(currentRow);
           currentRow = [];
@@ -377,32 +419,83 @@ export class BotInstance {
       return;
     }
 
-    const input = msg.text.trim().toLowerCase();
-    if (input) {
-      this.sessionManager.setEffort(session.sessionId, input);
-      await this.sessionManager.flush(msg.chatId);
+    // Resolve active model for current engine
+    const activeModelId = session.engineModels?.[session.activeEngine] || session.model;
+    const activeModel =
+      caps.models.find(
+        (m) =>
+          (activeModelId && m.id.toLowerCase() === activeModelId.toLowerCase()) ||
+          (activeModelId && m.label.toLowerCase() === activeModelId.toLowerCase()),
+      ) ||
+      caps.models.find((m) => m.isDefault) ||
+      caps.models[0];
+
+    const modelEfforts =
+      activeModel?.supportedEfforts && activeModel.supportedEfforts.length > 0
+        ? activeModel.supportedEfforts
+        : caps.efforts;
+
+    if (activeModel?.supportedEfforts && activeModel.supportedEfforts.length === 0) {
       await channel.send({
         chatId: msg.chatId,
-        text: `Effort for ${session.activeEngine.toUpperCase()} set to: \`${input}\``,
+        text: `Model *${activeModel.label}* (${session.activeEngine.toUpperCase()}) does not support reasoning effort configuration.`,
       });
       return;
     }
 
-    const rows: InlineButton[][] = [
-      caps.efforts.map((e) => ({ text: e.label, data: `effort:${e.id}` })),
-    ];
+    const currentEffort =
+      session.engineEfforts?.[session.activeEngine] || session.effort || activeModel?.defaultEffort || "";
 
-    if (channel.sendWithButtons) {
-      await channel.sendWithButtons(
-        msg.chatId,
-        `Select reasoning effort for *${session.activeEngine.toUpperCase()}*:`,
-        rows,
+    const input = msg.text.trim().toLowerCase();
+    if (input) {
+      const matched = modelEfforts.find(
+        (e) => e.id.toLowerCase() === input || e.label.toLowerCase() === input,
       );
-    } else {
-      const options = caps.efforts.map((e) => `\`/effort ${e.id}\``).join(", ");
+      if (modelEfforts.length > 0 && !matched) {
+        const validList = modelEfforts.map((e) => `\`${e.id}\``).join(", ");
+        await channel.send({
+          chatId: msg.chatId,
+          text: `Effort level \`${input}\` is not supported by *${activeModel?.label || session.activeEngine.toUpperCase()}*.\nValid options: ${validList}`,
+        });
+        return;
+      }
+      const targetEffort = matched ? matched.id : input;
+      this.sessionManager.setEffort(session.sessionId, targetEffort);
+      await this.sessionManager.flush(msg.chatId);
       await channel.send({
         chatId: msg.chatId,
-        text: `Select reasoning effort for ${session.activeEngine.toUpperCase()}: ${options}`,
+        text: `Effort for *${session.activeEngine.toUpperCase()}* (${activeModel?.label || "active model"}) set to: \`${targetEffort}\``,
+      });
+      return;
+    }
+
+    // Layout buttons: up to 3 per row for clean presentation
+    const rows: InlineButton[][] = [];
+    let currentRow: InlineButton[] = [];
+
+    for (const e of modelEfforts) {
+      const isSelected = currentEffort.toLowerCase() === e.id.toLowerCase();
+      const label = isSelected ? `${e.label} [Current]` : e.label;
+      currentRow.push({ text: label, data: `effort:${e.id}` });
+      if (currentRow.length === 3) {
+        rows.push(currentRow);
+        currentRow = [];
+      }
+    }
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+    }
+
+    const modelDisplay = activeModel ? ` (\`${activeModel.label}\`)` : "";
+    const promptText = `Select reasoning effort for *${session.activeEngine.toUpperCase()}*${modelDisplay}:`;
+
+    if (channel.sendWithButtons) {
+      await channel.sendWithButtons(msg.chatId, promptText, rows);
+    } else {
+      const options = modelEfforts.map((e) => `\`/effort ${e.id}\``).join(", ");
+      await channel.send({
+        chatId: msg.chatId,
+        text: `${promptText}\n${options}`,
       });
     }
   }

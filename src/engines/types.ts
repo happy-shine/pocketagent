@@ -14,6 +14,8 @@ export interface ModelInfo {
   label: string;
   description?: string;
   isDefault?: boolean;
+  supportedEfforts?: EffortInfo[];
+  defaultEffort?: string;
 }
 
 export interface EffortInfo {

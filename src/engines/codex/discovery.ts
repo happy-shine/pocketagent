@@ -79,11 +79,20 @@ export async function discoverCodexCapabilities(
     for (let i = 0; i < rawModels.length; i++) {
       const m = rawModels[i];
       if (m.slug) {
+        const modelEfforts: EffortInfo[] = (m.supported_reasoning_levels ?? []).map((r) => ({
+          id: r.effort,
+          label: EFFORT_LABEL_MAP[r.effort.toLowerCase()] ?? r.effort,
+          description: r.description,
+          isDefault: r.effort.toLowerCase() === m.default_reasoning_level?.toLowerCase(),
+        }));
+
         models.push({
           id: m.slug,
           label: m.display_name || m.slug,
           description: m.description,
           isDefault: i === 0,
+          supportedEfforts: modelEfforts.length > 0 ? modelEfforts : undefined,
+          defaultEffort: m.default_reasoning_level,
         });
       }
       for (const r of m.supported_reasoning_levels ?? []) {
@@ -91,8 +100,70 @@ export async function discoverCodexCapabilities(
       }
     }
   } else {
-    models.push(...FALLBACK_CODEX_MODELS);
-    ["low", "medium", "high", "xhigh"].forEach((e) => effortSet.add(e));
+    models.push(
+      {
+        id: "gpt-6-astra",
+        label: "GPT-6-Astra",
+        isDefault: true,
+        defaultEffort: "medium",
+        supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "medium",
+        })),
+      },
+      {
+        id: "gpt-5.6-sol",
+        label: "GPT-5.6-Sol",
+        defaultEffort: "low",
+        supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "low",
+        })),
+      },
+      {
+        id: "gpt-5.6-terra",
+        label: "GPT-5.6-Terra",
+        defaultEffort: "medium",
+        supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "medium",
+        })),
+      },
+      {
+        id: "gpt-5.6-luna",
+        label: "GPT-5.6-Luna",
+        defaultEffort: "medium",
+        supportedEfforts: ["low", "medium", "high", "xhigh", "max"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "medium",
+        })),
+      },
+      {
+        id: "gpt-5.5",
+        label: "GPT-5.5",
+        defaultEffort: "medium",
+        supportedEfforts: ["low", "medium", "high", "xhigh"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "medium",
+        })),
+      },
+      {
+        id: "gpt-5.3-codex-spark",
+        label: "GPT-5.3-Codex-Spark",
+        defaultEffort: "high",
+        supportedEfforts: ["low", "medium", "high", "xhigh"].map((e) => ({
+          id: e,
+          label: EFFORT_LABEL_MAP[e] ?? e,
+          isDefault: e === "high",
+        })),
+      },
+    );
+    ["low", "medium", "high", "xhigh", "max", "ultra"].forEach((e) => effortSet.add(e));
   }
 
   // Include custom models configured in config.yaml

@@ -6,35 +6,43 @@ let cachedCapabilities: EngineCapabilities | null = null;
 let lastFetchedAt = 0;
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-const CORE_CLAUDE_MODELS: ModelInfo[] = [
-  {
-    id: "sonnet",
-    label: "Claude Sonnet (Sonnet 5)",
-    description: "Claude Sonnet 5 · Balanced intelligence and speed",
-  },
-  {
-    id: "opus",
-    label: "Claude Opus (Opus 5)",
-    description: "Claude Opus 5 · High intelligence and deep reasoning",
-  },
-  {
-    id: "fable",
-    label: "Claude Fable (Fable 5.1)",
-    description: "Claude Fable 5.1 · Maximum capability for hardest tasks",
-  },
-  {
-    id: "haiku",
-    label: "Claude Haiku (Haiku 4.5)",
-    description: "Claude Haiku 4.5 · Fast and lightweight",
-  },
-];
-
 const DEFAULT_CLAUDE_EFFORTS: EffortInfo[] = [
   { id: "low", label: "Low" },
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
   { id: "xhigh", label: "Extra High" },
   { id: "max", label: "Max" },
+];
+
+const CORE_CLAUDE_MODELS: ModelInfo[] = [
+  {
+    id: "sonnet",
+    label: "Claude Sonnet (Sonnet 5)",
+    description: "Claude Sonnet 5 · Balanced intelligence and speed",
+    defaultEffort: "high",
+    supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === "high" })),
+  },
+  {
+    id: "opus",
+    label: "Claude Opus (Opus 5)",
+    description: "Claude Opus 5 · High intelligence and deep reasoning",
+    defaultEffort: "medium",
+    supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === "medium" })),
+  },
+  {
+    id: "fable",
+    label: "Claude Fable (Fable 5.1)",
+    description: "Claude Fable 5.1 · Maximum capability for hardest tasks",
+    defaultEffort: "high",
+    supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === "high" })),
+  },
+  {
+    id: "haiku",
+    label: "Claude Haiku (Haiku 4.5)",
+    description: "Claude Haiku 4.5 · Fast and lightweight",
+    defaultEffort: "medium",
+    supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === "medium" })),
+  },
 ];
 
 function formatClaudeModelName(id: string, customLabel?: string, description?: string): string {
@@ -116,6 +124,8 @@ export async function discoverClaudeCapabilities(
               id: opt.value,
               label: formatClaudeModelName(opt.value, opt.label, opt.description),
               description: opt.description,
+              defaultEffort: "high",
+              supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === "high" })),
             });
           }
         }
@@ -128,18 +138,24 @@ export async function discoverClaudeCapabilities(
           const s = slot as { model?: unknown; data?: { cedar_lagoon?: Record<string, unknown> } };
           if (typeof s.model === "string" && s.model.startsWith("claude-") && !seenIds.has(s.model)) {
             seenIds.add(s.model);
+            const defEff = s.model.includes("opus") ? "medium" : "high";
             models.push({
               id: s.model,
               label: formatClaudeModelName(s.model),
+              defaultEffort: defEff,
+              supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === defEff })),
             });
           }
           if (s.data?.cedar_lagoon && typeof s.data.cedar_lagoon === "object") {
             for (const [k, v] of Object.entries(s.data.cedar_lagoon)) {
               if (v && k.startsWith("claude-") && !seenIds.has(k)) {
                 seenIds.add(k);
+                const defEff = k.includes("opus") ? "medium" : "high";
                 models.push({
                   id: k,
                   label: formatClaudeModelName(k),
+                  defaultEffort: defEff,
+                  supportedEfforts: DEFAULT_CLAUDE_EFFORTS.map((e) => ({ ...e, isDefault: e.id === defEff })),
                 });
               }
             }

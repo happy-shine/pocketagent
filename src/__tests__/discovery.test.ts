@@ -31,13 +31,29 @@ describe("Engine Capabilities Discovery", () => {
     expect(caps.models.some((m) => m.id === "claude-3-5-haiku")).toBe(false);
     expect(caps.efforts.map((e) => e.id)).toContain("xhigh");
     expect(caps.efforts.map((e) => e.id)).toContain("max");
+    // Check model-specific efforts
+    const opusModel = caps.models.find((m) => m.id === "opus");
+    expect(opusModel?.supportedEfforts?.map((e) => e.id)).toContain("max");
+    expect(opusModel?.defaultEffort).toBe("medium");
   });
 
-  it("discovers Codex capabilities dynamically including live models", async () => {
+  it("discovers Codex capabilities dynamically with model-specific effort levels", async () => {
     const caps = await discoverCodexCapabilities("codex", [], true);
     expect(caps.models.length).toBeGreaterThan(0);
     // Real models include gpt-6-astra or gpt-5.x
     expect(caps.models.some((m) => m.id === "gpt-6-astra" || m.id.includes("gpt"))).toBe(true);
     expect(caps.efforts.some((e) => e.id === "high")).toBe(true);
+
+    // Verify model-specific differences in effort levels
+    const astra = caps.models.find((m) => m.id === "gpt-6-astra");
+    if (astra?.supportedEfforts) {
+      expect(astra.supportedEfforts.map((e) => e.id)).toContain("ultra");
+    }
+
+    const gpt55 = caps.models.find((m) => m.id === "gpt-5.5");
+    if (gpt55?.supportedEfforts) {
+      // gpt-5.5 does NOT support ultra
+      expect(gpt55.supportedEfforts.map((e) => e.id)).not.toContain("ultra");
+    }
   });
 });

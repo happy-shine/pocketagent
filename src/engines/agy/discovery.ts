@@ -39,12 +39,22 @@ export async function discoverAgyCapabilities(
         const id = parts[0].trim();
         const label = parts[1].trim();
         if (id && label) {
-          models.push({ id, label });
+          models.push({
+            id,
+            label,
+            defaultEffort: "medium",
+            supportedEfforts: DEFAULT_AGY_EFFORTS,
+          });
         }
       } else {
         const match = line.match(/^([a-zA-Z0-9._-]+)\s{2,}(.+)$/);
         if (match) {
-          models.push({ id: match[1].trim(), label: match[2].trim() });
+          models.push({
+            id: match[1].trim(),
+            label: match[2].trim(),
+            defaultEffort: "medium",
+            supportedEfforts: DEFAULT_AGY_EFFORTS,
+          });
         }
       }
     }
@@ -52,11 +62,11 @@ export async function discoverAgyCapabilities(
     // If CLI models command fails, fall back to known models
     if (models.length === 0) {
       models.push(
-        { id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" },
-        { id: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
-        { id: "gemini-3.7-flash-high", label: "Gemini 3.7 Flash (High)" },
-        { id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" },
-        { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Thinking)" },
+        { id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)", defaultEffort: "medium", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "gemini-3.7-flash-high", label: "Gemini 3.7 Flash (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Thinking)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
       );
     }
   }

@@ -90,7 +90,21 @@ export class ProgressTracker {
       this.completed.push(`${this.currentIcon} ${this.currentLabel} (${dur}s)`);
     }
     this.currentIcon = TOOL_ICONS[name] ?? "⚙";
-    this.currentLabel = detail ? `${name}: ${detail}` : name;
+    let shortDetail = "";
+    if (detail) {
+      try {
+        const parsed = JSON.parse(detail);
+        if (parsed.CommandLine) shortDetail = parsed.CommandLine;
+        else if (parsed.path) shortDetail = parsed.path;
+        else if (parsed.query) shortDetail = parsed.query;
+        else shortDetail = detail;
+      } catch {
+        shortDetail = detail;
+      }
+      shortDetail = shortDetail.replace(/\s+/g, " ").trim();
+      if (shortDetail.length > 60) shortDetail = shortDetail.slice(0, 60) + "…";
+    }
+    this.currentLabel = shortDetail ? `${name}: ${shortDetail}` : name;
     this.phaseStart = Date.now();
   }
 
@@ -134,7 +148,7 @@ export class ProgressTracker {
 
     this.flushing = true;
     try {
-      const text = this.render();
+      const text = this.render().slice(0, 1000);
       if (!this.messageId) {
         this.messageId = await this.channel.send({
           chatId: this.chatId,

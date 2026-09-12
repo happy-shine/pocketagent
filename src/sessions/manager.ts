@@ -332,6 +332,58 @@ export class SessionManager {
     return undefined;
   }
 
+  getAllChats(): ChatSessionState[] {
+    return Array.from(this.chats.values());
+  }
+
+  deleteSession(chatId: string, sessionId: string): boolean {
+    const state = this.chats.get(chatId);
+    if (!state) return false;
+
+    const initialLen = state.sessions.length;
+    state.sessions = state.sessions.filter((s) => s.sessionId !== sessionId);
+    if (state.sessions.length === initialLen) return false;
+
+    if (state.activeSessionId === sessionId) {
+      if (state.sessions.length > 0) {
+        const nextActive = state.sessions[state.sessions.length - 1];
+        nextActive.isActive = true;
+        state.activeSessionId = nextActive.sessionId;
+        state.preferredEngine = nextActive.activeEngine;
+      } else {
+        // Create replacement session
+        this.createFirst({
+          chatId,
+          channelType: "telegram",
+          defaultEngine: state.preferredEngine,
+        });
+      }
+    }
+
+    this.flush(chatId);
+    return true;
+  }
+
+  switchSessionById(chatId: string, sessionId: string): Session | null {
+    const state = this.chats.get(chatId);
+    if (!state) return null;
+
+    const target = state.sessions.find((s) => s.sessionId === sessionId);
+    if (!target) return null;
+
+    for (const s of state.sessions) {
+      s.isActive = false;
+    }
+    target.isActive = true;
+    state.activeSessionId = target.sessionId;
+    state.preferredEngine = target.activeEngine;
+    if (target.model) state.preferredModel = target.model;
+    if (target.effort) state.preferredEffort = target.effort;
+
+    this.flush(chatId);
+    return target;
+  }
+
   async flush(chatId: string): Promise<void> {
     if (!this.store) return;
     const state = this.chats.get(chatId);

@@ -103,4 +103,34 @@ describe("SessionManager Multi-Engine Functionality", () => {
     expect(session.activeEngine).toBe("codex");
     expect(session.model).toBe("gpt-5.5");
   });
+
+  it("supports getAllChats, switchSessionById, and deleteSession", () => {
+    const sm = new SessionManager();
+    const s1 = sm.resolve({ chatId: "chat-xyz", channelType: "telegram", defaultEngine: "claude" });
+    const s2 = sm.createNew("chat-xyz", "codex");
+
+    expect(s2.isActive).toBe(true);
+    expect(s1.isActive).toBe(false);
+
+    // getAllChats
+    const allChats = sm.getAllChats();
+    expect(allChats.length).toBe(1);
+    expect(allChats[0].chatId).toBe("chat-xyz");
+    expect(allChats[0].sessions.length).toBe(2);
+
+    // switchSessionById
+    const switched = sm.switchSessionById("chat-xyz", s1.sessionId);
+    expect(switched).toBeDefined();
+    expect(switched?.sessionId).toBe(s1.sessionId);
+    expect(s1.isActive).toBe(true);
+    expect(s2.isActive).toBe(false);
+
+    // deleteSession
+    const deleted = sm.deleteSession("chat-xyz", s2.sessionId);
+    expect(deleted).toBe(true);
+    expect(sm.getAllChats()[0].sessions.length).toBe(1);
+
+    // cannot delete non-existent session
+    expect(sm.deleteSession("chat-xyz", "non-existent")).toBe(false);
+  });
 });

@@ -689,6 +689,233 @@ export function getDashboardHtml(): string {
       max-height: 90vh;
     }
     .modal-lg { max-width: 720px; }
+    .modal-xl { max-width: 960px; }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 260px;
+    }
+
+    /* Sessions & Workspaces Cards */
+    .session-card, .workspace-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.15rem;
+      margin-bottom: 0.75rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: border-color 0.15s ease;
+    }
+    .session-card:hover, .workspace-card:hover {
+      border-color: var(--text-secondary);
+    }
+    .session-card.is-active {
+      border-color: var(--border-focus);
+    }
+    .card-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 0.5rem 1rem;
+      font-size: 0.8rem;
+    }
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .meta-label {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .meta-val {
+      color: var(--text-primary);
+      font-weight: 500;
+      word-break: break-all;
+    }
+    .badge-status {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .badge-active {
+      background: var(--badge-green-bg);
+      color: var(--badge-green-text);
+      border: 1px solid var(--badge-green-border);
+    }
+    .badge-inactive {
+      background: var(--tag-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .badge-orphaned {
+      background: var(--badge-amber-bg);
+      color: var(--badge-amber-text);
+      border: 1px solid var(--badge-amber-border);
+    }
+    .badge-engine {
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-weight: 600;
+      background: var(--tag-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+
+    /* Dialogue Turns Modal */
+    .turns-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 0.3rem;
+    }
+    .turn-bubble {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      background: var(--bg-card);
+    }
+    .turn-bubble-user {
+      border-color: var(--border-focus);
+      background: var(--bg-card-subtle);
+    }
+    .turn-bubble-assistant {
+      border-color: var(--border);
+    }
+    .turn-bubble-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+    }
+    .turn-role-tag {
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+    }
+    .role-user {
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+    }
+    .role-assistant {
+      background: var(--badge-green-bg);
+      color: var(--badge-green-text);
+      border: 1px solid var(--badge-green-border);
+    }
+    .role-system {
+      background: var(--tag-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .turn-text {
+      font-size: 0.83rem;
+      line-height: 1.5;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--font-sans);
+    }
+
+    /* Workspace File Browser Layout */
+    .ws-browser {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 0.85rem;
+      height: 480px;
+    }
+    @media (max-width: 768px) {
+      .ws-browser {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+    }
+    .ws-file-list-pane {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow-y: auto;
+      background: var(--bg-card-subtle);
+      display: flex;
+      flex-direction: column;
+    }
+    .ws-file-item {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.1s ease;
+      color: var(--text-primary);
+    }
+    .ws-file-item:hover {
+      background: var(--bg-hover);
+    }
+    .ws-file-item.selected {
+      background: var(--bg-input);
+      font-weight: 600;
+      border-left: 3px solid var(--border-focus);
+    }
+    .ws-file-preview-pane {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-input);
+      overflow: hidden;
+    }
+    .ws-preview-header {
+      padding: 0.5rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+    }
+    .ws-preview-content {
+      padding: 0.75rem;
+      flex: 1;
+      overflow: auto;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text-primary);
+    }
     .modal-header {
       padding: 0.95rem 1.25rem;
       border-bottom: 1px solid var(--border);
@@ -795,6 +1022,8 @@ export function getDashboardHtml(): string {
       <div class="nav-tab active" data-tab="overview" data-i18n="tabOverview">Overview</div>
       <div class="nav-tab" data-tab="bots" data-i18n="tabBots">Bots</div>
       <div class="nav-tab" data-tab="engines" data-i18n="tabEngines">Engines</div>
+      <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions</div>
+      <div class="nav-tab" data-tab="workspaces" data-i18n="tabWorkspaces">Workspaces</div>
       <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
       <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
       <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (3-CLI)</div>
@@ -1017,6 +1246,95 @@ export function getDashboardHtml(): string {
       </div>
     </section>
 
+    <!-- TAB: Sessions -->
+    <section id="tab-sessions" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="sessionsTitle">Sessions Management</h1>
+          <p class="section-desc" data-i18n="sessionsDesc">Inspect multi-turn dialogue histories, switch active sessions, and oversee bot conversation states</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btnRefreshSessions" class="btn btn-secondary btn-sm" data-i18n="refreshSessions">↻ Refresh Sessions</button>
+          <button id="btnNewSession" class="btn btn-primary btn-sm" data-i18n="newSession">+ New Session</button>
+        </div>
+      </div>
+
+      <div class="grid-metrics">
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricTotalSessions">Total Sessions</div>
+          <div id="mTotalSessions" class="metric-value">0</div>
+          <div class="metric-sub">Stored across all chats</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricActiveSessions">Active Sessions</div>
+          <div id="mActiveSessions" class="metric-value" style="color: var(--badge-green-text);">0</div>
+          <div class="metric-sub" data-i18n="sessionActive">Currently receiving turns</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricTotalTurns">Total Dialogue Turns</div>
+          <div id="mTotalTurns" class="metric-value">0</div>
+          <div class="metric-sub">User & Assistant messages</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <select id="sessionsBotFilter" class="form-control" style="max-width: 220px;">
+            <option value="" data-i18n="filterAllBots">All Bots</option>
+          </select>
+          <input id="sessionsSearchInput" type="text" class="form-control" placeholder="Search by Chat ID, Session ID, or Engine..." data-i18n-placeholder="searchSessionsPlaceholder">
+        </div>
+      </div>
+
+      <div id="sessionsListContainer">
+        <!-- Dynamically rendered session cards -->
+      </div>
+    </section>
+
+    <!-- TAB: Workspaces -->
+    <section id="tab-workspaces" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="workspacesTitle">Workspace Storage</h1>
+          <p class="section-desc" data-i18n="workspacesDesc">Browse and clean isolated execution directories (~/.pocketagent/workspaces/) created for CLI agents</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btnRefreshWorkspaces" class="btn btn-secondary btn-sm" data-i18n="refreshWorkspaces">↻ Refresh Workspaces</button>
+        </div>
+      </div>
+
+      <div class="grid-metrics">
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricTotalWorkspaces">Total Workspaces</div>
+          <div id="mTotalWorkspaces" class="metric-value">0</div>
+          <div class="metric-sub">~/.pocketagent/workspaces</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricActiveWorkspaces">Active Workspaces</div>
+          <div id="mActiveWorkspaces" class="metric-value" style="color: var(--badge-green-text);">0</div>
+          <div class="metric-sub" data-i18n="workspaceActive">Bound to active sessions</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricTotalDiskUsage">Total Disk Usage</div>
+          <div id="mTotalDiskUsage" class="metric-value">0 KB</div>
+          <div class="metric-sub">Recursive physical size</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <select id="workspacesBotFilter" class="form-control" style="max-width: 220px;">
+            <option value="" data-i18n="filterAllBots">All Bots</option>
+          </select>
+          <input id="workspacesSearchInput" type="text" class="form-control" placeholder="Search folder name or Chat ID..." data-i18n-placeholder="searchWorkspacesPlaceholder">
+        </div>
+      </div>
+
+      <div id="workspacesListContainer">
+        <!-- Dynamically rendered workspace cards -->
+      </div>
+    </section>
+
     <!-- TAB: Gateway -->
     <section id="tab-gateway" class="tab-pane">
       <div class="section-header">
@@ -1230,6 +1548,104 @@ export function getDashboardHtml(): string {
     </div>
   </div>
 
+  <!-- Modal: Session Turns History -->
+  <div id="modalSessionTurns" class="modal-backdrop">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" data-i18n="modalSessionTurnsTitle">Session Dialogue History</div>
+          <div id="modalSessionSubtitle" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; font-family: var(--font-mono);"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal('modalSessionTurns')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modalSessionMetaBanner" class="card" style="margin-bottom: 0.2rem; padding: 0.75rem 1rem;"></div>
+        <div id="sessionTurnsList" class="turns-container">
+          <!-- Dynamically filled turns bubbles -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalSessionTurns')" data-i18n="modalCancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: New Session -->
+  <div id="modalNewSession" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" data-i18n="modalNewSessionTitle">Create New Session</div>
+        <button class="modal-close" onclick="closeModal('modalNewSession')">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Bot</label>
+          <select id="newSessionBotSelect" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Chat ID</label>
+          <input id="newSessionChatId" type="text" class="form-control" placeholder="e.g. 1465542100 or -100...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Engine (Optional)</label>
+          <select id="newSessionEngine" class="form-control">
+            <option value="">Default (Inherit bot default)</option>
+            <option value="claude">Claude Code</option>
+            <option value="codex">OpenAI Codex</option>
+            <option value="agy">Google Antigravity (AGY)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Model (Optional)</label>
+          <input id="newSessionModel" type="text" class="form-control" placeholder="e.g. sonnet, gpt-5, gemini-2.5-flash">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Effort (Optional)</label>
+          <input id="newSessionEffort" type="text" class="form-control" placeholder="e.g. low, medium, high, xhigh">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalNewSession')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnCreateSessionConfirm" class="btn btn-primary" data-i18n="modalConfirm">Create Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Workspace Files & Preview -->
+  <div id="modalWorkspaceFiles" class="modal-backdrop">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" data-i18n="modalWorkspaceFilesTitle">Workspace Files & Preview</div>
+          <div id="modalWorkspaceSubtitle" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; font-family: var(--font-mono);"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal('modalWorkspaceFiles')">×</button>
+      </div>
+      <div class="modal-body" style="padding: 1rem;">
+        <div class="ws-browser">
+          <div class="ws-file-list-pane">
+            <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+              Files in Workspace
+            </div>
+            <div id="workspaceFileList" style="overflow-y: auto; flex: 1;">
+              <!-- Dynamically populated files -->
+            </div>
+          </div>
+          <div class="ws-file-preview-pane">
+            <div class="ws-preview-header">
+              <span id="wsPreviewFilename" style="font-weight: 600; font-family: var(--font-mono);"></span>
+              <button id="btnCopyWsPreview" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" data-i18n="copyContent">Copy</button>
+            </div>
+            <pre id="wsPreviewContent" class="ws-preview-content" data-i18n="selectFilePrompt">← Click a file on the left to preview its content</pre>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalWorkspaceFiles')" data-i18n="modalCancel">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Bilingual Dictionary
     const I18N = {
@@ -1246,7 +1662,54 @@ export function getDashboardHtml(): string {
         tabGateway: "网关设置",
         tabSecurity: "安全与配对",
         tabSkills: "技能中心",
+        tabSessions: "会话管理",
+        tabWorkspaces: "工作区管理",
         tabYaml: "YAML 源码",
+        
+        sessionsTitle: "会话生命周期管理",
+        sessionsDesc: "查看各机器人与不同群组/私聊的会话列表、多轮对话记录、活跃引擎状态与即时切换",
+        metricTotalSessions: "总会话数",
+        metricActiveSessions: "活跃会话",
+        metricTotalTurns: "累计对话轮次",
+        
+        workspacesTitle: "工作区目录管理",
+        workspacesDesc: "查看 CLI 引擎在本地 (~/.pocketagent/workspaces) 创建的物理执行工作区、探查配置文件并清理残留数据",
+        metricTotalWorkspaces: "工作区总数",
+        metricActiveWorkspaces: "活跃会话关联",
+        metricTotalDiskUsage: "磁盘占用空间",
+
+        filterAllBots: "所有机器人",
+        searchSessionsPlaceholder: "搜索会话 ID / Chat ID / 引擎...",
+        searchWorkspacesPlaceholder: "搜索工作区目录名 / Chat ID...",
+        newSession: "+ 新建会话",
+        refreshSessions: "↻ 刷新会话",
+        refreshWorkspaces: "↻ 刷新工作区",
+
+        noSessionsFound: "暂无符合条件的会话记录",
+        noWorkspacesFound: "暂无检测到工作区目录",
+        sessionActive: "活跃中",
+        sessionInactive: "非活跃",
+        viewTurns: "💬 查看对话记录",
+        setActiveSession: "⚡ 设为活跃会话",
+        deleteSessionConfirm: "确定要删除会话 \"{id}\" 吗？",
+        deleteSessionAndWorkspace: "同时删除该会话关联的本地工作区目录",
+        
+        workspaceActive: "活跃会话",
+        workspaceHistory: "历史会话",
+        workspaceOrphaned: "无归属孤立目录",
+        exploreFiles: "📂 浏览文件",
+        deleteWorkspaceConfirm: "确定要物理删除工作区目录 \"{name}\" 吗？此操作不可逆！",
+
+        modalSessionTurnsTitle: "会话对话记录",
+        modalNewSessionTitle: "新建会话",
+        modalWorkspaceFilesTitle: "工作区文件浏览与预览",
+        selectFilePrompt: "← 从左侧列表中点击选择要预览的文件",
+        copyContent: "复制内容",
+        copiedToast: "已复制到剪贴板",
+        sessionSwitchedToast: "已成功将会话切换为活跃状态",
+        sessionCreatedToast: "已成功创建并激活新会话",
+        sessionDeletedToast: "会话已删除",
+        workspaceDeletedToast: "工作区目录已彻底清理",
         
         overviewTitle: "系统概览",
         overviewDesc: "PocketAgent 网关与多平台桥接器的实时运行状态",
@@ -1356,7 +1819,54 @@ export function getDashboardHtml(): string {
         tabGateway: "Gateway",
         tabSecurity: "Security & Auth",
         tabSkills: "Skills (3-CLI)",
+        tabSessions: "Sessions",
+        tabWorkspaces: "Workspaces",
         tabYaml: "Raw YAML",
+        
+        sessionsTitle: "Session Lifecycle Management",
+        sessionsDesc: "Inspect multi-turn dialogue histories, switch active sessions, and oversee bot conversation states",
+        metricTotalSessions: "Total Sessions",
+        metricActiveSessions: "Active Sessions",
+        metricTotalTurns: "Total Dialogue Turns",
+
+        workspacesTitle: "Workspace Directory Storage",
+        workspacesDesc: "Inspect CLI execution workspaces in ~/.pocketagent/workspaces, view configuration files, and cleanup disk space",
+        metricTotalWorkspaces: "Total Workspaces",
+        metricActiveWorkspaces: "Active Workspaces",
+        metricTotalDiskUsage: "Total Disk Usage",
+
+        filterAllBots: "All Bots",
+        searchSessionsPlaceholder: "Search Session ID / Chat ID / Engine...",
+        searchWorkspacesPlaceholder: "Search Folder / Chat ID...",
+        newSession: "+ New Session",
+        refreshSessions: "↻ Refresh Sessions",
+        refreshWorkspaces: "↻ Refresh Workspaces",
+
+        noSessionsFound: "No sessions found matching filters",
+        noWorkspacesFound: "No workspaces found",
+        sessionActive: "Active",
+        sessionInactive: "Inactive",
+        viewTurns: "💬 Dialogue History",
+        setActiveSession: "⚡ Set Active",
+        deleteSessionConfirm: "Are you sure you want to delete session \"{id}\"?",
+        deleteSessionAndWorkspace: "Also delete associated local workspace directory",
+
+        workspaceActive: "Active Session",
+        workspaceHistory: "Historical Session",
+        workspaceOrphaned: "Orphaned Folder",
+        exploreFiles: "📂 Explore Files",
+        deleteWorkspaceConfirm: "Are you sure you want to delete workspace \"{name}\"? This cannot be undone.",
+
+        modalSessionTurnsTitle: "Session Dialogue History",
+        modalNewSessionTitle: "Create New Session",
+        modalWorkspaceFilesTitle: "Workspace Files & Preview",
+        selectFilePrompt: "← Click a file on the left to preview its content",
+        copyContent: "Copy Content",
+        copiedToast: "Copied to clipboard",
+        sessionSwitchedToast: "Switched to active session",
+        sessionCreatedToast: "Created and activated new session",
+        sessionDeletedToast: "Session deleted",
+        workspaceDeletedToast: "Workspace directory cleaned up",
         
         overviewTitle: "System Overview",
         overviewDesc: "Real-time metrics and operational health of PocketAgent Gateway",
@@ -1486,6 +1996,8 @@ export function getDashboardHtml(): string {
         renderOverviewBots(systemStatus.bots || []);
       }
       renderOverviewEngines();
+      renderSessions();
+      renderWorkspaces();
     }
 
     function setTheme(theme) {
@@ -1529,6 +2041,10 @@ export function getDashboardHtml(): string {
 
       if (tabId === "yaml") {
         syncFormToYaml();
+      } else if (tabId === "sessions") {
+        fetchSessions();
+      } else if (tabId === "workspaces") {
+        fetchWorkspaces();
       }
     }
 
@@ -1555,14 +2071,16 @@ export function getDashboardHtml(): string {
         fetchConfig(),
         fetchModels(),
         fetchSkills(),
-        fetchPairings()
+        fetchPairings(),
+        fetchSessions(),
+        fetchWorkspaces()
       ]);
     }
 
     function setupEvents() {
       document.getElementById("btnRefresh").addEventListener("click", async () => {
         showToast(t("refresh") + "...", "info");
-        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings()]);
+        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions(), fetchWorkspaces()]);
       });
 
       document.getElementById("btnSaveConfig").addEventListener("click", () => saveAndHotReload());
@@ -1573,6 +2091,15 @@ export function getDashboardHtml(): string {
       document.getElementById("btnSyncSkills").addEventListener("click", () => syncSkills());
       document.getElementById("btnNewSkill").addEventListener("click", () => openModal("modalNewSkill"));
       document.getElementById("btnCreateSkillConfirm").addEventListener("click", () => createSkill());
+      document.getElementById("btnRefreshSessions").addEventListener("click", () => fetchSessions());
+      document.getElementById("btnNewSession").addEventListener("click", () => openNewSessionModal());
+      document.getElementById("btnCreateSessionConfirm").addEventListener("click", () => confirmCreateSession());
+      document.getElementById("sessionsBotFilter").addEventListener("change", () => renderSessions());
+      document.getElementById("sessionsSearchInput").addEventListener("input", () => renderSessions());
+      document.getElementById("btnRefreshWorkspaces").addEventListener("click", () => fetchWorkspaces());
+      document.getElementById("workspacesBotFilter").addEventListener("change", () => renderWorkspaces());
+      document.getElementById("workspacesSearchInput").addEventListener("input", () => renderWorkspaces());
+      document.getElementById("btnCopyWsPreview").addEventListener("click", () => copyWsPreview());
     }
 
     // Fetch Status
@@ -2136,6 +2663,541 @@ export function getDashboardHtml(): string {
       } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
+      }
+    }
+
+    // Sessions & Workspaces State
+    let allSessions = [];
+    let allWorkspaces = [];
+    let activeWsPath = "";
+    let activeWsFilePath = "";
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i];
+    }
+
+    function populateBotFilters() {
+      const bots = systemStatus?.bots || currentConfig?.bots || [];
+      const sessionSelect = document.getElementById("sessionsBotFilter");
+      const wsSelect = document.getElementById("workspacesBotFilter");
+      const newSessionSelect = document.getElementById("newSessionBotSelect");
+
+      if (!sessionSelect || !wsSelect) return;
+
+      const currSessionVal = sessionSelect.value;
+      const currWsVal = wsSelect.value;
+
+      let optionsHtml = \`<option value="">\${t("filterAllBots")}</option>\`;
+      let newSessionOpts = "";
+
+      for (const b of bots) {
+        const name = escapeHtml(b.name);
+        const id = escapeHtml(b.botId || b.name);
+        const ch = escapeHtml(b.channel || "bot");
+        optionsHtml += \`<option value="\${id}">\${name} (\${ch})</option>\`;
+        newSessionOpts += \`<option value="\${id}">\${name} (\${ch})</option>\`;
+      }
+
+      sessionSelect.innerHTML = optionsHtml;
+      wsSelect.innerHTML = optionsHtml;
+      if (newSessionSelect) newSessionSelect.innerHTML = newSessionOpts;
+
+      sessionSelect.value = currSessionVal;
+      wsSelect.value = currWsVal;
+    }
+
+    async function fetchSessions() {
+      try {
+        const res = await fetch("/api/sessions");
+        if (!res.ok) throw new Error("Failed to fetch sessions");
+        const data = await res.json();
+        allSessions = data.sessions || [];
+        updateSessionMetrics();
+        populateBotFilters();
+        renderSessions();
+      } catch (err) {
+        // silent fallback
+      }
+    }
+
+    function updateSessionMetrics() {
+      const total = allSessions.length;
+      const active = allSessions.filter(s => s.isActive).length;
+      const totalTurns = allSessions.reduce((sum, s) => sum + (s.turnCount || 0), 0);
+      const mTot = document.getElementById("mTotalSessions");
+      const mAct = document.getElementById("mActiveSessions");
+      const mTur = document.getElementById("mTotalTurns");
+      if (mTot) mTot.textContent = total;
+      if (mAct) mAct.textContent = active;
+      if (mTur) mTur.textContent = totalTurns;
+    }
+
+    function renderSessions() {
+      const container = document.getElementById("sessionsListContainer");
+      if (!container) return;
+
+      const botFilter = document.getElementById("sessionsBotFilter") ? document.getElementById("sessionsBotFilter").value : "";
+      const searchInput = document.getElementById("sessionsSearchInput");
+      const search = searchInput ? (searchInput.value || "").trim().toLowerCase() : "";
+
+      let filtered = allSessions;
+      if (botFilter) {
+        filtered = filtered.filter(s => s.botId === botFilter);
+      }
+      if (search) {
+        filtered = filtered.filter(s =>
+          (s.chatId && s.chatId.toLowerCase().includes(search)) ||
+          (s.sessionId && s.sessionId.toLowerCase().includes(search)) ||
+          (s.activeEngine && s.activeEngine.toLowerCase().includes(search)) ||
+          (s.title && s.title.toLowerCase().includes(search)) ||
+          (s.botName && s.botName.toLowerCase().includes(search))
+        );
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = \`
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <div style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.25rem;">\${t("noSessionsFound")}</div>
+          </div>
+        \`;
+        return;
+      }
+
+      let html = "";
+      for (const s of filtered) {
+        const isActive = s.isActive;
+        const channelBadgeClass = s.channelType === "telegram" ? "channel-tg" : "channel-dc";
+        const channelName = s.channelType ? s.channelType.toUpperCase() : "BOT";
+        const dateStr = s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString() : "--";
+
+        html += \`
+          <div class="session-card \${isActive ? 'is-active' : ''}">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                <span class="channel-badge \${channelBadgeClass}">\${channelName}</span>
+                <span class="badge-status \${isActive ? 'badge-active' : 'badge-inactive'}">
+                  \${isActive ? '● ' + t("sessionActive") : '○ ' + t("sessionInactive")}
+                </span>
+                <span class="badge-engine">\${escapeHtml(s.activeEngine || "claude")}</span>
+                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+                  \${escapeHtml(s.botName || s.botId)}
+                </span>
+                <span style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+                  #\${s.sessionNum || 1}
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.45rem;">
+                <button class="btn btn-secondary btn-sm" onclick="openSessionTurns('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                  \${t("viewTurns")} (\${s.turnCount || 0})
+                </button>
+                \${!isActive ? \`
+                  <button class="btn btn-secondary btn-sm" onclick="switchSessionActive('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                    \${t("setActiveSession")}
+                  </button>
+                \` : ''}
+                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteSessionPrompt('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div class="card-meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">Chat ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(s.chatId)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Session ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(s.sessionId)}">
+                  \${escapeHtml(s.sessionId ? s.sessionId.slice(0, 18) + '...' : '--')}
+                </span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Model & Effort</span>
+                <span class="meta-val">\${escapeHtml(s.model || "default")} \${s.effort ? '(' + escapeHtml(s.effort) + ')' : ''}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Workspace Directory</span>
+                <span class="meta-val">
+                  \${s.workspaceExists ? \`
+                    <span style="color: var(--badge-green-text); cursor: pointer;" onclick="switchToWorkspaceView('\${escapeHtml(s.workspacePath)}')">
+                      📁 \${t("workspaceReady")}
+                    </span>
+                  \` : \`<span style="color: var(--text-muted);">📁 \${t("workspaceNone")}</span>\`}
+                </span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Last Active</span>
+                <span class="meta-val" style="font-size: 0.76rem; color: var(--text-secondary);">\${dateStr}</span>
+              </div>
+            </div>
+          </div>
+        \`;
+      }
+      container.innerHTML = html;
+    }
+
+    async function openSessionTurns(botId, chatId, sessionId) {
+      try {
+        const res = await fetch(\`/api/sessions/turns?botId=\${encodeURIComponent(botId)}&chatId=\${encodeURIComponent(chatId)}&sessionId=\${encodeURIComponent(sessionId)}\`);
+        if (!res.ok) throw new Error("Could not load session turns");
+        const data = await res.json();
+        const s = data.session || {};
+        const turns = data.turns || [];
+
+        document.getElementById("modalSessionSubtitle").textContent = \`Chat: \${chatId} • Session: \${sessionId}\`;
+        document.getElementById("modalSessionMetaBanner").innerHTML = \`
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem;">
+            <div>
+              <strong>\${escapeHtml(s.botName || s.botId)}</strong> • Engine: <span class="badge-engine">\${escapeHtml(s.activeEngine || "claude")}</span>
+              \${s.model ? \` • Model: <code>\${escapeHtml(s.model)}</code>\` : ''}
+              \${s.effort ? \` • Effort: <code>\${escapeHtml(s.effort)}</code>\` : ''}
+            </div>
+            <div style="color: var(--text-muted);">
+              \${turns.length} dialogue turns recorded
+            </div>
+          </div>
+        \`;
+
+        const turnsList = document.getElementById("sessionTurnsList");
+        if (turns.length === 0) {
+          turnsList.innerHTML = \`<div style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">No turns recorded in this session yet.</div>\`;
+        } else {
+          let html = "";
+          for (const trn of turns) {
+            const role = trn.role || "user";
+            const roleClass = role === "user" ? "role-user" : (role === "assistant" ? "role-assistant" : "role-system");
+            const bubbleClass = role === "user" ? "turn-bubble-user" : "turn-bubble-assistant";
+            const timeStr = trn.ts ? new Date(trn.ts).toLocaleTimeString() : "";
+            const engineTag = trn.engine ? \`<span class="badge-engine" style="font-size: 0.65rem; padding: 0.1rem 0.3rem;">\${escapeHtml(trn.engine)}</span>\` : "";
+
+            html += \`
+              <div class="turn-bubble \${bubbleClass}">
+                <div class="turn-bubble-header">
+                  <div style="display: flex; align-items: center; gap: 0.4rem;">
+                    <span class="turn-role-tag \${roleClass}">\${escapeHtml(role)}</span>
+                    \${engineTag}
+                    \${trn.author ? \`<span style="color: var(--text-muted); font-size: 0.72rem;">@\${escapeHtml(trn.author)}</span>\` : ''}
+                  </div>
+                  <span style="color: var(--text-muted); font-size: 0.72rem;">\${timeStr}</span>
+                </div>
+                <div class="turn-text">\${escapeHtml(trn.text || "")}</div>
+              </div>
+            \`;
+          }
+          turnsList.innerHTML = html;
+        }
+
+        openModal("modalSessionTurns");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function switchSessionActive(botId, chatId, sessionId) {
+      try {
+        const res = await fetch("/api/sessions/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botId, chatId, sessionId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(t("sessionSwitchedToast"), "success");
+          fetchSessions();
+        } else {
+          showToast(data.error || "Failed to switch session", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    function openNewSessionModal() {
+      populateBotFilters();
+      const chatInput = document.getElementById("newSessionChatId");
+      const modelInput = document.getElementById("newSessionModel");
+      const effortInput = document.getElementById("newSessionEffort");
+      const engineInput = document.getElementById("newSessionEngine");
+      if (chatInput) chatInput.value = "";
+      if (modelInput) modelInput.value = "";
+      if (effortInput) effortInput.value = "";
+      if (engineInput) engineInput.value = "";
+      openModal("modalNewSession");
+    }
+
+    async function confirmCreateSession() {
+      const botId = document.getElementById("newSessionBotSelect").value;
+      const chatId = document.getElementById("newSessionChatId").value.trim();
+      const engine = document.getElementById("newSessionEngine").value || undefined;
+      const model = document.getElementById("newSessionModel").value.trim() || undefined;
+      const effort = document.getElementById("newSessionEffort").value.trim() || undefined;
+
+      if (!botId || !chatId) {
+        showToast("Please enter Bot and Chat ID", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/sessions/new", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botId, chatId, engine, model, effort })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          closeModal("modalNewSession");
+          showToast(t("sessionCreatedToast"), "success");
+          fetchSessions();
+        } else {
+          showToast(data.error || "Failed to create session", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function deleteSessionPrompt(botId, chatId, sessionId) {
+      const confirmDelete = confirm(t("deleteSessionConfirm", { id: sessionId }));
+      if (!confirmDelete) return;
+
+      const deleteWorkspace = confirm(t("deleteSessionAndWorkspace"));
+
+      try {
+        const res = await fetch("/api/sessions", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botId, chatId, sessionId, deleteWorkspace })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(t("sessionDeletedToast"), "success");
+          fetchSessions();
+          fetchWorkspaces();
+        } else {
+          showToast(data.error || "Failed to delete session", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    // Workspaces Logic
+    async function fetchWorkspaces() {
+      try {
+        const res = await fetch("/api/workspaces");
+        if (!res.ok) throw new Error("Failed to fetch workspaces");
+        const data = await res.json();
+        allWorkspaces = data.workspaces || [];
+        updateWorkspaceMetrics();
+        populateBotFilters();
+        renderWorkspaces();
+      } catch (err) {
+        // silent fallback
+      }
+    }
+
+    function updateWorkspaceMetrics() {
+      const total = allWorkspaces.length;
+      const active = allWorkspaces.filter(w => w.isActiveSession).length;
+      const totalBytes = allWorkspaces.reduce((sum, w) => sum + (w.sizeBytes || 0), 0);
+      const mTot = document.getElementById("mTotalWorkspaces");
+      const mAct = document.getElementById("mActiveWorkspaces");
+      const mDsk = document.getElementById("mTotalDiskUsage");
+      if (mTot) mTot.textContent = total;
+      if (mAct) mAct.textContent = active;
+      if (mDsk) mDsk.textContent = formatBytes(totalBytes);
+    }
+
+    function renderWorkspaces() {
+      const container = document.getElementById("workspacesListContainer");
+      if (!container) return;
+
+      const botFilter = document.getElementById("workspacesBotFilter") ? document.getElementById("workspacesBotFilter").value : "";
+      const searchInput = document.getElementById("workspacesSearchInput");
+      const search = searchInput ? (searchInput.value || "").trim().toLowerCase() : "";
+
+      let filtered = allWorkspaces;
+      if (botFilter) {
+        filtered = filtered.filter(w => w.botId === botFilter);
+      }
+      if (search) {
+        filtered = filtered.filter(w =>
+          (w.folderName && w.folderName.toLowerCase().includes(search)) ||
+          (w.chatId && w.chatId.toLowerCase().includes(search)) ||
+          (w.sessionId && w.sessionId.toLowerCase().includes(search)) ||
+          (w.path && w.path.toLowerCase().includes(search))
+        );
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = \`
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <div style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.25rem;">\${t("noWorkspacesFound")}</div>
+          </div>
+        \`;
+        return;
+      }
+
+      let html = "";
+      for (const w of filtered) {
+        const statusBadge = w.isActiveSession
+          ? \`<span class="badge-status badge-active">● \${t("workspaceActive")}</span>\`
+          : (w.isKnownSession
+            ? \`<span class="badge-status badge-inactive">○ \${t("workspaceHistory")}</span>\`
+            : \`<span class="badge-status badge-orphaned">▲ \${t("workspaceOrphaned")}</span>\`);
+
+        const dateStr = w.mtime ? new Date(w.mtime).toLocaleString() : "--";
+
+        html += \`
+          <div class="workspace-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                <span style="font-size: 1.1rem;">📁</span>
+                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); font-family: var(--font-mono);">
+                  \${escapeHtml(w.folderName)}
+                </span>
+                \${statusBadge}
+                \${w.botName ? \`<span style="font-size: 0.8rem; color: var(--text-secondary);">(\${escapeHtml(w.botName)})</span>\` : ''}
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.45rem;">
+                <button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(w.path)}')">
+                  \${t("exploreFiles")} (\${w.fileCount})
+                </button>
+                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteWorkspaceConfirm('\${escapeHtml(w.path)}', '\${escapeHtml(w.folderName)}')">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div class="card-meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">Chat ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(w.chatId || "--")}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Session ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(w.sessionId || '')}">
+                  \${escapeHtml(w.sessionId ? w.sessionId.slice(0, 18) + '...' : '--')}
+                </span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">File Count & Size</span>
+                <span class="meta-val">\${w.fileCount} files • \${formatBytes(w.sizeBytes)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Last Modified</span>
+                <span class="meta-val" style="font-size: 0.76rem; color: var(--text-secondary);">\${dateStr}</span>
+              </div>
+              <div class="meta-item" style="grid-column: 1 / -1;">
+                <span class="meta-label">Physical Path</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted);">\${escapeHtml(w.path)}</span>
+              </div>
+            </div>
+          </div>
+        \`;
+      }
+      container.innerHTML = html;
+    }
+
+    function switchToWorkspaceView(path) {
+      switchTab("workspaces");
+      openWorkspaceFiles(path);
+    }
+
+    async function openWorkspaceFiles(wsPath) {
+      activeWsPath = wsPath;
+      document.getElementById("modalWorkspaceSubtitle").textContent = wsPath;
+      document.getElementById("wsPreviewFilename").textContent = "";
+      document.getElementById("wsPreviewContent").textContent = t("selectFilePrompt");
+
+      try {
+        const res = await fetch(\`/api/workspaces/files?path=\${encodeURIComponent(wsPath)}\`);
+        if (!res.ok) throw new Error("Could not inspect workspace directory");
+        const data = await res.json();
+        const files = data.files || [];
+
+        const fileListContainer = document.getElementById("workspaceFileList");
+        if (files.length === 0) {
+          fileListContainer.innerHTML = \`<div style="padding: 1rem; color: var(--text-muted); font-size: 0.8rem;">(Empty directory)</div>\`;
+        } else {
+          let html = "";
+          for (const f of files) {
+            const icon = f.isDir ? "📁" : "📄";
+            html += \`
+              <div class="ws-file-item" data-relpath="\${escapeHtml(f.relPath)}" onclick="previewWorkspaceFile('\${escapeHtml(f.relPath)}')">
+                <div style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span>\${icon}</span>
+                  <span style="font-family: var(--font-mono);">\${escapeHtml(f.name)}</span>
+                </div>
+                <span style="font-size: 0.72rem; color: var(--text-muted);">\${formatBytes(f.size)}</span>
+              </div>
+            \`;
+          }
+          fileListContainer.innerHTML = html;
+
+          // Auto-preview first file if any
+          const firstPreviewable = files.find(f => !f.isDir && (f.name.endsWith(".md") || f.name.endsWith(".json") || f.name.endsWith(".txt") || f.name.endsWith(".yaml") || f.name.endsWith(".js") || f.name.endsWith(".ts"))) || files.find(f => !f.isDir);
+          if (firstPreviewable) {
+            previewWorkspaceFile(firstPreviewable.relPath);
+          }
+        }
+
+        openModal("modalWorkspaceFiles");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function previewWorkspaceFile(relPath) {
+      activeWsFilePath = relPath;
+      document.querySelectorAll(".ws-file-item").forEach(el => {
+        el.classList.toggle("selected", el.getAttribute("data-relpath") === relPath);
+      });
+
+      document.getElementById("wsPreviewFilename").textContent = relPath;
+      document.getElementById("wsPreviewContent").textContent = "Loading file content...";
+
+      try {
+        const res = await fetch(\`/api/workspaces/file-content?path=\${encodeURIComponent(activeWsPath)}&file=\${encodeURIComponent(relPath)}\`);
+        if (!res.ok) throw new Error("Could not read file");
+        const data = await res.json();
+        document.getElementById("wsPreviewFilename").textContent = \`\${relPath} (\${formatBytes(data.size)})\`;
+        document.getElementById("wsPreviewContent").textContent = data.content || "(Empty file)";
+      } catch (err) {
+        document.getElementById("wsPreviewContent").textContent = "Error reading file: " + err.message;
+      }
+    }
+
+    function copyWsPreview() {
+      const text = document.getElementById("wsPreviewContent").textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(t("copiedToast"), "success");
+      });
+    }
+
+    async function deleteWorkspaceConfirm(wsPath, folderName) {
+      const ok = confirm(t("deleteWorkspaceConfirm", { name: folderName }));
+      if (!ok) return;
+
+      try {
+        const res = await fetch(\`/api/workspaces?path=\${encodeURIComponent(wsPath)}\`, {
+          method: "DELETE"
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(t("workspaceDeletedToast"), "success");
+          fetchWorkspaces();
+          fetchSessions();
+        } else {
+          showToast(data.error || "Failed to delete workspace", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
       }
     }
 

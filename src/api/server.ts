@@ -40,6 +40,15 @@ export interface ApiServerConfig {
   getEngineManager?: () => EngineManager;
   getPendingPairings?: () => Array<{ botName: string; botId: string; req: any }>;
   approvePairing?: (code: string) => Promise<{ ok: boolean; senderId?: string; botName?: string; error?: string }>;
+  getAllSessions?: () => any[];
+  getSessionTurns?: (botId: string, chatId: string, sessionId: string) => any;
+  switchSession?: (botId: string, chatId: string, sessionId: string) => { ok: boolean; session?: any; error?: string };
+  createSession?: (botId: string, chatId: string, engine?: any, model?: string, effort?: string, title?: string) => { ok: boolean; session?: any; error?: string };
+  deleteSession?: (botId: string, chatId: string, sessionId: string, deleteWorkspace?: boolean) => { ok: boolean; error?: string };
+  getAllWorkspaces?: () => any[];
+  getWorkspaceFiles?: (workspacePath: string, subDir?: string) => any[];
+  readWorkspaceFile?: (workspacePath: string, filePath: string) => { content: string; size: number; mtime: number };
+  deleteWorkspace?: (workspacePath: string) => boolean;
 }
 
 export class ApiServer {
@@ -120,6 +129,26 @@ export class ApiServer {
         await this.handleDownloadFile(res, url);
       } else if (req.method === "POST" && url.pathname === "/api/reload-config") {
         await this.handleReloadConfig(res);
+      } else if (req.method === "GET" && url.pathname === "/api/sessions") {
+        await this.handleGetSessions(res, url);
+      } else if (req.method === "GET" && url.pathname === "/api/sessions/turns") {
+        await this.handleGetSessionTurns(res, url);
+      } else if (req.method === "POST" && url.pathname === "/api/sessions/switch") {
+        await this.handleSwitchSession(req, res);
+      } else if (req.method === "POST" && url.pathname === "/api/sessions/new") {
+        await this.handleNewSession(req, res);
+      } else if (req.method === "DELETE" && url.pathname === "/api/sessions") {
+        await this.handleDeleteSession(req, res, url);
+      } else if (req.method === "GET" && url.pathname === "/api/workspaces") {
+        await this.handleGetWorkspaces(res, url);
+      } else if (req.method === "GET" && url.pathname === "/api/workspaces/files") {
+        await this.handleGetWorkspaceFiles(res, url);
+      } else if (req.method === "GET" && url.pathname === "/api/workspaces/file-content") {
+        await this.handleGetWorkspaceFileContent(res, url);
+      } else if ((req.method === "DELETE" || req.method === "POST") && url.pathname === "/api/workspaces/delete") {
+        await this.handleDeleteWorkspace(req, res, url);
+      } else if (req.method === "DELETE" && url.pathname === "/api/workspaces") {
+        await this.handleDeleteWorkspace(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -465,6 +494,194 @@ export class ApiServer {
       this.log.error({ error: err }, "Download file failed");
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Failed to download file" }));
+    }
+  }
+
+  private async handleGetSessions(res: ServerResponse, url: URL): Promise<void> {
+    const botIdFilter = url.searchParams.get("botId");
+    const chatIdFilter = url.searchParams.get("chatId");
+    let sessions = this.config.getAllSessions?.() ?? [];
+    if (botIdFilter) {
+      sessions = sessions.filter((s: any) => s.botId === botIdFilter);
+    }
+    if (chatIdFilter) {
+      sessions = sessions.filter((s: any) => s.chatId === chatIdFilter);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, sessions }));
+  }
+
+  private async handleGetSessionTurns(res: ServerResponse, url: URL): Promise<void> {
+    const botId = url.searchParams.get("botId") ?? "";
+    const chatId = url.searchParams.get("chatId") ?? "";
+    const sessionId = url.searchParams.get("sessionId") ?? "";
+    if (!botId || !chatId || !sessionId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing botId, chatId, or sessionId" }));
+      return;
+    }
+    const result = this.config.getSessionTurns?.(botId, chatId, sessionId);
+    if (!result) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Session or turns not found" }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, ...result }));
+  }
+
+  private async handleSwitchSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readBody(req);
+    let botId = "";
+    let chatId = "";
+    let sessionId = "";
+    try {
+      const parsed = JSON.parse(body);
+      botId = parsed.botId;
+      chatId = parsed.chatId;
+      sessionId = parsed.sessionId;
+    } catch {}
+    if (!botId || !chatId || !sessionId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing botId, chatId, or sessionId" }));
+      return;
+    }
+    const result = this.config.switchSession?.(botId, chatId, sessionId) ?? { ok: false, error: "Not supported" };
+    res.writeHead(result.ok ? 200 : 400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
+  }
+
+  private async handleNewSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readBody(req);
+    let botId = "";
+    let chatId = "";
+    let engine: any;
+    let model: string | undefined;
+    let effort: string | undefined;
+    let title: string | undefined;
+    try {
+      const parsed = JSON.parse(body);
+      botId = parsed.botId;
+      chatId = parsed.chatId;
+      engine = parsed.engine;
+      model = parsed.model;
+      effort = parsed.effort;
+      title = parsed.title;
+    } catch {}
+    if (!botId || !chatId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing botId or chatId" }));
+      return;
+    }
+    const result = this.config.createSession?.(botId, chatId, engine, model, effort, title) ?? { ok: false, error: "Not supported" };
+    res.writeHead(result.ok ? 200 : 400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
+  }
+
+  private async handleDeleteSession(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    let botId = url.searchParams.get("botId") ?? "";
+    let chatId = url.searchParams.get("chatId") ?? "";
+    let sessionId = url.searchParams.get("sessionId") ?? "";
+    let deleteWorkspace = url.searchParams.get("deleteWorkspace") === "true";
+
+    if (!botId || !chatId || !sessionId) {
+      try {
+        const body = await readBody(req);
+        if (body) {
+          const parsed = JSON.parse(body);
+          if (parsed.botId) botId = parsed.botId;
+          if (parsed.chatId) chatId = parsed.chatId;
+          if (parsed.sessionId) sessionId = parsed.sessionId;
+          if (parsed.deleteWorkspace !== undefined) deleteWorkspace = Boolean(parsed.deleteWorkspace);
+        }
+      } catch {}
+    }
+
+    if (!botId || !chatId || !sessionId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing botId, chatId, or sessionId" }));
+      return;
+    }
+
+    const result = this.config.deleteSession?.(botId, chatId, sessionId, deleteWorkspace) ?? { ok: false, error: "Not supported" };
+    res.writeHead(result.ok ? 200 : 400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
+  }
+
+  private async handleGetWorkspaces(res: ServerResponse, url: URL): Promise<void> {
+    const botIdFilter = url.searchParams.get("botId");
+    let workspaces = this.config.getAllWorkspaces?.() ?? [];
+    if (botIdFilter) {
+      workspaces = workspaces.filter((w: any) => w.botId === botIdFilter);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, workspaces }));
+  }
+
+  private async handleGetWorkspaceFiles(res: ServerResponse, url: URL): Promise<void> {
+    const wsPath = url.searchParams.get("path") ?? "";
+    const subDir = url.searchParams.get("subDir") ?? "";
+    if (!wsPath) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing path parameter" }));
+      return;
+    }
+    try {
+      const files = this.config.getWorkspaceFiles?.(wsPath, subDir) ?? [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: wsPath, subDir, files }));
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
+  private async handleGetWorkspaceFileContent(res: ServerResponse, url: URL): Promise<void> {
+    const wsPath = url.searchParams.get("path") ?? "";
+    const filePath = url.searchParams.get("file") ?? "";
+    if (!wsPath || !filePath) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing path or file parameter" }));
+      return;
+    }
+    try {
+      const data = this.config.readWorkspaceFile?.(wsPath, filePath);
+      if (!data) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "File not found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, ...data, filePath }));
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
+  private async handleDeleteWorkspace(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    let wsPath = url.searchParams.get("path") ?? "";
+    if (!wsPath) {
+      try {
+        const body = await readBody(req);
+        if (body) {
+          const parsed = JSON.parse(body);
+          if (parsed.path) wsPath = parsed.path;
+        }
+      } catch {}
+    }
+    if (!wsPath) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing path parameter" }));
+      return;
+    }
+    try {
+      const ok = this.config.deleteWorkspace?.(wsPath);
+      res.writeHead(ok ? 200 : 400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok, message: ok ? "Workspace deleted" : "Failed to delete workspace" }));
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
     }
   }
 }

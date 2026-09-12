@@ -30,6 +30,8 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     expect(html).toContain("Overview");
     expect(html).toContain("Bots");
     expect(html).toContain("Engines");
+    expect(html).toContain("Sessions");
+    expect(html).toContain("Workspaces");
     expect(html).toContain("Gateway");
     expect(html).toContain("Security & Auth");
     expect(html).toContain("Skills (3-CLI)");
@@ -195,6 +197,196 @@ bots:
       const approveData = await approveRes.json();
       expect(approveData.ok).toBe(true);
       expect(approveData.senderId).toBe("444555");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it("supports session and workspace management REST API endpoints", async () => {
+    const testPort = 19889;
+    const log = pino({ level: "silent" });
+
+    let activeSessionId = "sess-1";
+    const mockSessions = [
+      {
+        botId: "bot-1",
+        botName: "TestBot",
+        chatId: "chat-100",
+        channelType: "telegram",
+        sessionId: "sess-1",
+        sessionNum: 1,
+        activeEngine: "claude",
+        model: "sonnet",
+        effort: "high",
+        isActive: true,
+        turnCount: 2,
+        createdAt: 1000,
+        lastActiveAt: 2000,
+        workspacePath: join(tempDir, "workspaces", "bot-1", "chat-100_sess-1"),
+        workspaceExists: true,
+      },
+      {
+        botId: "bot-1",
+        botName: "TestBot",
+        chatId: "chat-100",
+        channelType: "telegram",
+        sessionId: "sess-2",
+        sessionNum: 2,
+        activeEngine: "codex",
+        isActive: false,
+        turnCount: 0,
+        createdAt: 2001,
+        lastActiveAt: 2001,
+        workspacePath: join(tempDir, "workspaces", "bot-1", "chat-100_sess-2"),
+        workspaceExists: false,
+      },
+    ];
+
+    const mockWorkspaces = [
+      {
+        id: "bot-1/chat-100_sess-1",
+        path: join(tempDir, "workspaces", "bot-1", "chat-100_sess-1"),
+        folderName: "chat-100_sess-1",
+        botId: "bot-1",
+        botName: "TestBot",
+        chatId: "chat-100",
+        sessionId: "sess-1",
+        fileCount: 2,
+        sizeBytes: 1024,
+        mtime: Date.now(),
+        isActiveSession: true,
+        isKnownSession: true,
+      },
+    ];
+
+    let deletedWsPath = "";
+    let deletedSessionId = "";
+
+    const server = new ApiServer({
+      port: testPort,
+      getBotTelegram: () => undefined,
+      dataDir: tempDir,
+      log,
+      getAllSessions: () => mockSessions.map(s => ({ ...s, isActive: s.sessionId === activeSessionId })),
+      getSessionTurns: (botId, chatId, sessionId) => {
+        if (sessionId === "sess-1") {
+          return {
+            session: mockSessions[0],
+            turns: [
+              { id: "t1", ts: 1500, role: "user", text: "Hello agent" },
+              { id: "t2", ts: 1600, role: "assistant", text: "Hello! How can I help?" },
+            ],
+          };
+        }
+        return null;
+      },
+      switchSession: (botId, chatId, sessionId) => {
+        activeSessionId = sessionId;
+        return { ok: true, session: { sessionId, active: true } };
+      },
+      createSession: (botId, chatId, engine) => {
+        return { ok: true, session: { sessionId: "sess-3", chatId, engine } };
+      },
+      deleteSession: (botId, chatId, sessionId, deleteWs) => {
+        deletedSessionId = sessionId;
+        return { ok: true };
+      },
+      getAllWorkspaces: () => mockWorkspaces,
+      getWorkspaceFiles: (wsPath) => [
+        { name: "CLAUDE.md", relPath: "CLAUDE.md", isDir: false, size: 512, mtime: 1000 },
+        { name: "AGENTS.md", relPath: "AGENTS.md", isDir: false, size: 512, mtime: 1000 },
+      ],
+      readWorkspaceFile: (wsPath, filePath) => ({
+        content: "# Test File Content",
+        size: 19,
+        mtime: 1000,
+      }),
+      deleteWorkspace: (wsPath) => {
+        deletedWsPath = wsPath;
+        return true;
+      },
+    });
+
+    await server.start();
+
+    try {
+      // 1. GET /api/sessions
+      const resSessions = await fetch(`http://127.0.0.1:${testPort}/api/sessions`);
+      expect(resSessions.status).toBe(200);
+      const dataSessions = await resSessions.json();
+      expect(dataSessions.ok).toBe(true);
+      expect(dataSessions.sessions.length).toBe(2);
+      expect(dataSessions.sessions[0].isActive).toBe(true);
+
+      // 2. GET /api/sessions/turns
+      const resTurns = await fetch(`http://127.0.0.1:${testPort}/api/sessions/turns?botId=bot-1&chatId=chat-100&sessionId=sess-1`);
+      expect(resTurns.status).toBe(200);
+      const dataTurns = await resTurns.json();
+      expect(dataTurns.ok).toBe(true);
+      expect(dataTurns.turns.length).toBe(2);
+      expect(dataTurns.turns[0].text).toBe("Hello agent");
+
+      // 3. POST /api/sessions/switch
+      const resSwitch = await fetch(`http://127.0.0.1:${testPort}/api/sessions/switch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId: "bot-1", chatId: "chat-100", sessionId: "sess-2" }),
+      });
+      expect(resSwitch.status).toBe(200);
+      const dataSwitch = await resSwitch.json();
+      expect(dataSwitch.ok).toBe(true);
+      expect(activeSessionId).toBe("sess-2");
+
+      // 4. POST /api/sessions/new
+      const resNew = await fetch(`http://127.0.0.1:${testPort}/api/sessions/new`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId: "bot-1", chatId: "chat-100", engine: "agy" }),
+      });
+      expect(resNew.status).toBe(200);
+      const dataNew = await resNew.json();
+      expect(dataNew.ok).toBe(true);
+      expect(dataNew.session.engine).toBe("agy");
+
+      // 5. DELETE /api/sessions
+      const resDelSession = await fetch(`http://127.0.0.1:${testPort}/api/sessions`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId: "bot-1", chatId: "chat-100", sessionId: "sess-2" }),
+      });
+      expect(resDelSession.status).toBe(200);
+      expect(deletedSessionId).toBe("sess-2");
+
+      // 6. GET /api/workspaces
+      const resWs = await fetch(`http://127.0.0.1:${testPort}/api/workspaces`);
+      expect(resWs.status).toBe(200);
+      const dataWs = await resWs.json();
+      expect(dataWs.ok).toBe(true);
+      expect(dataWs.workspaces.length).toBe(1);
+      expect(dataWs.workspaces[0].folderName).toBe("chat-100_sess-1");
+
+      // 7. GET /api/workspaces/files
+      const resWsFiles = await fetch(`http://127.0.0.1:${testPort}/api/workspaces/files?path=${encodeURIComponent(mockWorkspaces[0].path)}`);
+      expect(resWsFiles.status).toBe(200);
+      const dataWsFiles = await resWsFiles.json();
+      expect(dataWsFiles.ok).toBe(true);
+      expect(dataWsFiles.files.length).toBe(2);
+
+      // 8. GET /api/workspaces/file-content
+      const resFileContent = await fetch(`http://127.0.0.1:${testPort}/api/workspaces/file-content?path=${encodeURIComponent(mockWorkspaces[0].path)}&file=CLAUDE.md`);
+      expect(resFileContent.status).toBe(200);
+      const dataFileContent = await resFileContent.json();
+      expect(dataFileContent.ok).toBe(true);
+      expect(dataFileContent.content).toContain("Test File Content");
+
+      // 9. DELETE /api/workspaces
+      const resDelWs = await fetch(`http://127.0.0.1:${testPort}/api/workspaces`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: mockWorkspaces[0].path }),
+      });
+      expect(resDelWs.status).toBe(200);
+      expect(deletedWsPath).toBe(mockWorkspaces[0].path);
     } finally {
       await server.stop();
     }

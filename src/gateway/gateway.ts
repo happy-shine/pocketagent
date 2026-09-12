@@ -1,14 +1,93 @@
-import { existsSync, mkdirSync, watch, type FSWatcher } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
+import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
 import { ApiServer } from "../api/server.js";
 import { BotInstance } from "../bot/bot-instance.js";
 import { setMessageStore } from "../channels/telegram/handlers.js";
 import { loadConfig, resolveBots, resolveDataDir, saveConfig, syncPairingToConfig } from "../config/loader.js";
 import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
+import type { EngineType } from "../config/schema.js";
 import { EngineManager } from "../engines/manager.js";
 import { MessageStore } from "../sessions/message-store.js";
 import { SkillRegistry } from "../skills/index.js";
+
+export interface SessionSummary {
+  botId: string;
+  botName: string;
+  chatId: string;
+  channelType: string;
+  sessionId: string;
+  sessionNum: number;
+  title?: string;
+  activeEngine: string;
+  model?: string;
+  effort?: string;
+  isActive: boolean;
+  turnCount: number;
+  createdAt: number;
+  lastActiveAt: number;
+  workspacePath: string;
+  workspaceExists: boolean;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  path: string;
+  folderName: string;
+  botId?: string;
+  botName?: string;
+  chatId?: string;
+  sessionId?: string;
+  fileCount: number;
+  sizeBytes: number;
+  mtime: number;
+  isActiveSession: boolean;
+  isKnownSession: boolean;
+}
+
+export interface WorkspaceFileInfo {
+  name: string;
+  relPath: string;
+  isDir: boolean;
+  size: number;
+  mtime: number;
+}
+
+function getDirectoryStats(dirPath: string, maxFiles = 1000): { fileCount: number; sizeBytes: number; latestMtime: number } {
+  let fileCount = 0;
+  let sizeBytes = 0;
+  let latestMtime = 0;
+
+  try {
+    const queue = [dirPath];
+    while (queue.length > 0 && fileCount < maxFiles) {
+      const current = queue.shift()!;
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(current);
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.startsWith(".")) continue;
+        const full = join(current, entry);
+        try {
+          const st = statSync(full);
+          if (st.mtimeMs > latestMtime) latestMtime = st.mtimeMs;
+          if (st.isDirectory()) {
+            queue.push(full);
+          } else if (st.isFile()) {
+            fileCount++;
+            sizeBytes += st.size;
+          }
+        } catch {}
+        if (fileCount >= maxFiles) break;
+      }
+    }
+  } catch {}
+
+  return { fileCount, sizeBytes, latestMtime };
+}
 
 export class Gateway {
   private config: GatewayConfig;
@@ -86,6 +165,15 @@ export class Gateway {
       getEngineManager: () => this.engineManager,
       getPendingPairings: () => this.getPendingPairings(),
       approvePairing: (code) => this.approvePairing(code),
+      getAllSessions: () => this.getAllSessions(),
+      getSessionTurns: (botId, chatId, sessionId) => this.getSessionTurns(botId, chatId, sessionId),
+      switchSession: (botId, chatId, sessionId) => this.switchSession(botId, chatId, sessionId),
+      createSession: (botId, chatId, engine, model, effort, title) => this.createSession(botId, chatId, engine, model, effort, title),
+      deleteSession: (botId, chatId, sessionId, deleteWorkspace) => this.deleteSession(botId, chatId, sessionId, deleteWorkspace),
+      getAllWorkspaces: () => this.getAllWorkspaces(),
+      getWorkspaceFiles: (wsPath, subDir) => this.getWorkspaceFiles(wsPath, subDir),
+      readWorkspaceFile: (wsPath, filePath) => this.readWorkspaceFile(wsPath, filePath),
+      deleteWorkspace: (wsPath) => this.deleteWorkspace(wsPath),
     });
     await this.apiServer.start();
 
@@ -233,6 +321,278 @@ export class Gateway {
       }
     }
     return { ok: false, error: "Pairing code not found or expired" };
+  }
+
+  getAllSessions(): SessionSummary[] {
+    const results: SessionSummary[] = [];
+    for (const bot of this.bots.values()) {
+      const sm = bot.getSessionManager();
+      const chats = sm.getAllChats();
+      for (const chat of chats) {
+        const safeChatId = chat.chatId.replace(/[^a-zA-Z0-9_-]/g, "_");
+        for (const s of chat.sessions) {
+          const wsPath = join(this.dataDir, "workspaces", bot.botId, `${safeChatId}_${s.sessionId}`);
+          results.push({
+            botId: bot.botId,
+            botName: bot.name,
+            chatId: chat.chatId,
+            channelType: s.channelType,
+            sessionId: s.sessionId,
+            sessionNum: s.sessionNum,
+            title: s.title,
+            activeEngine: s.activeEngine,
+            model: s.model,
+            effort: s.effort,
+            isActive: s.isActive,
+            turnCount: s.turns?.length ?? 0,
+            createdAt: s.createdAt,
+            lastActiveAt: s.lastActiveAt,
+            workspacePath: wsPath,
+            workspaceExists: existsSync(wsPath),
+          });
+        }
+      }
+    }
+    results.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    return results;
+  }
+
+  getSessionTurns(botId: string, chatId: string, sessionId: string) {
+    const bot = this.bots.get(botId);
+    if (!bot) return null;
+    const sm = bot.getSessionManager();
+    const chats = sm.getAllChats();
+    const chat = chats.find((c) => c.chatId === chatId);
+    if (!chat) return null;
+    const session = chat.sessions.find((s) => s.sessionId === sessionId);
+    if (!session) return null;
+    return {
+      session: {
+        sessionId: session.sessionId,
+        sessionNum: session.sessionNum,
+        chatId: session.chatId,
+        botId: bot.botId,
+        botName: bot.name,
+        activeEngine: session.activeEngine,
+        model: session.model,
+        effort: session.effort,
+        createdAt: session.createdAt,
+        lastActiveAt: session.lastActiveAt,
+      },
+      turns: session.turns ?? [],
+    };
+  }
+
+  switchSession(botId: string, chatId: string, sessionId: string) {
+    const bot = this.bots.get(botId);
+    if (!bot) return { ok: false, error: `Bot ${botId} not found` };
+    const sm = bot.getSessionManager();
+    const switched = sm.switchSessionById(chatId, sessionId);
+    if (!switched) return { ok: false, error: "Session not found" };
+    return { ok: true, session: switched };
+  }
+
+  createSession(botId: string, chatId: string, engine?: EngineType, model?: string, effort?: string, title?: string) {
+    const bot = this.bots.get(botId);
+    if (!bot) return { ok: false, error: `Bot ${botId} not found` };
+    const sm = bot.getSessionManager();
+    const s = sm.createNew(chatId, engine, model, effort, title);
+    return { ok: true, session: s };
+  }
+
+  deleteSession(botId: string, chatId: string, sessionId: string, deleteWorkspace = false) {
+    const bot = this.bots.get(botId);
+    if (!bot) return { ok: false, error: `Bot ${botId} not found` };
+    const sm = bot.getSessionManager();
+    const ok = sm.deleteSession(chatId, sessionId);
+    if (!ok) return { ok: false, error: "Session not found" };
+
+    if (deleteWorkspace) {
+      const safeChatId = chatId.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const wsPath = join(this.dataDir, "workspaces", botId, `${safeChatId}_${sessionId}`);
+      try {
+        if (existsSync(wsPath)) {
+          rmSync(wsPath, { recursive: true, force: true });
+        }
+      } catch (err) {
+        this.log.warn({ error: err, wsPath }, "Could not delete workspace directory for session");
+      }
+    }
+    return { ok: true };
+  }
+
+  getAllWorkspaces(): WorkspaceSummary[] {
+    const workspacesRoot = resolve(join(this.dataDir, "workspaces"));
+    if (!existsSync(workspacesRoot)) return [];
+
+    const activeSessions = new Set<string>();
+    const knownSessions = new Set<string>();
+    const botMap = new Map<string, string>();
+
+    for (const bot of this.bots.values()) {
+      botMap.set(bot.botId, bot.name);
+      const sm = bot.getSessionManager();
+      for (const chat of sm.getAllChats()) {
+        for (const s of chat.sessions) {
+          knownSessions.add(`${bot.botId}:${s.sessionId}`);
+          if (s.isActive) {
+            activeSessions.add(`${bot.botId}:${s.sessionId}`);
+          }
+        }
+      }
+    }
+
+    const workspaces: WorkspaceSummary[] = [];
+
+    try {
+      const topEntries = readdirSync(workspacesRoot, { withFileTypes: true });
+      for (const top of topEntries) {
+        if (top.name.startsWith(".")) continue;
+        if (!top.isDirectory()) continue;
+
+        const topPath = join(workspacesRoot, top.name);
+        const subEntries = readdirSync(topPath, { withFileTypes: true });
+
+        const hasSubDirs = subEntries.some((e) => e.isDirectory());
+        if (hasSubDirs) {
+          const botId = top.name;
+          const botName = botMap.get(botId);
+          for (const sub of subEntries) {
+            if (sub.name.startsWith(".") || !sub.isDirectory()) continue;
+            const wsPath = join(topPath, sub.name);
+            const stats = getDirectoryStats(wsPath);
+
+            let chatId: string | undefined;
+            let sessionId: string | undefined;
+            const lastUnderscore = sub.name.lastIndexOf("_");
+            if (lastUnderscore > 0) {
+              chatId = sub.name.slice(0, lastUnderscore);
+              sessionId = sub.name.slice(lastUnderscore + 1);
+            }
+
+            const isKnown = sessionId ? knownSessions.has(`${botId}:${sessionId}`) : false;
+            const isActive = sessionId ? activeSessions.has(`${botId}:${sessionId}`) : false;
+
+            workspaces.push({
+              id: `${botId}/${sub.name}`,
+              path: wsPath,
+              folderName: sub.name,
+              botId,
+              botName,
+              chatId,
+              sessionId,
+              fileCount: stats.fileCount,
+              sizeBytes: stats.sizeBytes,
+              mtime: stats.latestMtime || statSync(wsPath).mtimeMs,
+              isActiveSession: isActive,
+              isKnownSession: isKnown,
+            });
+          }
+        } else {
+          const stats = getDirectoryStats(topPath);
+          workspaces.push({
+            id: top.name,
+            path: topPath,
+            folderName: top.name,
+            fileCount: stats.fileCount,
+            sizeBytes: stats.sizeBytes,
+            mtime: stats.latestMtime || statSync(topPath).mtimeMs,
+            isActiveSession: false,
+            isKnownSession: false,
+          });
+        }
+      }
+    } catch (err) {
+      this.log.error({ error: err }, "Error reading workspaces directory");
+    }
+
+    workspaces.sort((a, b) => b.mtime - a.mtime);
+    return workspaces;
+  }
+
+  getWorkspaceFiles(workspacePath: string, subDir = ""): WorkspaceFileInfo[] {
+    const workspacesRoot = resolve(join(this.dataDir, "workspaces"));
+    const resolvedWs = resolve(workspacePath);
+    if (!resolvedWs.startsWith(workspacesRoot + "/") && resolvedWs !== workspacesRoot) {
+      throw new Error("Access denied: path is outside workspaces directory");
+    }
+    const targetDir = resolve(join(resolvedWs, subDir));
+    if (!targetDir.startsWith(resolvedWs)) {
+      throw new Error("Access denied: path traversal detected");
+    }
+    if (!existsSync(targetDir)) {
+      return [];
+    }
+    const entries = readdirSync(targetDir, { withFileTypes: true });
+    return entries
+      .filter((e) => !e.name.startsWith("."))
+      .map((e) => {
+        const full = join(targetDir, e.name);
+        const rel = relative(resolvedWs, full);
+        let size = 0;
+        let mtime = 0;
+        try {
+          const st = statSync(full);
+          size = st.size;
+          mtime = st.mtimeMs;
+        } catch {}
+        return {
+          name: e.name,
+          relPath: rel,
+          isDir: e.isDirectory(),
+          size,
+          mtime,
+        };
+      })
+      .sort((a, b) => {
+        if (a.isDir && !b.isDir) return -1;
+        if (!a.isDir && b.isDir) return 1;
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+  readWorkspaceFile(workspacePath: string, filePath: string): { content: string; size: number; mtime: number } {
+    const workspacesRoot = resolve(join(this.dataDir, "workspaces"));
+    const resolvedWs = resolve(workspacePath);
+    if (!resolvedWs.startsWith(workspacesRoot + "/")) {
+      throw new Error("Access denied: path is outside workspaces directory");
+    }
+    const full = resolve(join(resolvedWs, filePath));
+    if (!full.startsWith(resolvedWs + "/")) {
+      throw new Error("Access denied: path traversal detected");
+    }
+    if (!existsSync(full) || !statSync(full).isFile()) {
+      throw new Error("File not found");
+    }
+    const st = statSync(full);
+    const MAX_READ = 512 * 1024;
+    let content = "";
+    if (st.size > MAX_READ) {
+      const buf = Buffer.alloc(MAX_READ);
+      const fd = openSync(full, "r");
+      readSync(fd, buf, 0, MAX_READ, 0);
+      closeSync(fd);
+      content = buf.toString("utf-8") + `\n\n--- [File truncated: showing 512KB of ${Math.round(st.size / 1024)}KB] ---`;
+    } else {
+      content = readFileSync(full, "utf-8");
+    }
+    return { content, size: st.size, mtime: st.mtimeMs };
+  }
+
+  deleteWorkspace(workspacePath: string): boolean {
+    const workspacesRoot = resolve(join(this.dataDir, "workspaces"));
+    const resolvedWs = resolve(workspacePath);
+    if (!resolvedWs.startsWith(workspacesRoot + "/")) {
+      throw new Error("Access denied: cannot delete outside workspaces directory");
+    }
+    if (resolvedWs === workspacesRoot) {
+      throw new Error("Access denied: cannot delete root workspaces directory");
+    }
+    if (!existsSync(resolvedWs)) {
+      return false;
+    }
+    rmSync(resolvedWs, { recursive: true, force: true });
+    return true;
   }
 
   private startConfigWatcher(): void {

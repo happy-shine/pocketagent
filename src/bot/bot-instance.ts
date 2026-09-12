@@ -88,6 +88,14 @@ export class BotInstance {
     return { ...this.runtimeGroups };
   }
 
+  getSessionManager(): SessionManager {
+    return this.sessionManager;
+  }
+
+  getDataDir(): string {
+    return this.dataDir;
+  }
+
   getPendingPairings() {
     return this.pairingManager.listPending();
   }

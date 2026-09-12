@@ -109,4 +109,47 @@ description: Query group chats
     expect(existsSync(join(claudeDir, "market-fetcher", "SKILL.md"))).toBe(true);
     expect(existsSync(join(codexDir, "market-fetcher", "SKILL.md"))).toBe(true);
   });
+
+  it("retrieves skill details, raw SKILL.md, and file list", () => {
+    registry.createSkill("crypto-tracker", "Tracks crypto prices");
+    const detail = registry.getSkill("crypto-tracker");
+    expect(detail).toBeDefined();
+    expect(detail?.skill.name).toBe("crypto-tracker");
+    expect(detail?.skillMd).toContain("name: crypto-tracker");
+    expect(detail?.files.some((f) => f.name === "SKILL.md")).toBe(true);
+    expect(detail?.files.some((f) => f.name === "run.py")).toBe(true);
+  });
+
+  it("updates SKILL.md content and re-syncs", () => {
+    registry.createSkill("report-gen", "Generates daily reports");
+    const updatedMd = `---
+name: report-gen
+description: Advanced report generation engine
+---
+# Advanced Reports
+Updated instructions here.
+`;
+    const updated = registry.updateSkill("report-gen", updatedMd);
+    expect(updated.description).toBe("Advanced report generation engine");
+
+    const detail = registry.getSkill("report-gen");
+    expect(detail?.skillMd).toBe(updatedMd);
+  });
+
+  it("deletes skill permanently and unlinks from all 3 CLIs", () => {
+    registry.createSkill("temp-skill", "Temporary skill to delete");
+    expect(existsSync(join(hubDir, "temp-skill"))).toBe(true);
+    expect(existsSync(join(claudeDir, "temp-skill"))).toBe(true);
+    expect(existsSync(join(agyDir, "temp-skill"))).toBe(true);
+    expect(existsSync(join(codexDir, "temp-skill"))).toBe(true);
+
+    const ok = registry.deleteSkill("temp-skill");
+    expect(ok).toBe(true);
+
+    expect(existsSync(join(hubDir, "temp-skill"))).toBe(false);
+    expect(existsSync(join(claudeDir, "temp-skill"))).toBe(false);
+    expect(existsSync(join(agyDir, "temp-skill"))).toBe(false);
+    expect(existsSync(join(codexDir, "temp-skill"))).toBe(false);
+    expect(registry.getSkill("temp-skill")).toBeNull();
+  });
 });

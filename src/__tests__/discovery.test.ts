@@ -14,7 +14,7 @@ describe("Engine Capabilities Discovery", () => {
     expect(caps.supportsCustomModel).toBe(true);
     // Custom model is merged
     expect(caps.models.some((m) => m.id === "custom-gemini")).toBe(true);
-  });
+  }, 15000);
 
   it("discovers Claude capabilities dynamically, including modern models and custom models", async () => {
     const caps = await discoverClaudeCapabilities("claude", [

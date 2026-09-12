@@ -1522,6 +1522,43 @@ export function getDashboardHtml(): string {
     </div>
   </div>
 
+  <!-- Modal: View & Edit Skill -->
+  <div id="modalSkillDetail" class="modal-backdrop">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" data-i18n="modalSkillDetailTitle">Skill Details & Editor</div>
+          <div id="modalSkillSubtitle" style="font-size: 0.76rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.2rem;"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal('modalSkillDetail')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modalSkillSyncBanner" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; padding: 0.65rem 0.85rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+          <!-- Sync tags & metadata -->
+        </div>
+
+        <div style="margin-bottom: 0.85rem;">
+          <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.35rem;" data-i18n="skillFilesLabel">Associated Scripts & Files</div>
+          <div id="modalSkillFilesList" style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+            <!-- Scripts and other files -->
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label class="form-label" style="margin-bottom: 0;" data-i18n="skillMdLabel">SKILL.md (Instructions & YAML Frontmatter)</label>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Markdown • Auto-syncs to Claude, Codex, AGY</span>
+          </div>
+          <textarea id="modalSkillMdEditor" class="form-control" style="font-family: var(--font-mono); font-size: 0.82rem; height: 320px; line-height: 1.45; resize: vertical;" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalSkillDetail')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnSaveSkillMd" class="btn btn-primary" onclick="saveSkillDetail()" data-i18n="skillSaveBtn">Save & Sync</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Session Turns History -->
   <div id="modalSessionTurns" class="modal-backdrop">
     <div class="modal modal-xl">
@@ -1757,6 +1794,15 @@ export function getDashboardHtml(): string {
         syncSkills: "↻ 全网同步技能",
         newSkill: "+ 新建技能",
         noSkillsFound: "未检测到自定义技能，点击上方「新建技能」快速创建。",
+        viewAndEditSkill: "✎ 查看 / 编辑",
+        deleteSkillPrompt: "确定要永久删除技能「{name}」吗？此操作将同时清理 Claude、Codex 与 AGY 中的对应软链！",
+        skillDeletedToast: "技能「{name}」已彻底删除并清理镜像",
+        skillUpdatedToast: "技能「{name}」已保存并同步至 3-CLI",
+        modalSkillDetailTitle: "技能详情与编辑",
+        skillMdLabel: "SKILL.md (指令规范与 Prompt 描述)",
+        skillSaveBtn: "保存并全网同步",
+        skillFilesLabel: "关联脚本与文件",
+        noScripts: "无独立脚本",
         
         rawYamlTitle: "YAML 源码编辑器",
         rawYamlDesc: "直接查看与编辑 config.yaml 完整内容，包含实时规则校验",
@@ -1915,6 +1961,15 @@ export function getDashboardHtml(): string {
         syncSkills: "↻ Sync All Skills",
         newSkill: "+ New Skill",
         noSkillsFound: "No custom skills found. Click 'New Skill' to create one.",
+        viewAndEditSkill: "✎ View / Edit",
+        deleteSkillPrompt: "Are you sure you want to delete skill '{name}'? This will also remove symlinks in Claude, Codex, and AGY!",
+        skillDeletedToast: "Skill '{name}' deleted and unlinked",
+        skillUpdatedToast: "Skill '{name}' saved and synced to 3-CLI",
+        modalSkillDetailTitle: "Skill Details & Editor",
+        skillMdLabel: "SKILL.md (Instructions & YAML Frontmatter)",
+        skillSaveBtn: "Save & Sync to All",
+        skillFilesLabel: "Associated Scripts & Files",
+        noScripts: "No standalone scripts",
         
         rawYamlTitle: "Raw YAML Editor",
         rawYamlDesc: "Directly view and edit config.yaml with live schema validation",
@@ -1949,6 +2004,20 @@ export function getDashboardHtml(): string {
     let systemStatus = null;
     let capabilities = {};
     let activeSoulBotId = null;
+    let allSkills = [];
+    let activeSkillName = null;
+    let allSessions = [];
+    let allWorkspaces = [];
+    let activeWsPath = "";
+    let activeWsFilePath = "";
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i];
+    }
 
     function t(key, vars = {}) {
       const dict = I18N[currentLang] || I18N.en;
@@ -1962,8 +2031,8 @@ export function getDashboardHtml(): string {
     function setLanguage(lang) {
       currentLang = lang;
       localStorage.setItem("pa_lang", lang);
-      document.getElementById("langZh").classList.toggle("active", lang === "zh");
-      document.getElementById("langEn").classList.toggle("active", lang === "en");
+      document.getElementById("langZh")?.classList.toggle("active", lang === "zh");
+      document.getElementById("langEn")?.classList.toggle("active", lang === "en");
       updateDomI18n();
       if (currentConfig) {
         renderBotsManager(currentConfig.bots || []);
@@ -1972,16 +2041,23 @@ export function getDashboardHtml(): string {
         renderOverviewBots(systemStatus.bots || []);
       }
       renderOverviewEngines();
+      if (allSkills && allSkills.length > 0) {
+        renderSkills(allSkills);
+      }
       renderSessions();
-      renderWorkspaces();
+    }
+
+    function renderWorkspaces() {
+      // Alias for unified sessions and workspaces
+      renderSessions();
     }
 
     function setTheme(theme) {
       currentTheme = theme;
       localStorage.setItem("pa_theme", theme);
       document.documentElement.setAttribute("data-theme", theme);
-      document.getElementById("themeLight").classList.toggle("active", theme === "light");
-      document.getElementById("themeDark").classList.toggle("active", theme === "dark");
+      document.getElementById("themeLight")?.classList.toggle("active", theme === "light");
+      document.getElementById("themeDark")?.classList.toggle("active", theme === "dark");
     }
 
     function updateDomI18n() {
@@ -2022,61 +2098,75 @@ export function getDashboardHtml(): string {
       }
     }
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts & backdrop listeners
     function setupKeyboardShortcuts() {
       window.addEventListener("keydown", (e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "s") {
           e.preventDefault();
           saveAndHotReload();
         }
+        if (e.key === "Escape") {
+          document.querySelectorAll(".modal-backdrop.show").forEach(m => m.classList.remove("show"));
+        }
+      });
+      document.querySelectorAll(".modal-backdrop").forEach(backdrop => {
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) backdrop.classList.remove("show");
+        });
       });
     }
 
     // Initialize
     async function init() {
-      setTheme(currentTheme);
-      setLanguage(currentLang);
-      setupTabNavigation();
-      setupKeyboardShortcuts();
-      setupEvents();
+      try {
+        setTheme(currentTheme);
+        setupTabNavigation();
+        setupKeyboardShortcuts();
+        setupEvents();
+        setLanguage(currentLang);
 
-      await Promise.all([
-        fetchStatus(),
-        fetchConfig(),
-        fetchModels(),
-        fetchSkills(),
-        fetchPairings(),
-        fetchSessions()
-      ]);
+        await Promise.all([
+          fetchStatus(),
+          fetchConfig(),
+          fetchModels(),
+          fetchSkills(),
+          fetchPairings(),
+          fetchSessions()
+        ]);
+      } catch (err) {
+        console.error("Dashboard initialization error:", err);
+      }
     }
 
     function setupEvents() {
-      document.getElementById("btnRefresh").addEventListener("click", async () => {
+      const on = (id, event, handler) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener(event, handler);
+      };
+
+      on("btnRefresh", "click", async () => {
         showToast(t("refresh") + "...", "info");
         await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions()]);
       });
 
-      document.getElementById("btnSaveConfig").addEventListener("click", () => saveAndHotReload());
-      document.getElementById("btnApplyYaml").addEventListener("click", () => applyYaml());
-      document.getElementById("btnAddBot").addEventListener("click", () => openAddBotModal());
-      document.getElementById("btnSaveModalBot").addEventListener("click", () => saveModalBot());
-      document.getElementById("btnSaveSoul").addEventListener("click", () => saveSoul());
-      document.getElementById("btnSyncSkills").addEventListener("click", () => syncSkills());
-      document.getElementById("btnNewSkill").addEventListener("click", () => openModal("modalNewSkill"));
-      document.getElementById("btnCreateSkillConfirm").addEventListener("click", () => createSkill());
-      document.getElementById("btnRefreshSessions").addEventListener("click", () => fetchSessions());
-      document.getElementById("btnNewSession").addEventListener("click", () => openNewSessionModal());
-      document.getElementById("btnCreateSessionConfirm").addEventListener("click", () => confirmCreateSession());
+      on("btnSaveConfig", "click", () => saveAndHotReload());
+      on("btnApplyYaml", "click", () => applyYaml());
+      on("btnAddBot", "click", () => openAddBotModal());
+      on("btnSaveModalBot", "click", () => saveModalBot());
+      on("btnSaveSoul", "click", () => saveSoul());
+      on("btnSyncSkills", "click", () => syncSkills());
+      on("btnNewSkill", "click", () => openModal("modalNewSkill"));
+      on("btnCreateSkillConfirm", "click", () => createSkill());
+      on("btnRefreshSessions", "click", () => fetchSessions());
+      on("btnNewSession", "click", () => openNewSessionModal());
+      on("btnCreateSessionConfirm", "click", () => confirmCreateSession());
+      on("btnSaveSkillMd", "click", () => saveSkillDetail());
       
-      const sessBotFilter = document.getElementById("sessionsBotFilter");
-      if (sessBotFilter) sessBotFilter.addEventListener("change", () => renderSessions());
-      const sessStatusFilter = document.getElementById("sessionsStatusFilter");
-      if (sessStatusFilter) sessStatusFilter.addEventListener("change", () => renderSessions());
-      const sessSearch = document.getElementById("sessionsSearchInput");
-      if (sessSearch) sessSearch.addEventListener("input", () => renderSessions());
+      on("sessionsBotFilter", "change", () => renderSessions());
+      on("sessionsStatusFilter", "change", () => renderSessions());
+      on("sessionsSearchInput", "input", () => renderSessions());
       
-      const btnCopyWs = document.getElementById("btnCopyWsPreview");
-      if (btnCopyWs) btnCopyWs.addEventListener("click", () => copyWsPreview());
+      on("btnCopyWsPreview", "click", () => copyWsPreview());
     }
 
     // Fetch Status
@@ -2477,10 +2567,13 @@ export function getDashboardHtml(): string {
         const res = await fetch("/api/skills");
         if (!res.ok) return;
         const data = await res.json();
-        const skills = data.skills || [];
-        document.getElementById("mSkillsCount").textContent = skills.length;
-        renderSkills(skills);
-      } catch {}
+        allSkills = data.skills || [];
+        const mCount = document.getElementById("mSkillsCount");
+        if (mCount) mCount.textContent = allSkills.length;
+        renderSkills(allSkills);
+      } catch (err) {
+        console.error("fetchSkills error:", err);
+      }
     }
 
     function renderSkills(skills) {
@@ -2492,20 +2585,131 @@ export function getDashboardHtml(): string {
       container.innerHTML = skills.map(s => \`
         <div class="skill-card">
           <div class="skill-header">
-            <span class="skill-name">\${escapeHtml(s.name)}</span>
-            <div class="sync-tags">
-              <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? 'Claude' : '!Claude'}</span>
-              <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? 'Codex' : '!Codex'}</span>
-              <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? 'AGY' : '!AGY'}</span>
+            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+              <span class="skill-name">\${escapeHtml(s.name)}</span>
+              <div class="sync-tags">
+                <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? 'Claude' : '!Claude'}</span>
+                <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? 'Codex' : '!Codex'}</span>
+                <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? 'AGY' : '!AGY'}</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <button class="btn btn-secondary btn-sm" onclick="openSkillDetail('\${escapeHtml(s.name)}')">
+                \${t("viewAndEditSkill")}
+              </button>
+              <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" title="Delete" onclick="deleteSkillConfirm('\${escapeHtml(s.name)}')">
+                ✕
+              </button>
             </div>
           </div>
           <p class="skill-desc">\${escapeHtml(s.description || 'No description provided')}</p>
-          <div style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between;">
-            <span>Scripts: \${s.scripts?.length ? escapeHtml(s.scripts.join(', ')) : 'None'}</span>
-            <span style="font-family: var(--font-mono);">\${escapeHtml(s.dir.split('/').pop())}</span>
+          <div style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: auto; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+            <span>Scripts: \${s.scripts?.length ? escapeHtml(s.scripts.join(', ')) : t("noScripts")}</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem;">~/.pocketagent/skills/\${escapeHtml(s.name)}</span>
           </div>
         </div>
       \`).join("");
+    }
+
+    async function openSkillDetail(name) {
+      activeSkillName = name;
+      document.getElementById("modalSkillSubtitle").textContent = "Loading...";
+      document.getElementById("modalSkillMdEditor").value = "Loading...";
+
+      try {
+        const res = await fetch(\`/api/skills/detail?name=\${encodeURIComponent(name)}\`);
+        if (!res.ok) throw new Error("Failed to load skill details");
+        const data = await res.json();
+        const s = data.skill || {};
+        const skillMd = data.skillMd || "";
+        const files = data.files || [];
+
+        document.getElementById("modalSkillSubtitle").textContent = s.dir || \`~/.pocketagent/skills/\${name}\`;
+        document.getElementById("modalSkillMdEditor").value = skillMd;
+
+        document.getElementById("modalSkillSyncBanner").innerHTML = \`
+          <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+            <span style="font-weight: 600; font-size: 0.95rem;">\${escapeHtml(s.name)}</span>
+            <div class="sync-tags">
+              <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? '✓ Claude' : '✗ Claude'}</span>
+              <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? '✓ Codex' : '✗ Codex'}</span>
+              <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? '✓ AGY' : '✗ AGY'}</span>
+            </div>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">
+            \${files.length} files • \${s.scripts?.length || 0} scripts
+          </div>
+        \`;
+
+        const filesContainer = document.getElementById("modalSkillFilesList");
+        if (files.length === 0) {
+          filesContainer.innerHTML = \`<span style="font-size: 0.75rem; color: var(--text-muted);">(No files)</span>\`;
+        } else {
+          filesContainer.innerHTML = files.map(f => {
+            const icon = f.isDir ? "📁" : (f.name.endsWith(".py") ? "🐍" : (f.name.endsWith(".md") ? "📝" : "📄"));
+            return \`
+              <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.75rem; font-family: var(--font-mono);">
+                <span>\${icon}</span>
+                <span>\${escapeHtml(f.relPath)}</span>
+                \${!f.isDir ? \`<span style="color: var(--text-muted); font-size: 0.7rem;">(\${formatBytes(f.size)})</span>\` : ''}
+              </span>
+            \`;
+          }).join("");
+        }
+
+        openModal("modalSkillDetail");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function saveSkillDetail() {
+      if (!activeSkillName) return;
+      const skillMd = document.getElementById("modalSkillMdEditor").value;
+      const btn = document.getElementById("btnSaveSkillMd");
+      btn.textContent = t("saving");
+      btn.disabled = true;
+
+      try {
+        const res = await fetch("/api/skills/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: activeSkillName, skillMd })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(t("skillUpdatedToast", { name: activeSkillName }), "success");
+          closeModal("modalSkillDetail");
+          fetchSkills();
+        } else {
+          showToast(data.error || "Failed to update skill", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        btn.textContent = t("skillSaveBtn");
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteSkillConfirm(name) {
+      const ok = confirm(t("deleteSkillPrompt", { name }));
+      if (!ok) return;
+
+      try {
+        const res = await fetch(\`/api/skills?name=\${encodeURIComponent(name)}\`, {
+          method: "DELETE"
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(t("skillDeletedToast", { name }), "success");
+          fetchSkills();
+        } else {
+          showToast(data.error || "Failed to delete skill", "error");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
     }
 
     async function syncSkills() {
@@ -2641,20 +2845,6 @@ export function getDashboardHtml(): string {
         btn.innerHTML = originalText;
         btn.disabled = false;
       }
-    }
-
-    // Sessions & Workspaces State
-    let allSessions = [];
-    let allWorkspaces = [];
-    let activeWsPath = "";
-    let activeWsFilePath = "";
-
-    function formatBytes(bytes) {
-      if (!bytes || bytes === 0) return "0 B";
-      const k = 1024;
-      const sizes = ["B", "KB", "MB", "GB"];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i];
     }
 
     function populateBotFilters() {
@@ -3284,12 +3474,13 @@ export function getDashboardHtml(): string {
     }
 
     // Modal Helpers
-    function openModal(id) { document.getElementById(id).classList.add("show"); }
-    function closeModal(id) { document.getElementById(id).classList.remove("show"); }
+    function openModal(id) { const el = document.getElementById(id); if (el) el.classList.add("show"); }
+    function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.remove("show"); }
 
     // Toast
     function showToast(message, type = "info", duration = 4000) {
       const container = document.getElementById("toastContainer");
+      if (!container) return;
       const toast = document.createElement("div");
       toast.className = \`toast \${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : ''}\`;
       const title = type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Notice';

@@ -109,10 +109,16 @@ export class ApiServer {
         await this.handleGetModels(res, url);
       } else if (req.method === "GET" && url.pathname === "/api/skills") {
         await this.handleGetSkills(res);
+      } else if (req.method === "GET" && url.pathname === "/api/skills/detail") {
+        await this.handleGetSkillDetail(res, url);
       } else if (req.method === "POST" && url.pathname === "/api/skills/sync") {
         await this.handleSyncSkills(res);
       } else if (req.method === "POST" && url.pathname === "/api/skills/new") {
         await this.handleNewSkill(req, res);
+      } else if (req.method === "POST" && url.pathname === "/api/skills/update") {
+        await this.handleUpdateSkill(req, res);
+      } else if (req.method === "DELETE" && url.pathname === "/api/skills") {
+        await this.handleDeleteSkill(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/pairings") {
         await this.handleGetPairings(res);
       } else if (req.method === "POST" && url.pathname === "/api/pairings/approve") {
@@ -276,6 +282,75 @@ export class ApiServer {
       const skill = reg.createSkill(body.name, body.description ?? "");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, skill }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleGetSkillDetail(res: ServerResponse, url: URL): Promise<void> {
+    const name = url.searchParams.get("name") ?? "";
+    if (!name) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Missing skill name" }));
+      return;
+    }
+    try {
+      const reg = SkillRegistry.getInstance();
+      const detail = reg.getSkill(name);
+      if (!detail) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: `Skill "${name}" not found` }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, ...detail }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleUpdateSkill(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { name, skillMd } = body;
+      if (!name || typeof skillMd !== "string") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Missing skill name or skillMd content" }));
+        return;
+      }
+      const reg = SkillRegistry.getInstance();
+      const updated = reg.updateSkill(name, skillMd);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, skill: updated }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err) }));
+    }
+  }
+
+  private async handleDeleteSkill(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    try {
+      let name = url.searchParams.get("name") ?? "";
+      if (!name) {
+        const body = await readBody(req);
+        if (body) {
+          try {
+            const parsed = JSON.parse(body);
+            name = parsed.name ?? "";
+          } catch {}
+        }
+      }
+      if (!name) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Missing skill name" }));
+        return;
+      }
+      const reg = SkillRegistry.getInstance();
+      const ok = reg.deleteSkill(name);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok, deleted: name }));
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: String(err) }));

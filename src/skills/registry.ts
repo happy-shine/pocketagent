@@ -300,4 +300,91 @@ python3 ${scriptPath} [options]
     }
     return created;
   }
+
+  /**
+   * Get skill details including SKILL.md raw content and list of files
+   */
+  getSkill(name: string): {
+    skill: SkillInfo;
+    skillMd: string;
+    files: Array<{ name: string; relPath: string; isDir: boolean; size: number }>;
+  } | null {
+    const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const skills = this.list();
+    const skill = skills.find((s) => s.name === safeName || s.name === name || basename(s.dir) === safeName);
+    if (!skill) return null;
+
+    const skillMdPath = join(skill.dir, "SKILL.md");
+    const skillMd = existsSync(skillMdPath) ? readFileSync(skillMdPath, "utf-8") : "";
+
+    const files: Array<{ name: string; relPath: string; isDir: boolean; size: number }> = [];
+    const scanDir = (dir: string, baseRel = "") => {
+      try {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue;
+          const fullPath = join(dir, entry.name);
+          const relPath = baseRel ? `${baseRel}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            files.push({ name: entry.name, relPath, isDir: true, size: 0 });
+            scanDir(fullPath, relPath);
+          } else {
+            const stat = lstatSync(fullPath);
+            files.push({ name: entry.name, relPath, isDir: false, size: stat.size });
+          }
+        }
+      } catch {}
+    };
+    scanDir(skill.dir);
+
+    return { skill, skillMd, files };
+  }
+
+  /**
+   * Update SKILL.md content of a skill and re-sync across CLIs
+   */
+  updateSkill(name: string, skillMd: string): SkillInfo {
+    const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const skillDir = join(this.hubDir, safeName);
+    if (!existsSync(skillDir)) {
+      throw new Error(`Skill "${name}" not found in hub`);
+    }
+
+    const skillMdPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillMdPath, skillMd, "utf-8");
+
+    this.sync();
+    const updated = this.list().find((s) => s.name === safeName || basename(s.dir) === safeName);
+    if (!updated) {
+      throw new Error(`Failed to update skill "${name}"`);
+    }
+    return updated;
+  }
+
+  /**
+   * Permanently delete a skill from Hub and remove symlinks across all 3 CLIs
+   */
+  deleteSkill(name: string): boolean {
+    const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const hubSkillDir = join(this.hubDir, safeName);
+    if (!existsSync(hubSkillDir)) {
+      return false;
+    }
+
+    // 1. Remove Hub canonical directory
+    rmSync(hubSkillDir, { recursive: true, force: true });
+
+    // 2. Remove symlinks in all 3 CLIs
+    const cliDirs = [this.claudeSkillsDir, this.agySkillsDir, this.codexSkillsDir];
+    for (const dir of cliDirs) {
+      const target = join(dir, safeName);
+      try {
+        if (existsSync(target)) {
+          rmSync(target, { recursive: true, force: true });
+        }
+      } catch {}
+    }
+
+    return true;
+  }
 }

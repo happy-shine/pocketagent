@@ -19,7 +19,7 @@
 
 ## Overview
 
-Terminal agents like **Claude Code**, **OpenAI Codex**, and Google **Antigravity (AGY)** are far more than mere code generators. With full host permissions, they can run bash commands, monitor server processes, manage background services, execute Python data scripts, and invoke custom extension tools.
+Terminal agents like **Claude Code**, **OpenAI Codex**, and Google **Antigravity (AGY)** are far more than mere code generators. With full host permissions, they can analyze documents and images, generate visual assets, search live web news, manage background services, execute Python data scripts, and invoke custom extension tools.
 
 Their main drawback is that **they require you to stay at your desk in front of a terminal**.
 
@@ -55,7 +55,7 @@ While some tools offer official remote features or web interfaces, they come wit
 
 ## Features
 
-- **Ubiquitous Terminal Access Across Devices**: Runs real CLI processes on your machine with native shell, git, and filesystem permissions. Beyond writing code, you can monitor servers, inspect production logs, run maintenance scripts, and review diffs from any chat client.
+- **Ubiquitous Terminal Access Across Devices**: Runs real CLI processes on your machine with native shell, git, and filesystem permissions. Beyond writing code, you can analyze documents and screenshots, generate images, search live news, inspect server logs, and review diffs from any chat client.
 - **Mid-Conversation Engine Switching (`/engine`)**: Switch between Claude Code, OpenAI Codex, and Antigravity anytime within the same conversation. PocketAgent automatically extracts conversation history, modified files, and task goals to hand over context without losing track.
 - **3-CLI Unified Skill Hub**: Manage custom extension skills centrally in `~/.pocketagent/skills/`. Skills are automatically symlinked across Claude, Codex, and AGY, eliminating the need to maintain separate tool definitions for each engine.
 - **Multi-Bot, Group Collaboration & Multi-Channel**: Run multiple Telegram and Discord bots concurrently on a single gateway across DMs and group channels. Group members share conversation context and host CLI subscriptions; each bot can be configured with its own default engine, model, reasoning effort, and custom system prompt (`SOUL.md`).
@@ -68,9 +68,11 @@ While some tools offer official remote features or web interfaces, they come wit
 
 | Scenario | Message / Command | Local Machine Action |
 | :--- | :--- | :--- |
-| **System DevOps** | `Check why the local web service threw 502 errors` | CLI inspects port status and server logs, identifies the root cause, and replies with a summary |
-| **Log & Data Processing** | `Summarize status code breakdown from access.log today` | CLI executes a Python or awk script to parse local logs and returns the summary |
+| **Doc & Image Analysis** | Send a PDF paper / contract / receipt screenshot: `Summarize key findings and calculate total expenses` | CLI uses multimodal capabilities or local scripts to parse content and returns structured highlights |
+| **Live Web & News Search** | `Search for today's top tech breakthroughs and compile a morning briefing` | CLI queries live web sources, aggregates coverage, and pushes a concise summary |
+| **Creative & Image Generation** | `Ask Codex to generate a futuristic cyberpunk poster and save to desktop` | CLI invokes image generation tools to render the asset and sends the image back to chat |
 | **Code Changes on the Go** | `Update auth token expiration to 2h in auth.ts and run vitest` | CLI edits the file, executes the test suite, and outputs the git diff and test status |
+| **Data & File Organization** | `List top 10 largest files in ~/Downloads and suggest what to clean` | CLI runs a quick local Shell/Python script to audit disk usage and reports a breakdown |
 | **Multi-Engine Workflow** | Draft architecture with Claude, then send `/engine` to switch to AGY | Automatically hands off context to Antigravity for implementation against a large codebase |
 
 ---

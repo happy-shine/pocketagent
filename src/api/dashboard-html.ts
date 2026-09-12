@@ -1,119 +1,190 @@
 export function getDashboardHtml(): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PocketAgent Dashboard</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2318181b'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
   <style>
+    /* Minimalist Design System */
     :root {
-      --bg-base: #0b0f19;
-      --bg-surface: #111827;
-      --bg-card: #1a2234;
-      --bg-card-hover: #222d44;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: #6366f1;
-      --text-main: #f3f4f6;
-      --text-muted: #9ca3af;
-      --text-subtle: #6b7280;
-      --primary: #6366f1;
-      --primary-hover: #4f46e5;
-      --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      --emerald: #10b981;
-      --emerald-bg: rgba(16, 185, 129, 0.15);
-      --amber: #f59e0b;
-      --amber-bg: rgba(245, 158, 11, 0.15);
-      --rose: #ef4444;
-      --rose-bg: rgba(239, 68, 68, 0.15);
-      --indigo: #6366f1;
-      --indigo-bg: rgba(99, 102, 241, 0.15);
+      --bg-page: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-card: #ffffff;
+      --bg-card-subtle: #f8fafc;
+      --bg-hover: #f1f5f9;
+      --bg-input: #ffffff;
+      --border: #e2e8f0;
+      --border-subtle: #edf2f7;
+      --border-focus: #0f172a;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      
+      --btn-primary-bg: #0f172a;
+      --btn-primary-text: #ffffff;
+      --btn-primary-hover: #1e293b;
+      
+      --btn-secondary-bg: #ffffff;
+      --btn-secondary-border: #cbd5e1;
+      --btn-secondary-text: #0f172a;
+      --btn-secondary-hover: #f1f5f9;
+      
+      --tag-bg: #f1f5f9;
+      --tag-border: #e2e8f0;
+      --tag-text: #0f172a;
+      
+      --badge-green-bg: #ecfdf5;
+      --badge-green-text: #047857;
+      --badge-green-border: #a7f3d0;
+      
+      --badge-red-bg: #fef2f2;
+      --badge-red-text: #b91c1c;
+      --badge-red-border: #fecaca;
+      
+      --badge-amber-bg: #fffbeb;
+      --badge-amber-text: #b45309;
+      --badge-amber-border: #fde68a;
+      
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
 
+    [data-theme="dark"] {
+      --bg-page: #09090b;
+      --bg-surface: #121215;
+      --bg-card: #121215;
+      --bg-card-subtle: #18181b;
+      --bg-hover: #1c1c21;
+      --bg-input: #18181b;
+      --border: #27272a;
+      --border-subtle: #1f1f23;
+      --border-focus: #fafafa;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      
+      --btn-primary-bg: #fafafa;
+      --btn-primary-text: #09090b;
+      --btn-primary-hover: #e4e4e7;
+      
+      --btn-secondary-bg: #18181b;
+      --btn-secondary-border: #27272a;
+      --btn-secondary-text: #fafafa;
+      --btn-secondary-hover: #222226;
+      
+      --tag-bg: #18181b;
+      --tag-border: #27272a;
+      --tag-text: #fafafa;
+      
+      --badge-green-bg: rgba(5, 150, 105, 0.15);
+      --badge-green-text: #34d399;
+      --badge-green-border: rgba(52, 211, 153, 0.25);
+      
+      --badge-red-bg: rgba(220, 38, 38, 0.15);
+      --badge-red-text: #f87171;
+      --badge-red-border: rgba(248, 113, 113, 0.25);
+      
+      --badge-amber-bg: rgba(217, 119, 6, 0.15);
+      --badge-amber-text: #fbbf24;
+      --badge-amber-border: rgba(251, 191, 36, 0.25);
+      
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    
     body {
-      background-color: var(--bg-base);
-      color: var(--text-main);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      transition: background-color 0.2s ease, color 0.2s ease;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Header */
+    /* Top Navigation Bar */
     header {
       background: var(--bg-surface);
       border-bottom: 1px solid var(--border);
-      padding: 0.85rem 1.75rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
       position: sticky;
       top: 0;
       z-index: 50;
-      backdrop-filter: blur(12px);
+      transition: background-color 0.2s ease, border-color 0.2s ease;
     }
+    
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.85rem;
+      gap: 0.75rem;
     }
-    .brand-logo {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      background: var(--primary-gradient);
+    
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
-    }
-    .brand-logo svg {
-      width: 20px;
-      height: 20px;
-      fill: white;
-    }
-    .brand-title {
-      font-size: 1.15rem;
       font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #fff;
+      font-size: 0.95rem;
     }
-    .brand-subtitle {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 1px;
-    }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.25rem 0.65rem;
-      background: var(--emerald-bg);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      color: var(--emerald);
-      border-radius: 9999px;
-      font-size: 0.75rem;
+    
+    .brand-title {
+      font-size: 1.05rem;
       font-weight: 600;
-    }
-    .status-pulse {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--emerald);
-      box-shadow: 0 0 8px var(--emerald);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
     }
 
-    .header-actions {
+    .header-controls {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.6rem;
+    }
+
+    /* Minimal Segmented Switcher */
+    .segmented-control {
+      display: inline-flex;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .segment-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 0.25rem 0.55rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .segment-btn.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
     }
 
     /* Buttons */
@@ -121,451 +192,471 @@ export function getDashboardHtml(): string {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.45rem;
-      padding: 0.5rem 1rem;
-      font-size: 0.85rem;
-      font-weight: 600;
-      border-radius: 8px;
+      gap: 0.4rem;
+      padding: 0.42rem 0.85rem;
+      font-size: 0.83rem;
+      font-weight: 500;
+      border-radius: 6px;
       cursor: pointer;
       border: 1px solid transparent;
       transition: all 0.15s ease;
       text-decoration: none;
+      font-family: inherit;
     }
     .btn-primary {
-      background: var(--primary-gradient);
-      color: #fff;
-      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.35);
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
     }
     .btn-primary:hover {
-      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.5);
-      transform: translateY(-1px);
+      background: var(--btn-primary-hover);
     }
     .btn-secondary {
-      background: var(--bg-card);
-      border-color: var(--border);
-      color: var(--text-main);
+      background: var(--btn-secondary-bg);
+      border-color: var(--btn-secondary-border);
+      color: var(--btn-secondary-text);
     }
     .btn-secondary:hover {
-      background: var(--bg-card-hover);
-      border-color: rgba(255, 255, 255, 0.15);
+      background: var(--btn-secondary-hover);
     }
     .btn-danger {
-      background: var(--rose-bg);
-      border-color: rgba(239, 68, 68, 0.3);
-      color: var(--rose);
+      background: var(--badge-red-bg);
+      border-color: var(--badge-red-border);
+      color: var(--badge-red-text);
     }
     .btn-danger:hover {
-      background: rgba(239, 68, 68, 0.25);
+      filter: brightness(0.95);
     }
     .btn-sm {
-      padding: 0.3rem 0.65rem;
+      padding: 0.28rem 0.6rem;
       font-size: 0.78rem;
     }
 
-    /* Layout */
-    .app-container {
-      display: flex;
-      flex: 1;
-      max-width: 1440px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 1.5rem 1.75rem;
-      gap: 1.5rem;
-    }
-
-    /* Sidebar Navigation */
-    .sidebar {
-      width: 230px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.65rem 0.9rem;
-      color: var(--text-muted);
-      border-radius: 8px;
-      font-size: 0.88rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      border: 1px solid transparent;
-      user-select: none;
-    }
-    .nav-item:hover {
-      color: #fff;
-      background: rgba(255, 255, 255, 0.04);
-    }
-    .nav-item.active {
-      color: #fff;
-      background: var(--bg-card);
-      border-color: var(--border);
-      font-weight: 600;
-    }
-    .nav-item.active .nav-icon {
-      color: var(--primary);
-    }
-    .nav-icon {
-      font-size: 1.1rem;
+    /* Status Pill */
+    .status-pill {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 20px;
+      gap: 0.4rem;
+      padding: 0.25rem 0.6rem;
+      background: var(--badge-green-bg);
+      border: 1px solid var(--badge-green-border);
+      color: var(--badge-green-text);
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
     }
 
-    /* Main Content Area */
-    .main-content {
-      flex: 1;
-      min-width: 0;
+    /* Horizontal Sub-Navbar */
+    .subnav-wrapper {
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-surface);
     }
+    .subnav {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .subnav::-webkit-scrollbar { display: none; }
+    
+    .nav-tab {
+      padding: 0.65rem 0.95rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      user-select: none;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .nav-tab:hover {
+      color: var(--text-primary);
+    }
+    .nav-tab.active {
+      color: var(--text-primary);
+      border-bottom-color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* Page Content */
+    .app-main {
+      flex: 1;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
     .tab-pane {
       display: none;
     }
     .tab-pane.active {
       display: block;
-      animation: fadeIn 0.2s ease-in-out;
+      animation: fadeIn 0.15s ease-out;
     }
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
+      from { opacity: 0; transform: translateY(2px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Cards & Grids */
+    /* Section Header */
     .section-header {
       margin-bottom: 1.25rem;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
+      gap: 1rem;
     }
     .section-title {
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 600;
       letter-spacing: -0.01em;
+      color: var(--text-primary);
     }
     .section-desc {
       font-size: 0.85rem;
-      color: var(--text-muted);
+      color: var(--text-secondary);
       margin-top: 0.2rem;
     }
 
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.15rem 1.25rem;
+      margin-bottom: 1.1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+    }
+    .card-title {
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .card-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* Metrics Grid */
     .grid-metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      gap: 0.85rem;
+      margin-bottom: 1.25rem;
     }
     .metric-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.15rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
+      border-radius: 8px;
+      padding: 1rem 1.15rem;
+      box-shadow: var(--shadow-sm);
     }
     .metric-label {
       font-size: 0.78rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
     .metric-value {
-      font-size: 1.55rem;
-      font-weight: 700;
-      color: #fff;
+      font-size: 1.45rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0.25rem 0;
+      letter-spacing: -0.02em;
     }
     .metric-sub {
-      font-size: 0.78rem;
-      color: var(--text-subtle);
-    }
-
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem 1.4rem;
-      margin-bottom: 1.25rem;
-    }
-    .card-title {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 0.35rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .card-desc {
-      font-size: 0.82rem;
+      font-size: 0.75rem;
       color: var(--text-muted);
-      margin-bottom: 1rem;
     }
 
-    /* Form controls */
+    /* Form Fields */
     .form-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
     }
     .form-group {
       display: flex;
       flex-direction: column;
-      gap: 0.4rem;
+      gap: 0.35rem;
     }
     .form-label {
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
     .form-control {
-      background: #0f1422;
+      background: var(--bg-input);
       border: 1px solid var(--border);
-      color: #fff;
-      padding: 0.6rem 0.8rem;
-      border-radius: 8px;
-      font-size: 0.88rem;
+      color: var(--text-primary);
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
       outline: none;
-      transition: border-color 0.15s ease;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
       width: 100%;
+      font-family: inherit;
     }
     .form-control:focus {
       border-color: var(--border-focus);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+      box-shadow: 0 0 0 1px var(--border-focus);
     }
     select.form-control {
       appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
       background-repeat: no-repeat;
-      background-position: right 0.75rem center;
-      background-size: 1rem;
-      padding-right: 2.2rem;
+      background-position: right 0.65rem center;
+      background-size: 0.9rem;
+      padding-right: 2rem;
     }
     textarea.form-control {
       resize: vertical;
       min-height: 80px;
-      font-family: inherit;
     }
 
-    /* Engine Selector Radio Cards */
+    /* Engine Cards */
     .engine-cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      gap: 0.85rem;
+      margin-bottom: 1.25rem;
     }
     .engine-card {
       background: var(--bg-card);
-      border: 2px solid var(--border);
-      border-radius: 12px;
-      padding: 1.15rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
       cursor: pointer;
       transition: all 0.15s ease;
-      position: relative;
+      box-shadow: var(--shadow-sm);
     }
     .engine-card:hover {
-      border-color: rgba(99, 102, 241, 0.4);
-      background: var(--bg-card-hover);
+      border-color: var(--text-secondary);
     }
     .engine-card.selected {
-      border-color: var(--primary);
-      background: rgba(99, 102, 241, 0.08);
+      border-color: var(--text-primary);
+      background: var(--bg-card-subtle);
+      box-shadow: 0 0 0 1px var(--text-primary);
     }
-    .engine-card-header {
+    .engine-card-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.4rem;
     }
-    .engine-name {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fff;
-    }
-    .engine-badge {
-      font-size: 0.72rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 6px;
+    .engine-title {
+      font-size: 0.95rem;
       font-weight: 600;
+      color: var(--text-primary);
+    }
+    .engine-tag {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-weight: 500;
     }
     .engine-desc {
-      font-size: 0.8rem;
-      color: var(--text-muted);
+      font-size: 0.78rem;
+      color: var(--text-secondary);
       line-height: 1.4;
     }
 
-    /* Bot cards */
+    /* Bot Cards */
     .bot-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
-      margin-bottom: 1rem;
+      border-radius: 8px;
+      padding: 1.15rem;
+      margin-bottom: 0.85rem;
+      box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
-      gap: 1rem;
-      transition: border-color 0.15s ease;
-    }
-    .bot-card:hover {
-      border-color: rgba(255, 255, 255, 0.15);
+      gap: 0.9rem;
     }
     .bot-card-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 0.75rem;
+      gap: 0.6rem;
     }
-    .bot-title-group {
+    .bot-identity {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.65rem;
     }
-    .channel-icon {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
+    .channel-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    .channel-tg { background: #0088cc; color: white; }
-    .channel-dc { background: #5865F2; color: white; }
+    .channel-tg {
+      background: rgba(0, 136, 204, 0.1);
+      color: #0088cc;
+      border: 1px solid rgba(0, 136, 204, 0.3);
+    }
+    .channel-dc {
+      background: rgba(88, 101, 242, 0.1);
+      color: #5865F2;
+      border: 1px solid rgba(88, 101, 242, 0.3);
+    }
     .bot-name {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #fff;
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: var(--text-primary);
     }
-    .bot-meta {
+    .bot-subtitle {
       font-size: 0.78rem;
-      color: var(--text-muted);
+      color: var(--text-secondary);
     }
 
-    /* Tag/Chip Input */
+    /* Tags Input */
     .tag-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.4rem;
-      background: #0f1422;
+      gap: 0.35rem;
+      background: var(--bg-input);
       border: 1px solid var(--border);
-      padding: 0.4rem;
-      border-radius: 8px;
-      min-height: 42px;
+      padding: 0.35rem;
+      border-radius: 6px;
+      min-height: 38px;
       align-items: center;
     }
     .tag {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      color: var(--text-main);
-      padding: 0.2rem 0.55rem;
-      border-radius: 6px;
-      font-size: 0.78rem;
+      background: var(--tag-bg);
+      border: 1px solid var(--tag-border);
+      color: var(--tag-text);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
       font-family: var(--font-mono);
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
+      gap: 0.3rem;
     }
     .tag-remove {
       cursor: pointer;
-      color: var(--text-subtle);
+      color: var(--text-muted);
       font-weight: bold;
-      line-height: 1;
     }
-    .tag-remove:hover { color: var(--rose); }
+    .tag-remove:hover { color: var(--badge-red-text); }
     .tag-input {
       background: transparent;
       border: none;
-      color: #fff;
-      font-size: 0.82rem;
-      padding: 0.2rem 0.4rem;
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      padding: 0.2rem 0.35rem;
       outline: none;
       flex: 1;
-      min-width: 80px;
+      min-width: 90px;
     }
 
     /* Skills Grid */
     .skills-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 0.85rem;
     }
     .skill-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
+      border-radius: 8px;
+      padding: 1.1rem;
+      box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: 0.65rem;
     }
     .skill-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-    .skill-title {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    .skill-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
     }
     .skill-desc {
-      font-size: 0.82rem;
-      color: var(--text-muted);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
       line-height: 1.45;
       display: -webkit-box;
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .skill-sync-badges {
+    .sync-tags {
       display: flex;
-      gap: 0.4rem;
+      gap: 0.35rem;
     }
-    .sync-badge {
-      font-size: 0.72rem;
-      padding: 0.2rem 0.45rem;
-      border-radius: 6px;
-      font-weight: 600;
+    .sync-tag {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-weight: 500;
     }
-    .sync-ok { background: var(--emerald-bg); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
-    .sync-no { background: var(--rose-bg); color: var(--rose); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .sync-on {
+      background: var(--badge-green-bg);
+      color: var(--badge-green-text);
+      border: 1px solid var(--badge-green-border);
+    }
+    .sync-off {
+      background: var(--badge-red-bg);
+      color: var(--badge-red-text);
+      border: 1px solid var(--badge-red-border);
+    }
 
-    /* Raw YAML Editor */
-    .yaml-editor-wrapper {
-      background: #0f1422;
+    /* Raw YAML */
+    .yaml-box {
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 8px;
       overflow: hidden;
       display: flex;
       flex-direction: column;
     }
-    .yaml-toolbar {
-      background: var(--bg-surface);
+    .yaml-bar {
+      background: var(--bg-card-subtle);
       border-bottom: 1px solid var(--border);
-      padding: 0.6rem 1rem;
+      padding: 0.5rem 0.85rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-    .yaml-textarea {
-      background: transparent;
+    .yaml-editor {
+      background: var(--bg-input);
       border: none;
-      color: #e5e7eb;
+      color: var(--text-primary);
       font-family: var(--font-mono);
-      font-size: 0.88rem;
-      line-height: 1.6;
-      padding: 1rem;
+      font-size: 0.85rem;
+      line-height: 1.55;
+      padding: 0.9rem;
       width: 100%;
       height: 520px;
       outline: none;
@@ -573,43 +664,12 @@ export function getDashboardHtml(): string {
       tab-size: 2;
     }
 
-    /* Toasts */
-    .toast-container {
-      position: fixed;
-      bottom: 1.5rem;
-      right: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-      z-index: 100;
-      max-width: 420px;
-    }
-    .toast {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.85rem 1.15rem;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-    .toast-success { border-left: 4px solid var(--emerald); }
-    .toast-error { border-left: 4px solid var(--rose); }
-    .toast-title { font-size: 0.88rem; font-weight: 700; color: #fff; }
-    .toast-msg { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-
-    /* Modals */
+    /* Modal Dialogs */
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(2px);
       z-index: 90;
       display: none;
       align-items: center;
@@ -620,478 +680,490 @@ export function getDashboardHtml(): string {
     .modal {
       background: var(--bg-surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 10px;
       width: 100%;
-      max-width: 580px;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+      max-width: 540px;
+      box-shadow: var(--shadow-md);
       display: flex;
       flex-direction: column;
       max-height: 90vh;
-      animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .modal-lg { max-width: 780px; }
-    @keyframes modalIn {
-      from { transform: scale(0.95); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
+    .modal-lg { max-width: 720px; }
     .modal-header {
-      padding: 1.15rem 1.4rem;
+      padding: 0.95rem 1.25rem;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-    .modal-title { font-size: 1.15rem; font-weight: 700; color: #fff; }
+    .modal-title { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); }
     .modal-close {
       background: none;
       border: none;
       color: var(--text-muted);
       cursor: pointer;
       font-size: 1.25rem;
+      line-height: 1;
     }
+    .modal-close:hover { color: var(--text-primary); }
     .modal-body {
-      padding: 1.4rem;
+      padding: 1.25rem;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: 0.9rem;
     }
     .modal-footer {
-      padding: 1rem 1.4rem;
+      padding: 0.85rem 1.25rem;
       border-top: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      gap: 0.75rem;
+      gap: 0.6rem;
     }
+
+    /* Toast Container */
+    .toast-container {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 100;
+      max-width: 400px;
+    }
+    .toast {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.8rem 1rem;
+      box-shadow: var(--shadow-md);
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .toast-success { border-left: 3px solid var(--badge-green-text); }
+    .toast-error { border-left: 3px solid var(--badge-red-text); }
+    .toast-title { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+    .toast-msg { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; }
   </style>
 </head>
 <body>
 
-  <!-- Top Header -->
+  <!-- Top Navbar -->
   <header>
-    <div class="brand">
-      <div class="brand-logo">
-        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">PA</div>
+        <div>
+          <div class="brand-title" data-i18n="dashboardTitle">PocketAgent Dashboard</div>
+        </div>
       </div>
-      <div>
-        <div class="brand-title">PocketAgent</div>
-        <div class="brand-subtitle">Gateway & Hot-Config Dashboard</div>
-      </div>
-    </div>
 
-    <div class="header-actions">
-      <div id="statusBadge" class="status-badge">
-        <span class="status-pulse"></span>
-        <span id="statusText">Connecting...</span>
+      <div class="header-controls">
+        <div id="statusBadge" class="status-pill">
+          <span class="status-dot"></span>
+          <span id="statusText" data-i18n="statusOnline">Online</span>
+        </div>
+
+        <!-- Language Switcher -->
+        <div class="segmented-control">
+          <button id="langZh" class="segment-btn" onclick="setLanguage('zh')">中文</button>
+          <button id="langEn" class="segment-btn" onclick="setLanguage('en')">EN</button>
+        </div>
+
+        <!-- Theme Switcher -->
+        <div class="segmented-control">
+          <button id="themeLight" class="segment-btn" onclick="setTheme('light')">☀️</button>
+          <button id="themeDark" class="segment-btn" onclick="setTheme('dark')">🌙</button>
+        </div>
+
+        <button id="btnRefresh" class="btn btn-secondary btn-sm" title="Reload from server" data-i18n="refresh">
+          ↻ Refresh
+        </button>
+        <button id="btnSaveConfig" class="btn btn-primary btn-sm" title="Save & Hot Reload (Cmd+S)" data-i18n="saveAndHotReload">
+          ⚡ Save & Hot Reload
+        </button>
       </div>
-      <button id="btnRefresh" class="btn btn-secondary btn-sm" title="Reload from server">
-        ↻ Refresh
-      </button>
-      <button id="btnSaveConfig" class="btn btn-primary" title="Save & Hot Reload (Cmd+S / Ctrl+S)">
-        ⚡ Save & Hot Reload
-      </button>
     </div>
   </header>
 
-  <!-- App Layout -->
-  <div class="app-container">
-    <!-- Sidebar Tabs -->
-    <nav class="sidebar">
-      <div class="nav-item active" data-tab="overview">
-        <span class="nav-icon">📊</span>
-        <span>Overview</span>
-      </div>
-      <div class="nav-item" data-tab="bots">
-        <span class="nav-icon">🤖</span>
-        <span>Bots</span>
-      </div>
-      <div class="nav-item" data-tab="engines">
-        <span class="nav-icon">⚡</span>
-        <span>Engines</span>
-      </div>
-      <div class="nav-item" data-tab="gateway">
-        <span class="nav-icon">⚙️</span>
-        <span>Gateway</span>
-      </div>
-      <div class="nav-item" data-tab="security">
-        <span class="nav-icon">🔒</span>
-        <span>Security & Auth</span>
-      </div>
-      <div class="nav-item" data-tab="skills">
-        <span class="nav-icon">🧩</span>
-        <span>Skills (3-CLI)</span>
-      </div>
-      <div class="nav-item" data-tab="yaml">
-        <span class="nav-icon">📝</span>
-        <span>Raw YAML</span>
-      </div>
+  <!-- Horizontal Sub-Navbar Tabs -->
+  <div class="subnav-wrapper">
+    <nav class="subnav">
+      <div class="nav-tab active" data-tab="overview" data-i18n="tabOverview">Overview</div>
+      <div class="nav-tab" data-tab="bots" data-i18n="tabBots">Bots</div>
+      <div class="nav-tab" data-tab="engines" data-i18n="tabEngines">Engines</div>
+      <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
+      <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
+      <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (3-CLI)</div>
+      <div class="nav-tab" data-tab="yaml" data-i18n="tabYaml">Raw YAML</div>
     </nav>
+  </div>
 
-    <!-- Main Content Panes -->
-    <main class="main-content">
+  <!-- Main Container -->
+  <main class="app-main">
 
-      <!-- TAB: Overview -->
-      <section id="tab-overview" class="tab-pane active">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">System Overview</h1>
-            <p class="section-desc">Real-time status and operational health of PocketAgent Gateway</p>
+    <!-- TAB: Overview -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="overviewTitle">System Overview</h1>
+          <p class="section-desc" data-i18n="overviewDesc">Real-time metrics and operational health of PocketAgent Gateway</p>
+        </div>
+      </div>
+
+      <div class="grid-metrics">
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricGatewayStatus">Gateway Status</div>
+          <div id="mGatewayStatus" class="metric-value" style="color: var(--badge-green-text);">Online</div>
+          <div id="mGatewayPort" class="metric-sub">Port: --</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricActiveBots">Active Bots</div>
+          <div id="mBotsCount" class="metric-value">0</div>
+          <div id="mBotsDetail" class="metric-sub">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricDefaultEngine">Default Engine</div>
+          <div id="mDefaultEngine" class="metric-value" style="text-transform: uppercase;">--</div>
+          <div class="metric-sub">Claude • Codex • AGY</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricSkillsCount">3-CLI Skills</div>
+          <div id="mSkillsCount" class="metric-value">0</div>
+          <div class="metric-sub">Unified Hub (~/.pocketagent/skills)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header-row">
+          <div class="card-title" data-i18n="configuredBots">Configured Bots</div>
+          <button class="btn btn-secondary btn-sm" onclick="switchTab('bots')" data-i18n="manageBots">Manage Bots →</button>
+        </div>
+        <div class="card-desc" data-i18n="botsDesc">Active chat platform bridges connected to PocketAgent</div>
+        <div id="overviewBotsList" style="display: flex; flex-direction: column; gap: 0.65rem;">
+          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading bots...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header-row">
+          <div class="card-title" data-i18n="engineDiscovery">Engine Discovery & Models</div>
+          <button class="btn btn-secondary btn-sm" onclick="fetchModels(true)" data-i18n="scanModels">Scan Models</button>
+        </div>
+        <div class="card-desc">Dynamically detected CLI binaries and available models on this machine</div>
+        <div id="overviewEnginesGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem;">
+          <!-- Dynamically filled -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Bots -->
+    <section id="tab-bots" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="botsTitle">Bots Management</h1>
+          <p class="section-desc" data-i18n="botsDesc">Configure Telegram and Discord bot bridges, tokens, engines, and access policies</p>
+        </div>
+        <button id="btnAddBot" class="btn btn-primary btn-sm" data-i18n="addBot">+ Add Bot</button>
+      </div>
+
+      <div id="botsContainer">
+        <!-- Dynamically filled -->
+      </div>
+    </section>
+
+    <!-- TAB: Engines -->
+    <section id="tab-engines" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="enginesTitle">Engines Configuration</h1>
+          <p class="section-desc" data-i18n="enginesDesc">Configure Claude Code, OpenAI Codex, and Google Antigravity (AGY) backends</p>
+        </div>
+      </div>
+
+      <!-- Default Engine Selection -->
+      <div class="card">
+        <div class="card-title" data-i18n="defaultEngineCard">Default Execution Engine</div>
+        <div class="card-desc" data-i18n="defaultEngineCardDesc">Engine used for all sessions unless overridden by a bot or /engine command</div>
+        <div class="engine-cards">
+          <div class="engine-card" data-engine="claude" onclick="selectDefaultEngine('claude')">
+            <div class="engine-card-top">
+              <span class="engine-title">Claude Code</span>
+              <span class="engine-tag">Anthropic</span>
+            </div>
+            <p class="engine-desc">Official Claude CLI with CLAUDE.md workspace injection and tools</p>
+          </div>
+          <div class="engine-card" data-engine="codex" onclick="selectDefaultEngine('codex')">
+            <div class="engine-card-top">
+              <span class="engine-title">OpenAI Codex</span>
+              <span class="engine-tag">OpenAI</span>
+            </div>
+            <p class="engine-desc">Codex CLI with AGENTS.md, sandboxing, and autonomous tool calling</p>
+          </div>
+          <div class="engine-card" data-engine="agy" onclick="selectDefaultEngine('agy')">
+            <div class="engine-card-top">
+              <span class="engine-title">Google Antigravity</span>
+              <span class="engine-tag">DeepMind</span>
+            </div>
+            <p class="engine-desc">AGY CLI with native skills, subagents, and Gemini reasoning models</p>
           </div>
         </div>
+      </div>
 
-        <div class="grid-metrics">
-          <div class="metric-card">
-            <span class="metric-label">Gateway Status</span>
-            <span id="mGatewayStatus" class="metric-value" style="color: var(--emerald);">Online</span>
-            <span id="mGatewayPort" class="metric-sub">Port: --</span>
+      <!-- Concurrency & Timeouts -->
+      <div class="card">
+        <div class="card-title" data-i18n="concurrencySettings">Concurrency & Timeouts</div>
+        <div class="card-desc" data-i18n="concurrencyDesc">Process limits and idle lifecycle across all engine adapters</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="maxProcesses">Max Concurrent Processes</label>
+            <input id="cfgMaxProcesses" type="number" class="form-control" min="1" max="50" value="10">
           </div>
-          <div class="metric-card">
-            <span class="metric-label">Active Bots</span>
-            <span id="mBotsCount" class="metric-value">0</span>
-            <span id="mBotsDetail" class="metric-sub">--</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Default Engine</span>
-            <span id="mDefaultEngine" class="metric-value" style="text-transform: uppercase;">--</span>
-            <span id="mEngineDetail" class="metric-sub">Claude • Codex • AGY</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">3-CLI Skills</span>
-            <span id="mSkillsCount" class="metric-value">0</span>
-            <span class="metric-sub">Claude • Codex • AGY mesh</span>
+          <div class="form-group">
+            <label class="form-label" data-i18n="idleTimeoutMs">Idle Process Timeout (ms)</label>
+            <input id="cfgIdleTimeout" type="number" class="form-control" min="60000" step="10000" value="600000">
           </div>
         </div>
+      </div>
 
-        <!-- Connected Bots List Summary -->
-        <div class="card">
-          <div class="card-title">
-            <span>Configured Bots</span>
-            <button class="btn btn-secondary btn-sm" onclick="switchTab('bots')">Manage Bots →</button>
+      <!-- Claude Settings -->
+      <div class="card">
+        <div class="card-title" data-i18n="claudeEngine">Claude Code Engine</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="binaryCommand">Binary Command</label>
+            <input id="cfgClaudeBinary" type="text" class="form-control" value="claude">
           </div>
-          <div class="card-desc">Active chat platform bridges connected to PocketAgent</div>
-          <div id="overviewBotsList" style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <div style="color: var(--text-subtle);">Loading bots...</div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="defaultModel">Default Model</label>
+            <select id="cfgClaudeModel" class="form-control"></select>
           </div>
-        </div>
-
-        <!-- Discovered Engine Capabilities -->
-        <div class="card">
-          <div class="card-title">
-            <span>Engine Discovery & Models</span>
-            <button class="btn btn-secondary btn-sm" onclick="fetchModels(true)">↺ Scan Models</button>
+          <div class="form-group">
+            <label class="form-label" data-i18n="effortLevel">Effort Level</label>
+            <select id="cfgClaudeEffort" class="form-control">
+              <option value="">Default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
           </div>
-          <div class="card-desc">Dynamically detected CLI binaries and available models on this machine</div>
-          <div id="overviewEnginesGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB: Bots -->
-      <section id="tab-bots" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Bots Management</h1>
-            <p class="section-desc">Configure Telegram and Discord bot bridges, tokens, engines, and access policies</p>
-          </div>
-          <button id="btnAddBot" class="btn btn-primary btn-sm">+ Add New Bot</button>
-        </div>
-
-        <div id="botsContainer">
-          <!-- Rendered dynamically -->
-        </div>
-      </section>
-
-      <!-- TAB: Engines -->
-      <section id="tab-engines" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Engines Configuration</h1>
-            <p class="section-desc">Manage CLI execution backends (Claude Code, OpenAI Codex, Google Antigravity)</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="extraArgs">Extra Args</label>
+            <input id="cfgClaudeExtraArgs" type="text" class="form-control" placeholder="--dangerously-skip-permissions">
           </div>
         </div>
+      </div>
 
-        <!-- Default Engine Picker -->
-        <div class="card">
-          <div class="card-title">Default Engine</div>
-          <div class="card-desc">Selected engine used for all sessions unless overridden by a bot or /engine command</div>
-          <div class="engine-cards">
-            <div class="engine-card" data-engine="claude" onclick="selectDefaultEngine('claude')">
-              <div class="engine-card-header">
-                <span class="engine-name">Claude Code</span>
-                <span class="engine-badge" style="background: rgba(217, 119, 6, 0.2); color: #f59e0b;">Anthropic</span>
-              </div>
-              <p class="engine-desc">Official Claude CLI with CLAUDE.md workspace injection and tools</p>
-            </div>
-            <div class="engine-card" data-engine="codex" onclick="selectDefaultEngine('codex')">
-              <div class="engine-card-header">
-                <span class="engine-name">OpenAI Codex</span>
-                <span class="engine-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">OpenAI</span>
-              </div>
-              <p class="engine-desc">Codex CLI with AGENTS.md, sandboxing, and autonomous tool calling</p>
-            </div>
-            <div class="engine-card" data-engine="agy" onclick="selectDefaultEngine('agy')">
-              <div class="engine-card-header">
-                <span class="engine-name">Google Antigravity</span>
-                <span class="engine-badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">DeepMind</span>
-              </div>
-              <p class="engine-desc">AGY CLI with native skills, subagents, and Gemini reasoning models</p>
-            </div>
+      <!-- Codex Settings -->
+      <div class="card">
+        <div class="card-title" data-i18n="codexEngine">OpenAI Codex Engine</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="binaryCommand">Binary Command</label>
+            <input id="cfgCodexBinary" type="text" class="form-control" value="codex">
           </div>
-        </div>
-
-        <!-- Global Engine Concurrency Settings -->
-        <div class="card">
-          <div class="card-title">Concurrency & Timeouts</div>
-          <div class="card-desc">Process limits and idle lifecycle across all engine adapters</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Max Concurrent Processes</label>
-              <input id="cfgMaxProcesses" type="number" class="form-control" min="1" max="50" value="10">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Idle Process Timeout (ms)</label>
-              <input id="cfgIdleTimeout" type="number" class="form-control" min="60000" step="10000" value="600000">
-            </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="defaultModel">Default Model</label>
+            <select id="cfgCodexModel" class="form-control"></select>
           </div>
-        </div>
-
-        <!-- Individual Engine Settings -->
-        <div class="card">
-          <div class="card-title">Claude Code Engine</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Binary Command</label>
-              <input id="cfgClaudeBinary" type="text" class="form-control" value="claude">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Default Model</label>
-              <select id="cfgClaudeModel" class="form-control"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Effort</label>
-              <select id="cfgClaudeEffort" class="form-control">
-                <option value="">Default</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Extra Args (comma separated)</label>
-              <input id="cfgClaudeExtraArgs" type="text" class="form-control" placeholder="--dangerously-skip-permissions">
-            </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="sandboxMode">Sandbox Mode</label>
+            <select id="cfgCodexSandbox" class="form-control">
+              <option value="danger-full-access">danger-full-access (Unrestricted)</option>
+              <option value="workspace-write">workspace-write (Workspace Only)</option>
+              <option value="read-only">read-only (Read Only)</option>
+            </select>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">OpenAI Codex Engine</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Binary Command</label>
-              <input id="cfgCodexBinary" type="text" class="form-control" value="codex">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Default Model</label>
-              <select id="cfgCodexModel" class="form-control"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Sandbox Mode</label>
-              <select id="cfgCodexSandbox" class="form-control">
-                <option value="danger-full-access">danger-full-access (Unrestricted)</option>
-                <option value="workspace-write">workspace-write (Workspace Only)</option>
-                <option value="read-only">read-only (Read Only)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Approval Policy</label>
-              <select id="cfgCodexApproval" class="form-control">
-                <option value="never">never (Auto-approve)</option>
-                <option value="on-request">on-request (Interactive)</option>
-                <option value="untrusted">untrusted (Prompt always)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Google Antigravity (AGY) Engine</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Binary Command</label>
-              <input id="cfgAgyBinary" type="text" class="form-control" value="agy">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Default Model</label>
-              <select id="cfgAgyModel" class="form-control"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Effort</label>
-              <select id="cfgAgyEffort" class="form-control">
-                <option value="">Default</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Extra Args (comma separated)</label>
-              <input id="cfgAgyExtraArgs" type="text" class="form-control" placeholder="--resume">
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB: Gateway -->
-      <section id="tab-gateway" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Gateway & Network</h1>
-            <p class="section-desc">Host listening port, log levels, formatting, and file storage directories</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Server Settings</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">API / Dashboard Port</label>
-              <input id="cfgPort" type="number" class="form-control" min="1024" max="65535" value="18790">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Data Directory</label>
-              <input id="cfgDataDir" type="text" class="form-control" value="~/.pocketagent">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Log Level</label>
-              <select id="cfgLogLevel" class="form-control">
-                <option value="debug">debug</option>
-                <option value="info">info</option>
-                <option value="warn">warn</option>
-                <option value="error">error</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Log Format</label>
-              <select id="cfgLogFormat" class="form-control">
-                <option value="pretty">pretty (Colorized console)</option>
-                <option value="json">json (Structured JSON)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB: Security & Auth -->
-      <section id="tab-security" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Security & Pairing</h1>
-            <p class="section-desc">Manage authentication policies and one-click approve pending device pairings</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Global Auth Policy</div>
-          <div class="card-desc">Default policy applied to bots without explicit policy overrides</div>
-          <div class="form-group" style="max-width: 320px;">
-            <select id="cfgDefaultAuthPolicy" class="form-control">
-              <option value="pairing">pairing (Requires one-time challenge code)</option>
-              <option value="allowlist">allowlist (Restricted to allowFrom IDs)</option>
-              <option value="open">open (Accept all inbound messages)</option>
-              <option value="disabled">disabled (Ignore all messages)</option>
+          <div class="form-group">
+            <label class="form-label" data-i18n="approvalPolicy">Approval Policy</label>
+            <select id="cfgCodexApproval" class="form-control">
+              <option value="never">never (Auto-approve)</option>
+              <option value="on-request">on-request (Interactive)</option>
+              <option value="untrusted">untrusted (Prompt always)</option>
             </select>
           </div>
         </div>
+      </div>
 
-        <!-- Pending Pairings -->
-        <div class="card">
-          <div class="card-title">Pending Pairing Requests</div>
-          <div class="card-desc">Users or groups attempting to authenticate via pairing code</div>
-          <div id="pendingPairingsContainer" style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <div style="color: var(--text-subtle);">No pending pairing requests.</div>
+      <!-- AGY Settings -->
+      <div class="card">
+        <div class="card-title" data-i18n="agyEngine">Google Antigravity (AGY) Engine</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="binaryCommand">Binary Command</label>
+            <input id="cfgAgyBinary" type="text" class="form-control" value="agy">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="defaultModel">Default Model</label>
+            <select id="cfgAgyModel" class="form-control"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="effortLevel">Effort Level</label>
+            <select id="cfgAgyEffort" class="form-control">
+              <option value="">Default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="extraArgs">Extra Args</label>
+            <input id="cfgAgyExtraArgs" type="text" class="form-control" placeholder="--resume">
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- TAB: Skills -->
-      <section id="tab-skills" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Skills (3-CLI Mesh)</h1>
-            <p class="section-desc">Unified hub at <code>~/.pocketagent/skills/</code> mirrored to Claude Code, Codex, and AGY</p>
+    <!-- TAB: Gateway -->
+    <section id="tab-gateway" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="gatewayTitle">Gateway & Network</h1>
+          <p class="section-desc" data-i18n="gatewayDesc">Host listening port, log levels, formatting, and file storage directories</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" data-i18n="gatewayTitle">Server Settings</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="apiPort">API / Dashboard Port</label>
+            <input id="cfgPort" type="number" class="form-control" min="1024" max="65535" value="18790">
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button id="btnSyncSkills" class="btn btn-secondary btn-sm">↻ Sync 3-CLI Skills</button>
-            <button id="btnNewSkill" class="btn btn-primary btn-sm">+ New Skill</button>
+          <div class="form-group">
+            <label class="form-label" data-i18n="dataDir">Data Directory</label>
+            <input id="cfgDataDir" type="text" class="form-control" value="~/.pocketagent">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="logLevel">Log Level</label>
+            <select id="cfgLogLevel" class="form-control">
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="logFormat">Log Format</label>
+            <select id="cfgLogFormat" class="form-control">
+              <option value="pretty">pretty</option>
+              <option value="json">json</option>
+            </select>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div id="skillsGrid" class="skills-grid">
-          <!-- Rendered dynamically -->
+    <!-- TAB: Security -->
+    <section id="tab-security" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="securityTitle">Security & Pairing</h1>
+          <p class="section-desc" data-i18n="securityDesc">Authentication policies and one-click approval for pending device pairings</p>
         </div>
-      </section>
+      </div>
 
-      <!-- TAB: Raw YAML -->
-      <section id="tab-yaml" class="tab-pane">
-        <div class="section-header">
-          <div>
-            <h1 class="section-title">Raw YAML Editor</h1>
-            <p class="section-desc">Directly view and edit <code>config.yaml</code> with live schema validation</p>
-          </div>
-          <button id="btnApplyYaml" class="btn btn-primary btn-sm">Apply & Hot Reload</button>
+      <div class="card">
+        <div class="card-title" data-i18n="globalAuthPolicy">Global Default Policy</div>
+        <div class="card-desc" data-i18n="globalAuthDesc">Applied to bots without explicit policy overrides</div>
+        <div class="form-group" style="max-width: 320px;">
+          <select id="cfgDefaultAuthPolicy" class="form-control">
+            <option value="pairing">pairing</option>
+            <option value="allowlist">allowlist</option>
+            <option value="open">open</option>
+            <option value="disabled">disabled</option>
+          </select>
         </div>
+      </div>
 
-        <div class="yaml-editor-wrapper">
-          <div class="yaml-toolbar">
-            <span id="yamlValidationStatus" style="font-size: 0.8rem; color: var(--emerald);">✓ Ready</span>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Changes here sync with visual form</span>
-          </div>
-          <textarea id="rawYamlEditor" class="yaml-textarea" spellcheck="false"></textarea>
+      <div class="card">
+        <div class="card-title" data-i18n="pendingPairings">Pending Pairing Requests</div>
+        <div class="card-desc" data-i18n="pendingPairingsDesc">Users or groups attempting to authenticate via pairing code</div>
+        <div id="pendingPairingsContainer" style="display: flex; flex-direction: column; gap: 0.65rem;">
+          <div style="color: var(--text-muted); font-size: 0.85rem;" data-i18n="noPendingPairings">No pending pairing requests.</div>
         </div>
-      </section>
+      </div>
+    </section>
 
-    </main>
-  </div>
+    <!-- TAB: Skills -->
+    <section id="tab-skills" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="skillsTitle">Skills (3-CLI Mesh)</h1>
+          <p class="section-desc" data-i18n="skillsDesc">Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, and AGY</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btnSyncSkills" class="btn btn-secondary btn-sm" data-i18n="syncSkills">↻ Sync All Skills</button>
+          <button id="btnNewSkill" class="btn btn-primary btn-sm" data-i18n="newSkill">+ New Skill</button>
+        </div>
+      </div>
 
-  <!-- Toast Container -->
+      <div id="skillsGrid" class="skills-grid">
+        <!-- Dynamically filled -->
+      </div>
+    </section>
+
+    <!-- TAB: Raw YAML -->
+    <section id="tab-yaml" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="rawYamlTitle">Raw YAML Editor</h1>
+          <p class="section-desc" data-i18n="rawYamlDesc">Directly view and edit config.yaml with live schema validation</p>
+        </div>
+        <button id="btnApplyYaml" class="btn btn-primary btn-sm" data-i18n="applyYaml">Apply & Hot Reload</button>
+      </div>
+
+      <div class="yaml-box">
+        <div class="yaml-bar">
+          <span id="yamlValidationStatus" style="font-size: 0.8rem; color: var(--badge-green-text);" data-i18n="yamlReady">✓ Schema Valid</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Syncs with visual forms</span>
+        </div>
+        <textarea id="rawYamlEditor" class="yaml-editor" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notifications -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Modal: Add / Edit Bot -->
   <div id="modalBot" class="modal-backdrop">
     <div class="modal">
       <div class="modal-header">
-        <div class="modal-title" id="modalBotTitle">Add New Bot</div>
+        <div class="modal-title" data-i18n="modalAddBotTitle">Add New Bot</div>
         <button class="modal-close" onclick="closeModal('modalBot')">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Bot Name (unique identifier)</label>
+          <label class="form-label" data-i18n="modalBotName">Bot Name</label>
           <input id="botModalName" type="text" class="form-control" placeholder="my-bot">
         </div>
         <div class="form-group">
-          <label class="form-label">Channel</label>
+          <label class="form-label" data-i18n="modalChannel">Channel</label>
           <select id="botModalChannel" class="form-control">
             <option value="telegram">Telegram</option>
             <option value="discord">Discord</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Bot Token</label>
-          <input id="botModalToken" type="password" class="form-control" placeholder="Paste bot token from BotFather or Discord portal">
+          <label class="form-label" data-i18n="modalToken">Bot Token</label>
+          <input id="botModalToken" type="password" class="form-control" placeholder="Bot Token">
         </div>
         <div class="form-group">
-          <label class="form-label">Engine (optional override)</label>
+          <label class="form-label" data-i18n="engineOverride">Engine Override</label>
           <select id="botModalEngine" class="form-control">
-            <option value="">Inherit Default Engine</option>
+            <option value="" data-i18n="inheritDefault">Inherit Global Default</option>
             <option value="claude">Claude Code</option>
             <option value="codex">OpenAI Codex</option>
             <option value="agy">Google Antigravity (AGY)</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">DM Access Policy</label>
+          <label class="form-label" data-i18n="dmPolicy">DM Policy</label>
           <select id="botModalDmPolicy" class="form-control">
             <option value="pairing">pairing</option>
             <option value="allowlist">allowlist</option>
@@ -1100,7 +1172,7 @@ export function getDashboardHtml(): string {
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Group Access Policy</label>
+          <label class="form-label" data-i18n="groupPolicy">Group Policy</label>
           <select id="botModalGroupPolicy" class="form-control">
             <option value="pairing">pairing</option>
             <option value="allowlist">allowlist</option>
@@ -1110,8 +1182,8 @@ export function getDashboardHtml(): string {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modalBot')">Cancel</button>
-        <button id="btnSaveModalBot" class="btn btn-primary">Add Bot</button>
+        <button class="btn btn-secondary" onclick="closeModal('modalBot')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnSaveModalBot" class="btn btn-primary" data-i18n="modalConfirm">Add Bot</button>
       </div>
     </div>
   </div>
@@ -1120,16 +1192,16 @@ export function getDashboardHtml(): string {
   <div id="modalSoul" class="modal-backdrop">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <div class="modal-title" id="soulModalTitle">Edit Persona (SOUL.md)</div>
+        <div class="modal-title" id="soulModalTitle" data-i18n="modalSoulTitle">Edit Persona (SOUL.md)</div>
         <button class="modal-close" onclick="closeModal('modalSoul')">×</button>
       </div>
       <div class="modal-body">
-        <p class="section-desc">Defines the bot's core personality, guidelines, and behavioral traits injected into the system prompt.</p>
-        <textarea id="soulEditorText" class="form-control" style="height: 320px; font-family: var(--font-mono); font-size: 0.88rem;"></textarea>
+        <p class="card-desc" style="margin-bottom: 0.5rem;" data-i18n="modalSoulDesc">Defines the bot's core personality, guidelines, and behavioral traits.</p>
+        <textarea id="soulEditorText" class="form-control" style="height: 340px; font-family: var(--font-mono); font-size: 0.85rem;"></textarea>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modalSoul')">Close</button>
-        <button id="btnSaveSoul" class="btn btn-primary">Save SOUL.md</button>
+        <button class="btn btn-secondary" onclick="closeModal('modalSoul')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnSaveSoul" class="btn btn-primary" data-i18n="modalSoulSave">Save SOUL.md</button>
       </div>
     </div>
   </div>
@@ -1138,72 +1210,320 @@ export function getDashboardHtml(): string {
   <div id="modalNewSkill" class="modal-backdrop">
     <div class="modal">
       <div class="modal-header">
-        <div class="modal-title">Create New Skill</div>
+        <div class="modal-title" data-i18n="modalNewSkillTitle">Create New Skill</div>
         <button class="modal-close" onclick="closeModal('modalNewSkill')">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Skill Name</label>
+          <label class="form-label" data-i18n="modalSkillName">Skill Name</label>
           <input id="newSkillName" type="text" class="form-control" placeholder="e.g. stock-analyzer">
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
+          <label class="form-label" data-i18n="modalSkillDesc">Description</label>
           <textarea id="newSkillDesc" class="form-control" placeholder="What does this skill do and when should the engine call it?"></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modalNewSkill')">Cancel</button>
-        <button id="btnCreateSkillConfirm" class="btn btn-primary">Create & Sync</button>
+        <button class="btn btn-secondary" onclick="closeModal('modalNewSkill')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnCreateSkillConfirm" class="btn btn-primary" data-i18n="modalSkillCreate">Create & Sync</button>
       </div>
     </div>
   </div>
 
   <script>
-    // Application State
+    // Bilingual Dictionary
+    const I18N = {
+      zh: {
+        dashboardTitle: "PocketAgent 网关控制台",
+        statusOnline: "运行中",
+        statusOffline: "离线 / 异常",
+        refresh: "↻ 刷新",
+        saveAndHotReload: "⚡ 保存并热更新",
+        saving: "正在保存...",
+        tabOverview: "系统概览",
+        tabBots: "机器人管理",
+        tabEngines: "模型引擎",
+        tabGateway: "网关设置",
+        tabSecurity: "安全与配对",
+        tabSkills: "技能中心",
+        tabYaml: "YAML 源码",
+        
+        overviewTitle: "系统概览",
+        overviewDesc: "PocketAgent 网关与多平台桥接器的实时运行状态",
+        metricGatewayStatus: "网关状态",
+        metricActiveBots: "已接入机器人",
+        metricDefaultEngine: "全局默认引擎",
+        metricSkillsCount: "3-CLI 共享技能",
+        configuredBots: "已配置的机器人",
+        manageBots: "管理机器人 →",
+        engineDiscovery: "引擎与可用模型",
+        scanModels: "重新扫描模型",
+        
+        botsTitle: "机器人管理",
+        botsDesc: "管理 Telegram 与 Discord 机器人桥接实例、Token 凭据、引擎分流与用户权限",
+        addBot: "+ 添加机器人",
+        noBotsConfigured: "暂无配置的机器人",
+        noBotsDesc: "请添加首个 Telegram 或 Discord 机器人以开启桥接服务。",
+        botToken: "Bot 访问密钥 (Token)",
+        engineOverride: "引擎独立覆盖",
+        inheritDefault: "继承全局默认",
+        dmPolicy: "私聊策略 (DM Policy)",
+        groupPolicy: "群聊策略 (Group Policy)",
+        allowedUsers: "授权用户白名单 (allowFrom)",
+        allowedGroups: "授权群组 ID (groups)",
+        addUserPlaceholder: "+ 输入用户 ID 并按回车",
+        addGroupPlaceholder: "+ 输入群组 ID 并按回车",
+        editSoul: "✎ SOUL.md",
+        deleteBot: "删除",
+        confirmDeleteBot: "确认删除机器人 \\"{name}\\" 吗？",
+        botAddedToast: "已添加机器人 \\"{name}\\"，点击「保存并热更新」生效。",
+        botDeletedToast: "已移除机器人，点击「保存并热更新」生效。",
+
+        enginesTitle: "模型引擎设置",
+        enginesDesc: "配置 Claude Code、OpenAI Codex 与 Google Antigravity (AGY) 执行引擎",
+        defaultEngineCard: "全局默认执行引擎",
+        defaultEngineCardDesc: "所有未单独指定引擎的机器人会话将默认使用此引擎处理任务",
+        concurrencySettings: "并发与超时控制",
+        concurrencyDesc: "控制 CLI 引擎的最大进程数与空闲释放时间",
+        maxProcesses: "最大并发进程数",
+        idleTimeoutMs: "进程空闲超时 (毫秒)",
+        claudeEngine: "Claude Code 引擎 (Anthropic)",
+        codexEngine: "OpenAI Codex 引擎 (OpenAI)",
+        agyEngine: "Google Antigravity 引擎 (DeepMind)",
+        binaryCommand: "命令行二进制 (Binary)",
+        defaultModel: "默认模型",
+        effortLevel: "思考深度 (Effort)",
+        extraArgs: "附加 CLI 启动参数 (逗号分隔)",
+        sandboxMode: "沙箱权限等级",
+        approvalPolicy: "执行审批模式",
+        
+        gatewayTitle: "网关与服务配置",
+        gatewayDesc: "服务监听端口、数据持久化存储目录与日志格式",
+        apiPort: "服务监听端口 (Port)",
+        dataDir: "数据目录 (dataDir)",
+        logLevel: "日志级别 (logLevel)",
+        logFormat: "日志输出格式 (logFormat)",
+        
+        securityTitle: "安全与配对审批",
+        securityDesc: "全局身份认证策略与免命令行一键批准用户配对申请",
+        globalAuthPolicy: "全局认证默认策略",
+        globalAuthDesc: "当机器人未显式配置私聊或群聊策略时默认生效",
+        pendingPairings: "待审批配对申请",
+        pendingPairingsDesc: "用户或群组在发起配对时生成的待确认校验码",
+        noPendingPairings: "当前没有待处理的配对申请。",
+        approve: "✓ 批准",
+        pairingApprovedToast: "已批准用户 {id} 的配对申请 (Bot: {bot})",
+        
+        skillsTitle: "3-CLI 技能中心",
+        skillsDesc: "统一技能库 (~/.pocketagent/skills/) 已物理软链至 Claude、Codex 与 AGY 客户端",
+        syncSkills: "↻ 全网同步技能",
+        newSkill: "+ 新建技能",
+        noSkillsFound: "未检测到自定义技能，点击上方「新建技能」快速创建。",
+        
+        rawYamlTitle: "YAML 源码编辑器",
+        rawYamlDesc: "直接查看与编辑 config.yaml 完整内容，包含实时规则校验",
+        applyYaml: "应用并热更新",
+        yamlReady: "✓ 规则校验通过",
+        yamlError: "✗ 格式或语法错误",
+        
+        modalAddBotTitle: "添加新机器人",
+        modalBotName: "机器人标识名 (例如 atri-bot)",
+        modalChannel: "所属通讯平台",
+        modalToken: "Bot Token",
+        modalCancel: "取消",
+        modalConfirm: "添加机器人",
+        modalSoulTitle: "编辑机器人设定 (SOUL.md)",
+        modalSoulDesc: "定义该机器人的性格、行为基准与角色认知，在会话初始化时注入系统提示词。",
+        modalSoulSave: "保存 SOUL.md",
+        modalNewSkillTitle: "创建新技能",
+        modalSkillName: "技能英文标识 (如 web-search)",
+        modalSkillDesc: "技能功能说明与调用场景描述",
+        modalSkillCreate: "创建并同步",
+        
+        hotReloadSuccess: "✓ 热更新成功生效",
+        hotReloadFailed: "热更新失败",
+      },
+      en: {
+        dashboardTitle: "PocketAgent Dashboard",
+        statusOnline: "Online",
+        statusOffline: "Offline / Error",
+        refresh: "↻ Refresh",
+        saveAndHotReload: "⚡ Save & Hot Reload",
+        saving: "Saving...",
+        tabOverview: "Overview",
+        tabBots: "Bots",
+        tabEngines: "Engines",
+        tabGateway: "Gateway",
+        tabSecurity: "Security & Auth",
+        tabSkills: "Skills (3-CLI)",
+        tabYaml: "Raw YAML",
+        
+        overviewTitle: "System Overview",
+        overviewDesc: "Real-time metrics and operational health of PocketAgent Gateway",
+        metricGatewayStatus: "Gateway Status",
+        metricActiveBots: "Active Bots",
+        metricDefaultEngine: "Default Engine",
+        metricSkillsCount: "3-CLI Skills",
+        configuredBots: "Configured Bots",
+        manageBots: "Manage Bots →",
+        engineDiscovery: "Engine Discovery & Models",
+        scanModels: "Scan Models",
+        
+        botsTitle: "Bots Management",
+        botsDesc: "Configure Telegram and Discord bot bridges, tokens, engines, and access policies",
+        addBot: "+ Add Bot",
+        noBotsConfigured: "No Bots Configured",
+        noBotsDesc: "Add your first Telegram or Discord bot to get started.",
+        botToken: "Bot Token",
+        engineOverride: "Engine Override",
+        inheritDefault: "Inherit Global Default",
+        dmPolicy: "DM Policy",
+        groupPolicy: "Group Policy",
+        allowedUsers: "Allowed User IDs (allowFrom)",
+        allowedGroups: "Allowed Group IDs (groups)",
+        addUserPlaceholder: "+ Type user ID and press Enter",
+        addGroupPlaceholder: "+ Type group ID and press Enter",
+        editSoul: "✎ SOUL.md",
+        deleteBot: "Delete",
+        confirmDeleteBot: "Delete bot \\"{name}\\"?",
+        botAddedToast: "Added bot \\"{name}\\", click 'Save & Hot Reload' to apply.",
+        botDeletedToast: "Bot removed, click 'Save & Hot Reload' to apply.",
+
+        enginesTitle: "Engines Configuration",
+        enginesDesc: "Configure Claude Code, OpenAI Codex, and Google Antigravity (AGY) backends",
+        defaultEngineCard: "Default Execution Engine",
+        defaultEngineCardDesc: "Engine used for all sessions unless overridden by a bot or /engine command",
+        concurrencySettings: "Concurrency & Timeouts",
+        concurrencyDesc: "Process limits and idle lifecycle across all engine adapters",
+        maxProcesses: "Max Concurrent Processes",
+        idleTimeoutMs: "Idle Process Timeout (ms)",
+        claudeEngine: "Claude Code Engine",
+        codexEngine: "OpenAI Codex Engine",
+        agyEngine: "Google Antigravity (AGY) Engine",
+        binaryCommand: "Binary Command",
+        defaultModel: "Default Model",
+        effortLevel: "Effort Level",
+        extraArgs: "Extra Args",
+        sandboxMode: "Sandbox Mode",
+        approvalPolicy: "Approval Policy",
+        
+        gatewayTitle: "Gateway & Network",
+        gatewayDesc: "Host listening port, log levels, formatting, and file storage directories",
+        apiPort: "API / Dashboard Port",
+        dataDir: "Data Directory",
+        logLevel: "Log Level",
+        logFormat: "Log Format",
+        
+        securityTitle: "Security & Pairing",
+        securityDesc: "Authentication policies and one-click approval for pending device pairings",
+        globalAuthPolicy: "Global Default Policy",
+        globalAuthDesc: "Applied to bots without explicit policy overrides",
+        pendingPairings: "Pending Pairing Requests",
+        pendingPairingsDesc: "Users or groups attempting to authenticate via pairing code",
+        noPendingPairings: "No pending pairing requests.",
+        approve: "✓ Approve",
+        pairingApprovedToast: "Approved pairing for user {id} (bot: {bot})",
+        
+        skillsTitle: "Skills (3-CLI Mesh)",
+        skillsDesc: "Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, and AGY",
+        syncSkills: "↻ Sync All Skills",
+        newSkill: "+ New Skill",
+        noSkillsFound: "No custom skills found. Click 'New Skill' to create one.",
+        
+        rawYamlTitle: "Raw YAML Editor",
+        rawYamlDesc: "Directly view and edit config.yaml with live schema validation",
+        applyYaml: "Apply & Hot Reload",
+        yamlReady: "✓ Schema Valid",
+        yamlError: "✗ Syntax / Validation Error",
+        
+        modalAddBotTitle: "Add New Bot",
+        modalBotName: "Bot Name",
+        modalChannel: "Channel",
+        modalToken: "Bot Token",
+        modalCancel: "Cancel",
+        modalConfirm: "Add Bot",
+        modalSoulTitle: "Edit Persona (SOUL.md)",
+        modalSoulDesc: "Defines the bot's core personality, guidelines, and behavioral traits.",
+        modalSoulSave: "Save SOUL.md",
+        modalNewSkillTitle: "Create New Skill",
+        modalSkillName: "Skill Name",
+        modalSkillDesc: "Description",
+        modalSkillCreate: "Create & Sync",
+        
+        hotReloadSuccess: "✓ Hot Reload Successful",
+        hotReloadFailed: "Hot reload failed",
+      }
+    };
+
+    // State
+    let currentLang = localStorage.getItem("pa_lang") || (navigator.language.startsWith("zh") ? "zh" : "en");
+    let currentTheme = localStorage.getItem("pa_theme") || "light";
     let currentConfig = null;
     let currentYaml = "";
     let systemStatus = null;
     let capabilities = {};
     let activeSoulBotId = null;
 
-    // Elements
-    const statusBadge = document.getElementById("statusBadge");
-    const statusText = document.getElementById("statusText");
-    const toastContainer = document.getElementById("toastContainer");
-    const rawYamlEditor = document.getElementById("rawYamlEditor");
+    function t(key, vars = {}) {
+      const dict = I18N[currentLang] || I18N.en;
+      let text = dict[key] || I18N.en[key] || key;
+      for (const [k, v] of Object.entries(vars)) {
+        text = text.replace(new RegExp(\`\\\\{\${k}\\\\}\`, "g"), v);
+      }
+      return text;
+    }
 
-    // Initialize
-    async function init() {
-      setupTabNavigation();
-      setupKeyboardShortcuts();
-      setupEvents();
-      await Promise.all([
-        fetchStatus(),
-        fetchConfig(),
-        fetchModels(),
-        fetchSkills(),
-        fetchPairings()
-      ]);
+    function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem("pa_lang", lang);
+      document.getElementById("langZh").classList.toggle("active", lang === "zh");
+      document.getElementById("langEn").classList.toggle("active", lang === "en");
+      updateDomI18n();
+      if (currentConfig) {
+        renderBotsManager(currentConfig.bots || []);
+      }
+      if (systemStatus) {
+        renderOverviewBots(systemStatus.bots || []);
+      }
+      renderOverviewEngines();
+    }
+
+    function setTheme(theme) {
+      currentTheme = theme;
+      localStorage.setItem("pa_theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+      document.getElementById("themeLight").classList.toggle("active", theme === "light");
+      document.getElementById("themeDark").classList.toggle("active", theme === "dark");
+    }
+
+    function updateDomI18n() {
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        el.textContent = t(key);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        const key = el.getAttribute("data-i18n-placeholder");
+        el.setAttribute("placeholder", t(key));
+      });
     }
 
     // Tab Navigation
     function setupTabNavigation() {
-      document.querySelectorAll(".nav-item").forEach(item => {
-        item.addEventListener("click", () => {
-          const tab = item.dataset.tab;
-          switchTab(tab);
+      document.querySelectorAll(".nav-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          switchTab(tab.dataset.tab);
         });
       });
     }
 
     function switchTab(tabId) {
-      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
       document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
 
-      const targetNav = document.querySelector(\`.nav-item[data-tab="\${tabId}"]\`);
+      const targetTab = document.querySelector(\`.nav-tab[data-tab="\${tabId}"]\`);
       const targetPane = document.getElementById(\`tab-\${tabId}\`);
-      if (targetNav && targetPane) {
-        targetNav.classList.add("active");
+      if (targetTab && targetPane) {
+        targetTab.classList.add("active");
         targetPane.classList.add("active");
       }
 
@@ -1222,10 +1542,26 @@ export function getDashboardHtml(): string {
       });
     }
 
-    // Event Bindings
+    // Initialize
+    async function init() {
+      setTheme(currentTheme);
+      setLanguage(currentLang);
+      setupTabNavigation();
+      setupKeyboardShortcuts();
+      setupEvents();
+
+      await Promise.all([
+        fetchStatus(),
+        fetchConfig(),
+        fetchModels(),
+        fetchSkills(),
+        fetchPairings()
+      ]);
+    }
+
     function setupEvents() {
       document.getElementById("btnRefresh").addEventListener("click", async () => {
-        showToast("Refreshing state from server...", "info");
+        showToast(t("refresh") + "...", "info");
         await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings()]);
       });
 
@@ -1243,15 +1579,12 @@ export function getDashboardHtml(): string {
     async function fetchStatus() {
       try {
         const res = await fetch("/api/status");
-        if (!res.ok) throw new Error("Status API error");
+        if (!res.ok) throw new Error("API error");
         const data = await res.json();
         systemStatus = data;
 
-        statusBadge.style.background = "var(--emerald-bg)";
-        statusBadge.style.color = "var(--emerald)";
-        statusText.textContent = \`Online (PID \${data.gateway.pid})\`;
-
-        document.getElementById("mGatewayStatus").textContent = "Online";
+        document.getElementById("statusText").textContent = t("statusOnline") + \` (PID \${data.gateway.pid})\`;
+        document.getElementById("mGatewayStatus").textContent = t("statusOnline");
         document.getElementById("mGatewayPort").textContent = \`Port: \${data.gateway.port} • Uptime: \${formatUptime(data.gateway.uptime)}\`;
         document.getElementById("mBotsCount").textContent = data.bots.length;
         document.getElementById("mBotsDetail").textContent = \`\${data.bots.filter(b => b.channel === 'telegram').length} Telegram • \${data.bots.filter(b => b.channel === 'discord').length} Discord\`;
@@ -1259,9 +1592,7 @@ export function getDashboardHtml(): string {
 
         renderOverviewBots(data.bots);
       } catch (err) {
-        statusBadge.style.background = "var(--rose-bg)";
-        statusBadge.style.color = "var(--rose)";
-        statusText.textContent = "Offline / Error";
+        document.getElementById("statusText").textContent = t("statusOffline");
       }
     }
 
@@ -1269,65 +1600,55 @@ export function getDashboardHtml(): string {
     async function fetchConfig() {
       try {
         const res = await fetch("/api/config");
-        if (!res.ok) throw new Error("Config API error");
+        if (!res.ok) throw new Error("API error");
         const data = await res.json();
         currentConfig = data.config;
         currentYaml = data.yaml;
 
-        rawYamlEditor.value = currentYaml;
+        document.getElementById("rawYamlEditor").value = currentYaml;
         populateVisualForm(currentConfig);
       } catch (err) {
-        showToast("Failed to load config: " + err.message, "error");
+        showToast(err.message, "error");
       }
     }
 
-    // Populate Visual Form
     function populateVisualForm(cfg) {
       if (!cfg) return;
 
-      // Default engine
       const defEngine = cfg.defaultEngine || cfg.engine || cfg.engines?.default || "claude";
       selectDefaultEngine(defEngine, false);
 
-      // Concurrency & timeout
       document.getElementById("cfgMaxProcesses").value = cfg.engines?.maxProcesses ?? 10;
       document.getElementById("cfgIdleTimeout").value = cfg.engines?.idleTimeoutMs ?? 600000;
 
-      // Claude
       if (cfg.engines?.claude) {
         document.getElementById("cfgClaudeBinary").value = cfg.engines.claude.binary || "claude";
         document.getElementById("cfgClaudeEffort").value = cfg.engines.claude.effort || "";
         document.getElementById("cfgClaudeExtraArgs").value = (cfg.engines.claude.extraArgs || []).join(", ");
       }
 
-      // Codex
       if (cfg.engines?.codex) {
         document.getElementById("cfgCodexBinary").value = cfg.engines.codex.binary || "codex";
         document.getElementById("cfgCodexSandbox").value = cfg.engines.codex.sandbox || "danger-full-access";
         document.getElementById("cfgCodexApproval").value = cfg.engines.codex.approvalPolicy || "never";
       }
 
-      // AGY
       if (cfg.engines?.agy) {
         document.getElementById("cfgAgyBinary").value = cfg.engines.agy.binary || "agy";
         document.getElementById("cfgAgyEffort").value = cfg.engines.agy.effort || "";
         document.getElementById("cfgAgyExtraArgs").value = (cfg.engines.agy.extraArgs || []).join(", ");
       }
 
-      // Gateway
       document.getElementById("cfgPort").value = cfg.gateway?.port ?? 18790;
       document.getElementById("cfgDataDir").value = cfg.gateway?.dataDir ?? "~/.pocketagent";
       document.getElementById("cfgLogLevel").value = cfg.gateway?.logLevel ?? "info";
       document.getElementById("cfgLogFormat").value = cfg.gateway?.logFormat ?? "pretty";
 
-      // Security
       document.getElementById("cfgDefaultAuthPolicy").value = cfg.auth?.defaultPolicy ?? "pairing";
 
-      // Render bots
       renderBotsManager(cfg.bots || []);
     }
 
-    // Select Default Engine
     function selectDefaultEngine(engine, sync = true) {
       document.querySelectorAll(".engine-card").forEach(c => {
         c.classList.toggle("selected", c.dataset.engine === engine);
@@ -1337,7 +1658,6 @@ export function getDashboardHtml(): string {
       }
     }
 
-    // Fetch Models Discovery
     async function fetchModels(forceRefresh = false) {
       try {
         const url = forceRefresh ? "/api/models?refresh=true" : "/api/models";
@@ -1374,30 +1694,29 @@ export function getDashboardHtml(): string {
       }
     }
 
-    // Render Overview Bots
     function renderOverviewBots(bots) {
       const container = document.getElementById("overviewBotsList");
       if (!bots || bots.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-subtle);">No bots configured yet. Go to Bots tab to add one.</div>';
+        container.innerHTML = \`<div style="color: var(--text-muted); font-size: 0.85rem;">\${t("noBotsDesc")}</div>\`;
         return;
       }
       container.innerHTML = bots.map(b => \`
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: var(--bg-surface); border-radius: 8px; border: 1px solid var(--border);">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div class="channel-icon \${b.channel === 'telegram' ? 'channel-tg' : 'channel-dc'}" style="width: 26px; height: 26px; font-size: 0.75rem;">
-              \${b.channel === 'telegram' ? 'TG' : 'DC'}
-            </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: var(--bg-card-subtle); border-radius: 6px; border: 1px solid var(--border);">
+          <div style="display: flex; align-items: center; gap: 0.65rem;">
+            <span class="channel-badge \${b.channel === 'telegram' ? 'channel-tg' : 'channel-dc'}">\${b.channel === 'telegram' ? 'TG' : 'DC'}</span>
             <div>
-              <div style="font-weight: 600; font-size: 0.88rem; color: #fff;">\${escapeHtml(b.name)} \${b.username ? \`<span style="color: var(--text-muted); font-size: 0.78rem;">(@\${escapeHtml(b.username)})</span>\` : ''}</div>
-              <div style="font-size: 0.75rem; color: var(--text-subtle);">Engine: \${b.engine} • DM: \${b.dmPolicy} • Allowed users: \${(b.allowFrom || []).length}</div>
+              <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">
+                \${escapeHtml(b.name)}
+                \${b.username ? \`<span style="color: var(--text-secondary); font-size: 0.78rem; font-weight: 400;">(@\${escapeHtml(b.username)})</span>\` : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">Engine: \${b.engine} • DM: \${b.dmPolicy} • Allow: \${(b.allowFrom || []).length}</div>
             </div>
           </div>
-          <span class="status-badge" style="font-size: 0.7rem;">\${b.status}</span>
+          <span class="status-pill" style="font-size: 0.7rem;">\${b.status}</span>
         </div>
       \`).join("");
     }
 
-    // Render Overview Engines
     function renderOverviewEngines() {
       const container = document.getElementById("overviewEnginesGrid");
       if (!container) return;
@@ -1411,30 +1730,28 @@ export function getDashboardHtml(): string {
       container.innerHTML = engines.map(e => {
         const count = e.cap?.models?.length ?? 0;
         return \`
-          <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-              <span style="font-weight: 700; color: #fff; font-size: 0.95rem;">\${e.name}</span>
-              <span class="status-badge" style="font-size: 0.7rem;">\${count} models</span>
+          <div style="background: var(--bg-card-subtle); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+              <span style="font-weight: 600; color: var(--text-primary); font-size: 0.9rem;">\${e.name}</span>
+              <span class="status-pill" style="font-size: 0.7rem;">\${count} models</span>
             </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
-              \${e.cap?.models?.slice(0, 3).map(m => m.label || m.id).join(", ") || "Auto discovery active"}
-              \${count > 3 ? \`<span style="color: var(--text-subtle);">+ \${count - 3} more</span>\` : ''}
+            <div style="font-size: 0.76rem; color: var(--text-secondary); line-height: 1.45;">
+              \${e.cap?.models?.slice(0, 3).map(m => m.label || m.id).join(", ") || "Auto-discovery active"}
+              \${count > 3 ? \`<span style="color: var(--text-muted);">+ \${count - 3} more</span>\` : ''}
             </div>
           </div>
         \`;
       }).join("");
     }
 
-    // Render Bots Manager
     function renderBotsManager(bots) {
       const container = document.getElementById("botsContainer");
       if (!bots || bots.length === 0) {
         container.innerHTML = \`
-          <div class="card" style="text-align: center; padding: 3rem 1rem;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
-            <div style="font-weight: 600; font-size: 1.1rem; color: #fff;">No Bots Configured</div>
-            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">Add your first Telegram or Discord bot to get started.</p>
-            <button class="btn btn-primary btn-sm" style="margin-top: 1rem;" onclick="openAddBotModal()">+ Add Bot</button>
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+            <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">\${t("noBotsConfigured")}</div>
+            <p style="color: var(--text-secondary); font-size: 0.82rem; margin-top: 0.25rem;">\${t("noBotsDesc")}</p>
+            <button class="btn btn-primary btn-sm" style="margin-top: 0.85rem;" onclick="openAddBotModal()">\${t("addBot")}</button>
           </div>
         \`;
         return;
@@ -1448,37 +1765,37 @@ export function getDashboardHtml(): string {
         return \`
           <div class="bot-card" data-index="\${index}">
             <div class="bot-card-top">
-              <div class="bot-title-group">
-                <div class="channel-icon \${bot.channel === 'discord' ? 'channel-dc' : 'channel-tg'}">
-                  \${bot.channel === 'discord' ? 'DC' : 'TG'}
-                </div>
+              <div class="bot-identity">
+                <span class="channel-badge \${bot.channel === 'discord' ? 'channel-dc' : 'channel-tg'}">
+                  \${bot.channel === 'discord' ? 'Discord' : 'Telegram'}
+                </span>
                 <div>
                   <div class="bot-name">\${escapeHtml(bot.name)}</div>
-                  <div class="bot-meta">Channel: \${bot.channel || 'telegram'} • Engine: \${bot.engine || 'inherit'}</div>
+                  <div class="bot-subtitle">Engine: \${bot.engine || t("inheritDefault")}</div>
                 </div>
               </div>
-              <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-secondary btn-sm" onclick="openSoulModal('\${escapeHtml(bot.name)}')">✎ SOUL.md</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteBot(\${index})">Delete</button>
+              <div style="display: flex; gap: 0.4rem;">
+                <button class="btn btn-secondary btn-sm" onclick="openSoulModal('\${escapeHtml(bot.name)}')">\${t("editSoul")}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteBot(\${index})">\${t("deleteBot")}</button>
               </div>
             </div>
 
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Bot Token</label>
-                <input type="password" class="form-control bot-token" value="\${escapeHtml(tokenVal)}" onchange="updateBotField(\${index}, 'token', this.value)">
+                <label class="form-label">\${t("botToken")}</label>
+                <input type="password" class="form-control" value="\${escapeHtml(tokenVal)}" onchange="updateBotField(\${index}, 'token', this.value)">
               </div>
               <div class="form-group">
-                <label class="form-label">Engine Override</label>
+                <label class="form-label">\${t("engineOverride")}</label>
                 <select class="form-control" onchange="updateBotField(\${index}, 'engine', this.value)">
-                  <option value="" \${!bot.engine ? 'selected' : ''}>Inherit Global Default</option>
+                  <option value="" \${!bot.engine ? 'selected' : ''}>\${t("inheritDefault")}</option>
                   <option value="claude" \${bot.engine === 'claude' ? 'selected' : ''}>Claude Code</option>
                   <option value="codex" \${bot.engine === 'codex' ? 'selected' : ''}>OpenAI Codex</option>
                   <option value="agy" \${bot.engine === 'agy' ? 'selected' : ''}>Google Antigravity</option>
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label">DM Policy</label>
+                <label class="form-label">\${t("dmPolicy")}</label>
                 <select class="form-control" onchange="updateBotField(\${index}, 'dmPolicy', this.value)">
                   <option value="pairing" \${bot.dmPolicy === 'pairing' ? 'selected' : ''}>pairing</option>
                   <option value="allowlist" \${bot.dmPolicy === 'allowlist' ? 'selected' : ''}>allowlist</option>
@@ -1487,7 +1804,7 @@ export function getDashboardHtml(): string {
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label">Group Policy</label>
+                <label class="form-label">\${t("groupPolicy")}</label>
                 <select class="form-control" onchange="updateBotField(\${index}, 'groupPolicy', this.value)">
                   <option value="pairing" \${bot.groupPolicy === 'pairing' ? 'selected' : ''}>pairing</option>
                   <option value="allowlist" \${bot.groupPolicy === 'allowlist' ? 'selected' : ''}>allowlist</option>
@@ -1499,23 +1816,23 @@ export function getDashboardHtml(): string {
 
             <!-- Allowed Users -->
             <div class="form-group">
-              <label class="form-label">Allowed User IDs (allowFrom)</label>
+              <label class="form-label">\${t("allowedUsers")}</label>
               <div class="tag-container" id="tags-allow-\${index}">
                 \${allowFrom.map(id => \`
                   <span class="tag">\${escapeHtml(String(id))} <span class="tag-remove" onclick="removeAllowTag(\${index}, '\${escapeHtml(String(id))}')">×</span></span>
                 \`).join("")}
-                <input type="text" class="tag-input" placeholder="+ Add User ID and press Enter" onkeydown="handleTagInput(event, \${index})">
+                <input type="text" class="tag-input" placeholder="\${t("addUserPlaceholder")}" onkeydown="handleTagInput(event, \${index})">
               </div>
             </div>
 
-            <!-- Groups -->
+            <!-- Allowed Groups -->
             <div class="form-group">
-              <label class="form-label">Allowed Group IDs</label>
+              <label class="form-label">\${t("allowedGroups")}</label>
               <div class="tag-container" id="tags-groups-\${index}">
                 \${Object.keys(groups).map(gid => \`
                   <span class="tag">\${escapeHtml(String(gid))} <span class="tag-remove" onclick="removeGroupTag(\${index}, '\${escapeHtml(String(gid))}')">×</span></span>
                 \`).join("")}
-                <input type="text" class="tag-input" placeholder="+ Add Group ID and press Enter" onkeydown="handleGroupInput(event, \${index})">
+                <input type="text" class="tag-input" placeholder="\${t("addGroupPlaceholder")}" onkeydown="handleGroupInput(event, \${index})">
               </div>
             </div>
           </div>
@@ -1523,7 +1840,6 @@ export function getDashboardHtml(): string {
       }).join("");
     }
 
-    // Bot Tag Operations
     function handleTagInput(event, botIndex) {
       if (event.key === "Enter" && event.target.value.trim()) {
         event.preventDefault();
@@ -1568,10 +1884,11 @@ export function getDashboardHtml(): string {
     }
 
     function deleteBot(index) {
-      if (confirm(\`Delete bot "\${currentConfig.bots[index].name}"?\`)) {
+      const name = currentConfig.bots[index].name;
+      if (confirm(t("confirmDeleteBot", { name }))) {
         currentConfig.bots.splice(index, 1);
         renderBotsManager(currentConfig.bots);
-        showToast("Bot removed. Click 'Save & Hot Reload' to apply.", "info");
+        showToast(t("botDeletedToast"), "info");
       }
     }
 
@@ -1589,12 +1906,8 @@ export function getDashboardHtml(): string {
       const dmPolicy = document.getElementById("botModalDmPolicy").value;
       const groupPolicy = document.getElementById("botModalGroupPolicy").value;
 
-      if (!name) {
-        alert("Bot Name is required.");
-        return;
-      }
-      if (!token) {
-        alert("Bot Token is required.");
+      if (!name || !token) {
+        alert("Bot Name & Token are required.");
         return;
       }
 
@@ -1614,13 +1927,13 @@ export function getDashboardHtml(): string {
 
       closeModal("modalBot");
       renderBotsManager(currentConfig.bots);
-      showToast(\`Added bot "\${name}". Click 'Save & Hot Reload' to activate.\`, "success");
+      showToast(t("botAddedToast", { name }), "success");
     }
 
     // SOUL Modal
     async function openSoulModal(botId) {
       activeSoulBotId = botId;
-      document.getElementById("soulModalTitle").textContent = \`Edit Persona (SOUL.md) for \${botId}\`;
+      document.getElementById("soulModalTitle").textContent = t("modalSoulTitle") + \` (\${botId})\`;
       document.getElementById("soulEditorText").value = "Loading...";
       openModal("modalSoul");
 
@@ -1629,7 +1942,7 @@ export function getDashboardHtml(): string {
         const data = await res.json();
         document.getElementById("soulEditorText").value = data.content || "";
       } catch (err) {
-        document.getElementById("soulEditorText").value = "# Failed to load SOUL.md: " + err.message;
+        document.getElementById("soulEditorText").value = "# Error loading SOUL.md: " + err.message;
       }
     }
 
@@ -1654,7 +1967,7 @@ export function getDashboardHtml(): string {
       }
     }
 
-    // Fetch Skills
+    // Skills
     async function fetchSkills() {
       try {
         const res = await fetch("/api/skills");
@@ -1669,26 +1982,23 @@ export function getDashboardHtml(): string {
     function renderSkills(skills) {
       const container = document.getElementById("skillsGrid");
       if (!skills || skills.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-subtle);">No custom skills found. Click "New Skill" to create one.</div>';
+        container.innerHTML = \`<div style="color: var(--text-muted); font-size: 0.85rem;">\${t("noSkillsFound")}</div>\`;
         return;
       }
       container.innerHTML = skills.map(s => \`
         <div class="skill-card">
           <div class="skill-header">
-            <div class="skill-title">
-              <span>🧩</span>
-              <span>\${escapeHtml(s.name)}</span>
-            </div>
-            <div class="skill-sync-badges">
-              <span class="sync-badge \${s.synced?.claude ? 'sync-ok' : 'sync-no'}">\${s.synced?.claude ? '✓ Claude' : '✗ Claude'}</span>
-              <span class="sync-badge \${s.synced?.codex ? 'sync-ok' : 'sync-no'}">\${s.synced?.codex ? '✓ Codex' : '✗ Codex'}</span>
-              <span class="sync-badge \${s.synced?.agy ? 'sync-ok' : 'sync-no'}">\${s.synced?.agy ? '✓ AGY' : '✗ AGY'}</span>
+            <span class="skill-name">\${escapeHtml(s.name)}</span>
+            <div class="sync-tags">
+              <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? 'Claude' : '!Claude'}</span>
+              <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? 'Codex' : '!Codex'}</span>
+              <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? 'AGY' : '!AGY'}</span>
             </div>
           </div>
           <p class="skill-desc">\${escapeHtml(s.description || 'No description provided')}</p>
-          <div style="font-size: 0.75rem; color: var(--text-subtle); display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between;">
             <span>Scripts: \${s.scripts?.length ? escapeHtml(s.scripts.join(', ')) : 'None'}</span>
-            <code style="font-size: 0.7rem;">\${escapeHtml(s.dir)}</code>
+            <span style="font-family: var(--font-mono);">\${escapeHtml(s.dir.split('/').pop())}</span>
           </div>
         </div>
       \`).join("");
@@ -1696,30 +2006,28 @@ export function getDashboardHtml(): string {
 
     async function syncSkills() {
       const btn = document.getElementById("btnSyncSkills");
-      btn.textContent = "Syncing...";
+      btn.textContent = t("saving");
       try {
         const res = await fetch("/api/skills/sync", { method: "POST" });
         const data = await res.json();
         if (data.ok) {
-          showToast(\`Synchronized \${data.skills.length} skills across Claude, Codex, and AGY\`, "success");
+          showToast(\`Synchronized \${data.skills.length} skills across engines\`, "success");
           fetchSkills();
         } else {
-          showToast("Sync failed: " + data.error, "error");
+          showToast(data.error || "Sync error", "error");
         }
       } catch (err) {
-        showToast("Sync error: " + err.message, "error");
+        showToast(err.message, "error");
       } finally {
-        btn.textContent = "↻ Sync 3-CLI Skills";
+        btn.textContent = t("syncSkills");
       }
     }
 
     async function createSkill() {
       const name = document.getElementById("newSkillName").value.trim();
       const desc = document.getElementById("newSkillDesc").value.trim();
-      if (!name) {
-        alert("Skill name is required");
-        return;
-      }
+      if (!name) return;
+
       try {
         const res = await fetch("/api/skills/new", {
           method: "POST",
@@ -1728,18 +2036,18 @@ export function getDashboardHtml(): string {
         });
         const data = await res.json();
         if (data.ok) {
-          showToast(\`Skill "\${name}" created and synced across 3 CLIs\`, "success");
+          showToast(\`Skill "\${name}" created and mirrored\`, "success");
           closeModal("modalNewSkill");
           fetchSkills();
         } else {
-          showToast("Failed to create skill: " + data.error, "error");
+          showToast(data.error, "error");
         }
       } catch (err) {
-        showToast("Error: " + err.message, "error");
+        showToast(err.message, "error");
       }
     }
 
-    // Fetch Pairings
+    // Pairings
     async function fetchPairings() {
       try {
         const res = await fetch("/api/pairings");
@@ -1752,21 +2060,21 @@ export function getDashboardHtml(): string {
     function renderPairings(pending) {
       const container = document.getElementById("pendingPairingsContainer");
       if (!pending || pending.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-subtle);">No pending pairing requests.</div>';
+        container.innerHTML = \`<div style="color: var(--text-muted); font-size: 0.85rem;">\${t("noPendingPairings")}</div>\`;
         return;
       }
       container.innerHTML = pending.map(p => \`
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1rem; background: var(--bg-surface); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 0.95rem; background: var(--bg-card-subtle); border-radius: 6px; border: 1px solid var(--border);">
           <div>
-            <div style="font-weight: 600; color: #fff; font-size: 0.9rem;">
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.88rem;">
               User: \${escapeHtml(p.req.senderName || p.req.senderId)}
-              <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">(\${escapeHtml(p.req.senderId)})</span>
+              <span style="font-size: 0.75rem; color: var(--text-secondary); font-family: var(--font-mono);">(\${escapeHtml(p.req.senderId)})</span>
             </div>
-            <div style="font-size: 0.78rem; color: var(--text-subtle); margin-top: 2px;">
-              Channel: \${p.req.channelType} • Bot: \${escapeHtml(p.botName)} • Code: <strong style="color: var(--amber); font-family: var(--font-mono); font-size: 0.95rem;">\${escapeHtml(p.req.code)}</strong>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Channel: \${p.req.channelType} • Bot: \${escapeHtml(p.botName)} • Code: <strong style="color: var(--badge-amber-text); font-family: var(--font-mono); font-size: 0.9rem;">\${escapeHtml(p.req.code)}</strong>
             </div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="approvePairing('\${escapeHtml(p.req.code)}')">✓ Approve</button>
+          <button class="btn btn-primary btn-sm" onclick="approvePairing('\${escapeHtml(p.req.code)}')">\${t("approve")}</button>
         </div>
       \`).join("");
     }
@@ -1780,26 +2088,25 @@ export function getDashboardHtml(): string {
         });
         const data = await res.json();
         if (data.ok) {
-          showToast(\`Approved pairing for user \${data.senderId} (bot: \${data.botName})\`, "success");
+          showToast(t("pairingApprovedToast", { id: data.senderId, bot: data.botName }), "success");
           fetchPairings();
           fetchConfig();
         } else {
-          showToast("Approval failed: " + data.error, "error");
+          showToast(data.error || "Approval failed", "error");
         }
       } catch (err) {
-        showToast("Error: " + err.message, "error");
+        showToast(err.message, "error");
       }
     }
 
-    // Save & Hot Reload Action
+    // Save & Hot Reload
     async function saveAndHotReload() {
       const btn = document.getElementById("btnSaveConfig");
       const originalText = btn.innerHTML;
-      btn.innerHTML = "⚡ Saving...";
+      btn.innerHTML = t("saving");
       btn.disabled = true;
 
       try {
-        // Collect form data into currentConfig
         collectFormData();
 
         const res = await fetch("/api/config", {
@@ -1812,27 +2119,26 @@ export function getDashboardHtml(): string {
         if (data.ok) {
           currentConfig = data.config;
           currentYaml = data.yaml;
-          rawYamlEditor.value = currentYaml;
+          document.getElementById("rawYamlEditor").value = currentYaml;
 
           const changeCount = data.changes?.length ?? 0;
           const msg = changeCount > 0
             ? data.changes.join("<br>• ")
-            : "Configuration saved and verified (no runtime differences)";
+            : "No changes detected";
 
-          showToast(\`✓ Hot Reload Successful (\${changeCount} changes applied):<br>• \${msg}\`, "success", 6000);
+          showToast(\`\${t("hotReloadSuccess")} (\${changeCount}):<br>• \${msg}\`, "success", 5000);
           fetchStatus();
         } else {
-          showToast("Hot reload failed: " + (data.error || "Validation error"), "error");
+          showToast(t("hotReloadFailed") + ": " + (data.error || ""), "error");
         }
       } catch (err) {
-        showToast("Error during hot reload: " + err.message, "error");
+        showToast(err.message, "error");
       } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
       }
     }
 
-    // Collect visual form values into currentConfig
     function collectFormData() {
       if (!currentConfig) currentConfig = {};
       if (!currentConfig.engines) currentConfig.engines = {};
@@ -1847,8 +2153,7 @@ export function getDashboardHtml(): string {
       currentConfig.engines.claude.binary = document.getElementById("cfgClaudeBinary").value.trim() || "claude";
       currentConfig.engines.claude.model = document.getElementById("cfgClaudeModel").value || undefined;
       currentConfig.engines.claude.effort = document.getElementById("cfgClaudeEffort").value || undefined;
-      const claudeArgs = document.getElementById("cfgClaudeExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
-      currentConfig.engines.claude.extraArgs = claudeArgs;
+      currentConfig.engines.claude.extraArgs = document.getElementById("cfgClaudeExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
 
       // Codex
       if (!currentConfig.engines.codex) currentConfig.engines.codex = {};
@@ -1862,8 +2167,7 @@ export function getDashboardHtml(): string {
       currentConfig.engines.agy.binary = document.getElementById("cfgAgyBinary").value.trim() || "agy";
       currentConfig.engines.agy.model = document.getElementById("cfgAgyModel").value || undefined;
       currentConfig.engines.agy.effort = document.getElementById("cfgAgyEffort").value || undefined;
-      const agyArgs = document.getElementById("cfgAgyExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
-      currentConfig.engines.agy.extraArgs = agyArgs;
+      currentConfig.engines.agy.extraArgs = document.getElementById("cfgAgyExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
 
       // Gateway
       currentConfig.gateway.port = parseInt(document.getElementById("cfgPort").value, 10) || 18790;
@@ -1875,11 +2179,10 @@ export function getDashboardHtml(): string {
       currentConfig.auth.defaultPolicy = document.getElementById("cfgDefaultAuthPolicy").value;
     }
 
-    // Raw YAML apply
     async function applyYaml() {
-      const yaml = rawYamlEditor.value;
+      const yaml = document.getElementById("rawYamlEditor").value;
       const btn = document.getElementById("btnApplyYaml");
-      btn.textContent = "Applying...";
+      btn.textContent = t("saving");
       btn.disabled = true;
 
       try {
@@ -1893,61 +2196,53 @@ export function getDashboardHtml(): string {
           currentConfig = data.config;
           currentYaml = data.yaml;
           populateVisualForm(currentConfig);
-          const changeCount = data.changes?.length ?? 0;
-          showToast(\`✓ Hot Reload Successful (\${changeCount} changes applied)\`, "success");
+          showToast(t("hotReloadSuccess"), "success");
           fetchStatus();
         } else {
-          showToast("YAML Error: " + (data.error || "Invalid YAML"), "error");
+          showToast(t("yamlError") + ": " + (data.error || ""), "error");
         }
       } catch (err) {
-        showToast("Error applying YAML: " + err.message, "error");
+        showToast(err.message, "error");
       } finally {
-        btn.textContent = "Apply & Hot Reload";
+        btn.textContent = t("applyYaml");
         btn.disabled = false;
       }
     }
 
     function syncFormToYaml() {
       collectFormData();
-      // If user hasn't heavily edited YAML directly, fetch stringified
       fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config: currentConfig })
       }).then(r => r.json()).then(data => {
         if (data.ok && data.yaml) {
-          rawYamlEditor.value = data.yaml;
+          document.getElementById("rawYamlEditor").value = data.yaml;
         }
       }).catch(() => {});
     }
 
-    // Modal helpers
-    function openModal(id) {
-      document.getElementById(id).classList.add("show");
-    }
-    function closeModal(id) {
-      document.getElementById(id).classList.remove("show");
-    }
+    // Modal Helpers
+    function openModal(id) { document.getElementById(id).classList.add("show"); }
+    function closeModal(id) { document.getElementById(id).classList.remove("show"); }
 
-    // Toast Notification System
+    // Toast
     function showToast(message, type = "info", duration = 4000) {
+      const container = document.getElementById("toastContainer");
       const toast = document.createElement("div");
       toast.className = \`toast \${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : ''}\`;
-      const title = type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Notification';
+      const title = type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Notice';
       toast.innerHTML = \`
         <div class="toast-title">\${title}</div>
         <div class="toast-msg">\${message}</div>
       \`;
-      toastContainer.appendChild(toast);
+      container.appendChild(toast);
       setTimeout(() => {
-        toast.style.transition = "opacity 0.3s ease, transform 0.3s ease";
         toast.style.opacity = "0";
-        toast.style.transform = "translateX(100%)";
-        setTimeout(() => toast.remove(), 300);
+        setTimeout(() => toast.remove(), 250);
       }, duration);
     }
 
-    // Helpers
     function escapeHtml(str) {
       if (!str) return "";
       return String(str)

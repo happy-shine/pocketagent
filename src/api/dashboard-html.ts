@@ -1022,8 +1022,7 @@ export function getDashboardHtml(): string {
       <div class="nav-tab active" data-tab="overview" data-i18n="tabOverview">Overview</div>
       <div class="nav-tab" data-tab="bots" data-i18n="tabBots">Bots</div>
       <div class="nav-tab" data-tab="engines" data-i18n="tabEngines">Engines</div>
-      <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions</div>
-      <div class="nav-tab" data-tab="workspaces" data-i18n="tabWorkspaces">Workspaces</div>
+      <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions & Workspaces</div>
       <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
       <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
       <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (3-CLI)</div>
@@ -1246,15 +1245,15 @@ export function getDashboardHtml(): string {
       </div>
     </section>
 
-    <!-- TAB: Sessions -->
+    <!-- TAB: Sessions & Workspaces -->
     <section id="tab-sessions" class="tab-pane">
       <div class="section-header">
         <div>
-          <h1 class="section-title" data-i18n="sessionsTitle">Sessions Management</h1>
-          <p class="section-desc" data-i18n="sessionsDesc">Inspect multi-turn dialogue histories, switch active sessions, and oversee bot conversation states</p>
+          <h1 class="section-title" data-i18n="sessionsTitle">Sessions & Workspaces</h1>
+          <p class="section-desc" data-i18n="sessionsDesc">Inspect multi-turn dialogue histories, switch active sessions, and browse bound CLI execution workspaces</p>
         </div>
         <div style="display: flex; gap: 0.5rem;">
-          <button id="btnRefreshSessions" class="btn btn-secondary btn-sm" data-i18n="refreshSessions">↻ Refresh Sessions</button>
+          <button id="btnRefreshSessions" class="btn btn-secondary btn-sm" data-i18n="refreshSessions">↻ Refresh</button>
           <button id="btnNewSession" class="btn btn-primary btn-sm" data-i18n="newSession">+ New Session</button>
         </div>
       </div>
@@ -1263,7 +1262,7 @@ export function getDashboardHtml(): string {
         <div class="metric-card">
           <div class="metric-label" data-i18n="metricTotalSessions">Total Sessions</div>
           <div id="mTotalSessions" class="metric-value">0</div>
-          <div class="metric-sub">Stored across all chats</div>
+          <div class="metric-sub">Across all bots & chats</div>
         </div>
         <div class="metric-card">
           <div class="metric-label" data-i18n="metricActiveSessions">Active Sessions</div>
@@ -1275,63 +1274,38 @@ export function getDashboardHtml(): string {
           <div id="mTotalTurns" class="metric-value">0</div>
           <div class="metric-sub">User & Assistant messages</div>
         </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="metricTotalDiskUsage">Workspace Storage</div>
+          <div id="mTotalDiskUsage" class="metric-value">0 KB</div>
+          <div class="metric-sub">~/.pocketagent/workspaces</div>
+        </div>
       </div>
 
       <div class="filter-bar">
         <div class="filter-group">
-          <select id="sessionsBotFilter" class="form-control" style="max-width: 220px;">
+          <select id="sessionsBotFilter" class="form-control" style="max-width: 200px;">
             <option value="" data-i18n="filterAllBots">All Bots</option>
           </select>
-          <input id="sessionsSearchInput" type="text" class="form-control" placeholder="Search by Chat ID, Session ID, or Engine..." data-i18n-placeholder="searchSessionsPlaceholder">
+          <select id="sessionsStatusFilter" class="form-control" style="max-width: 170px;">
+            <option value="all" data-i18n="filterAllStatus">All Status</option>
+            <option value="active" data-i18n="filterActiveOnly">Active Only</option>
+            <option value="inactive" data-i18n="filterInactiveOnly">Historical</option>
+            <option value="orphaned" data-i18n="filterOrphanedOnly">Orphaned Folders</option>
+          </select>
+          <input id="sessionsSearchInput" type="text" class="form-control" placeholder="Search by Chat ID, Session ID, Engine..." data-i18n-placeholder="searchSessionsPlaceholder">
         </div>
       </div>
 
       <div id="sessionsListContainer">
-        <!-- Dynamically rendered session cards -->
-      </div>
-    </section>
-
-    <!-- TAB: Workspaces -->
-    <section id="tab-workspaces" class="tab-pane">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title" data-i18n="workspacesTitle">Workspace Storage</h1>
-          <p class="section-desc" data-i18n="workspacesDesc">Browse and clean isolated execution directories (~/.pocketagent/workspaces/) created for CLI agents</p>
-        </div>
-        <div style="display: flex; gap: 0.5rem;">
-          <button id="btnRefreshWorkspaces" class="btn btn-secondary btn-sm" data-i18n="refreshWorkspaces">↻ Refresh Workspaces</button>
-        </div>
+        <!-- Dynamically rendered unified session & workspace cards -->
       </div>
 
-      <div class="grid-metrics">
-        <div class="metric-card">
-          <div class="metric-label" data-i18n="metricTotalWorkspaces">Total Workspaces</div>
-          <div id="mTotalWorkspaces" class="metric-value">0</div>
-          <div class="metric-sub">~/.pocketagent/workspaces</div>
+      <div id="orphanedWorkspacesSection" style="margin-top: 1.5rem; display: none;">
+        <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.65rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span style="color: var(--badge-amber-text);">▲</span>
+          <span data-i18n="orphanedSectionTitle">Orphaned Workspace Folders (Unlinked to active chats)</span>
         </div>
-        <div class="metric-card">
-          <div class="metric-label" data-i18n="metricActiveWorkspaces">Active Workspaces</div>
-          <div id="mActiveWorkspaces" class="metric-value" style="color: var(--badge-green-text);">0</div>
-          <div class="metric-sub" data-i18n="workspaceActive">Bound to active sessions</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label" data-i18n="metricTotalDiskUsage">Total Disk Usage</div>
-          <div id="mTotalDiskUsage" class="metric-value">0 KB</div>
-          <div class="metric-sub">Recursive physical size</div>
-        </div>
-      </div>
-
-      <div class="filter-bar">
-        <div class="filter-group">
-          <select id="workspacesBotFilter" class="form-control" style="max-width: 220px;">
-            <option value="" data-i18n="filterAllBots">All Bots</option>
-          </select>
-          <input id="workspacesSearchInput" type="text" class="form-control" placeholder="Search folder name or Chat ID..." data-i18n-placeholder="searchWorkspacesPlaceholder">
-        </div>
-      </div>
-
-      <div id="workspacesListContainer">
-        <!-- Dynamically rendered workspace cards -->
+        <div id="orphanedListContainer"></div>
       </div>
     </section>
 
@@ -1662,42 +1636,43 @@ export function getDashboardHtml(): string {
         tabGateway: "网关设置",
         tabSecurity: "安全与配对",
         tabSkills: "技能中心",
-        tabSessions: "会话管理",
-        tabWorkspaces: "工作区管理",
+        tabSessions: "会话与工作区",
         tabYaml: "YAML 源码",
         
-        sessionsTitle: "会话生命周期管理",
-        sessionsDesc: "查看各机器人与不同群组/私聊的会话列表、多轮对话记录、活跃引擎状态与即时切换",
+        sessionsTitle: "会话与工作区管理",
+        sessionsDesc: "查看各机器人会话生命周期、多轮对话记录，以及 1:1 绑定的本地 CLI 物理工作区目录 (~/.pocketagent/workspaces)",
         metricTotalSessions: "总会话数",
         metricActiveSessions: "活跃会话",
         metricTotalTurns: "累计对话轮次",
-        
-        workspacesTitle: "工作区目录管理",
-        workspacesDesc: "查看 CLI 引擎在本地 (~/.pocketagent/workspaces) 创建的物理执行工作区、探查配置文件并清理残留数据",
-        metricTotalWorkspaces: "工作区总数",
-        metricActiveWorkspaces: "活跃会话关联",
-        metricTotalDiskUsage: "磁盘占用空间",
+        metricTotalDiskUsage: "工作区磁盘占用",
 
         filterAllBots: "所有机器人",
-        searchSessionsPlaceholder: "搜索会话 ID / Chat ID / 引擎...",
-        searchWorkspacesPlaceholder: "搜索工作区目录名 / Chat ID...",
+        filterAllStatus: "全部状态",
+        filterActiveOnly: "仅活跃会话",
+        filterInactiveOnly: "仅历史会话",
+        filterOrphanedOnly: "仅孤立工作区",
+        searchSessionsPlaceholder: "搜索会话 ID / Chat ID / 引擎 / 目录...",
         newSession: "+ 新建会话",
-        refreshSessions: "↻ 刷新会话",
-        refreshWorkspaces: "↻ 刷新工作区",
+        refreshSessions: "↻ 刷新",
 
-        noSessionsFound: "暂无符合条件的会话记录",
-        noWorkspacesFound: "暂无检测到工作区目录",
+        noSessionsFound: "暂无符合条件的会话与工作区记录",
         sessionActive: "活跃中",
-        sessionInactive: "非活跃",
-        viewTurns: "💬 查看对话记录",
+        sessionInactive: "历史会话",
+        viewTurns: "💬 对话记录",
+        exploreFiles: "📂 浏览文件",
+        exploreWorkspace: "📂 工作区文件",
+        workspaceReady: "物理目录就绪",
+        workspaceNone: "未在磁盘创建",
         setActiveSession: "⚡ 设为活跃会话",
-        deleteSessionConfirm: "确定要删除会话「{id}」吗？",
+        deleteSessionConfirm: "确定要删除会话「{id}」及其本地工作区目录吗？此操作不可逆！",
         deleteSessionAndWorkspace: "同时删除该会话关联的本地工作区目录",
         
+        orphanedSectionTitle: "孤立工作区目录 (未绑定已知会话)",
+        orphanedSectionDesc: "本地物理目录存在但对应会话元数据已不存在的工作区，可在此浏览或彻底清理",
+        noOrphanedFound: "未检测到孤立的工作区目录",
         workspaceActive: "活跃会话",
         workspaceHistory: "历史会话",
-        workspaceOrphaned: "无归属孤立目录",
-        exploreFiles: "📂 浏览文件",
+        workspaceOrphaned: "孤立工作区",
         deleteWorkspaceConfirm: "确定要物理删除工作区目录「{name}」吗？此操作不可逆！",
 
         modalSessionTurnsTitle: "会话对话记录",
@@ -1708,7 +1683,7 @@ export function getDashboardHtml(): string {
         copiedToast: "已复制到剪贴板",
         sessionSwitchedToast: "已成功将会话切换为活跃状态",
         sessionCreatedToast: "已成功创建并激活新会话",
-        sessionDeletedToast: "会话已删除",
+        sessionDeletedToast: "会话及工作区已删除",
         workspaceDeletedToast: "工作区目录已彻底清理",
         
         overviewTitle: "系统概览",
@@ -1738,8 +1713,8 @@ export function getDashboardHtml(): string {
         addGroupPlaceholder: "+ 输入群组 ID 并按回车",
         editSoul: "✎ SOUL.md",
         deleteBot: "删除",
-        confirmDeleteBot: "确认删除机器人 \\"{name}\\" 吗？",
-        botAddedToast: "已添加机器人 \\"{name}\\"，点击「保存并热更新」生效。",
+        confirmDeleteBot: "确认删除机器人「{name}」吗？",
+        botAddedToast: "已添加机器人「{name}」，点击「保存并热更新」生效。",
         botDeletedToast: "已移除机器人，点击「保存并热更新」生效。",
 
         enginesTitle: "模型引擎设置",
@@ -1819,42 +1794,43 @@ export function getDashboardHtml(): string {
         tabGateway: "Gateway",
         tabSecurity: "Security & Auth",
         tabSkills: "Skills (3-CLI)",
-        tabSessions: "Sessions",
-        tabWorkspaces: "Workspaces",
+        tabSessions: "Sessions & Workspaces",
         tabYaml: "Raw YAML",
         
-        sessionsTitle: "Session Lifecycle Management",
-        sessionsDesc: "Inspect multi-turn dialogue histories, switch active sessions, and oversee bot conversation states",
+        sessionsTitle: "Sessions & Workspaces Management",
+        sessionsDesc: "Inspect multi-turn dialogue histories, switch active sessions, and oversee 1-to-1 bound CLI execution workspaces (~/.pocketagent/workspaces)",
         metricTotalSessions: "Total Sessions",
         metricActiveSessions: "Active Sessions",
         metricTotalTurns: "Total Dialogue Turns",
-
-        workspacesTitle: "Workspace Directory Storage",
-        workspacesDesc: "Inspect CLI execution workspaces in ~/.pocketagent/workspaces, view configuration files, and cleanup disk space",
-        metricTotalWorkspaces: "Total Workspaces",
-        metricActiveWorkspaces: "Active Workspaces",
-        metricTotalDiskUsage: "Total Disk Usage",
+        metricTotalDiskUsage: "Workspace Storage",
 
         filterAllBots: "All Bots",
-        searchSessionsPlaceholder: "Search Session ID / Chat ID / Engine...",
-        searchWorkspacesPlaceholder: "Search Folder / Chat ID...",
+        filterAllStatus: "All Status",
+        filterActiveOnly: "Active Only",
+        filterInactiveOnly: "Historical Only",
+        filterOrphanedOnly: "Orphaned Only",
+        searchSessionsPlaceholder: "Search Session ID / Chat ID / Engine / Folder...",
         newSession: "+ New Session",
-        refreshSessions: "↻ Refresh Sessions",
-        refreshWorkspaces: "↻ Refresh Workspaces",
+        refreshSessions: "↻ Refresh",
 
-        noSessionsFound: "No sessions found matching filters",
-        noWorkspacesFound: "No workspaces found",
+        noSessionsFound: "No sessions or workspaces found matching filters",
         sessionActive: "Active",
-        sessionInactive: "Inactive",
+        sessionInactive: "Historical",
         viewTurns: "💬 Dialogue History",
+        exploreFiles: "📂 Explore Files",
+        exploreWorkspace: "📂 Workspace Files",
+        workspaceReady: "Ready on disk",
+        workspaceNone: "Not created yet",
         setActiveSession: "⚡ Set Active",
-        deleteSessionConfirm: "Are you sure you want to delete session '{id}'?",
+        deleteSessionConfirm: "Are you sure you want to delete session '{id}' and its workspace? This cannot be undone.",
         deleteSessionAndWorkspace: "Also delete associated local workspace directory",
 
+        orphanedSectionTitle: "Orphaned Workspace Folders (Unlinked to active chats)",
+        orphanedSectionDesc: "Physical folders on disk whose session records no longer exist; safe to inspect or clean up",
+        noOrphanedFound: "No orphaned workspace folders found",
         workspaceActive: "Active Session",
         workspaceHistory: "Historical Session",
         workspaceOrphaned: "Orphaned Folder",
-        exploreFiles: "📂 Explore Files",
         deleteWorkspaceConfirm: "Are you sure you want to delete workspace '{name}'? This cannot be undone.",
 
         modalSessionTurnsTitle: "Session Dialogue History",
@@ -1865,7 +1841,7 @@ export function getDashboardHtml(): string {
         copiedToast: "Copied to clipboard",
         sessionSwitchedToast: "Switched to active session",
         sessionCreatedToast: "Created and activated new session",
-        sessionDeletedToast: "Session deleted",
+        sessionDeletedToast: "Session and workspace deleted",
         workspaceDeletedToast: "Workspace directory cleaned up",
         
         overviewTitle: "System Overview",
@@ -1895,8 +1871,8 @@ export function getDashboardHtml(): string {
         addGroupPlaceholder: "+ Type group ID and press Enter",
         editSoul: "✎ SOUL.md",
         deleteBot: "Delete",
-        confirmDeleteBot: "Delete bot \\"{name}\\"?",
-        botAddedToast: "Added bot \\"{name}\\", click 'Save & Hot Reload' to apply.",
+        confirmDeleteBot: "Delete bot '{name}'?",
+        botAddedToast: "Added bot '{name}', click 'Save & Hot Reload' to apply.",
         botDeletedToast: "Bot removed, click 'Save & Hot Reload' to apply.",
 
         enginesTitle: "Engines Configuration",
@@ -2041,10 +2017,8 @@ export function getDashboardHtml(): string {
 
       if (tabId === "yaml") {
         syncFormToYaml();
-      } else if (tabId === "sessions") {
+      } else if (tabId === "sessions" || tabId === "workspaces") {
         fetchSessions();
-      } else if (tabId === "workspaces") {
-        fetchWorkspaces();
       }
     }
 
@@ -2072,15 +2046,14 @@ export function getDashboardHtml(): string {
         fetchModels(),
         fetchSkills(),
         fetchPairings(),
-        fetchSessions(),
-        fetchWorkspaces()
+        fetchSessions()
       ]);
     }
 
     function setupEvents() {
       document.getElementById("btnRefresh").addEventListener("click", async () => {
         showToast(t("refresh") + "...", "info");
-        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions(), fetchWorkspaces()]);
+        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions()]);
       });
 
       document.getElementById("btnSaveConfig").addEventListener("click", () => saveAndHotReload());
@@ -2094,12 +2067,16 @@ export function getDashboardHtml(): string {
       document.getElementById("btnRefreshSessions").addEventListener("click", () => fetchSessions());
       document.getElementById("btnNewSession").addEventListener("click", () => openNewSessionModal());
       document.getElementById("btnCreateSessionConfirm").addEventListener("click", () => confirmCreateSession());
-      document.getElementById("sessionsBotFilter").addEventListener("change", () => renderSessions());
-      document.getElementById("sessionsSearchInput").addEventListener("input", () => renderSessions());
-      document.getElementById("btnRefreshWorkspaces").addEventListener("click", () => fetchWorkspaces());
-      document.getElementById("workspacesBotFilter").addEventListener("change", () => renderWorkspaces());
-      document.getElementById("workspacesSearchInput").addEventListener("input", () => renderWorkspaces());
-      document.getElementById("btnCopyWsPreview").addEventListener("click", () => copyWsPreview());
+      
+      const sessBotFilter = document.getElementById("sessionsBotFilter");
+      if (sessBotFilter) sessBotFilter.addEventListener("change", () => renderSessions());
+      const sessStatusFilter = document.getElementById("sessionsStatusFilter");
+      if (sessStatusFilter) sessStatusFilter.addEventListener("change", () => renderSessions());
+      const sessSearch = document.getElementById("sessionsSearchInput");
+      if (sessSearch) sessSearch.addEventListener("input", () => renderSessions());
+      
+      const btnCopyWs = document.getElementById("btnCopyWsPreview");
+      if (btnCopyWs) btnCopyWs.addEventListener("click", () => copyWsPreview());
     }
 
     // Fetch Status
@@ -2686,10 +2663,10 @@ export function getDashboardHtml(): string {
       const wsSelect = document.getElementById("workspacesBotFilter");
       const newSessionSelect = document.getElementById("newSessionBotSelect");
 
-      if (!sessionSelect || !wsSelect) return;
+      if (!sessionSelect) return;
 
       const currSessionVal = sessionSelect.value;
-      const currWsVal = wsSelect.value;
+      const currWsVal = wsSelect ? wsSelect.value : "";
 
       let optionsHtml = \`<option value="">\${t("filterAllBots")}</option>\`;
       let newSessionOpts = "";
@@ -2703,19 +2680,27 @@ export function getDashboardHtml(): string {
       }
 
       sessionSelect.innerHTML = optionsHtml;
-      wsSelect.innerHTML = optionsHtml;
+      if (wsSelect) wsSelect.innerHTML = optionsHtml;
       if (newSessionSelect) newSessionSelect.innerHTML = newSessionOpts;
 
       sessionSelect.value = currSessionVal;
-      wsSelect.value = currWsVal;
+      if (wsSelect) wsSelect.value = currWsVal;
     }
 
     async function fetchSessions() {
       try {
-        const res = await fetch("/api/sessions");
-        if (!res.ok) throw new Error("Failed to fetch sessions");
-        const data = await res.json();
-        allSessions = data.sessions || [];
+        const [sRes, wRes] = await Promise.all([
+          fetch("/api/sessions"),
+          fetch("/api/workspaces")
+        ]);
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          allSessions = sData.sessions || [];
+        }
+        if (wRes.ok) {
+          const wData = await wRes.json();
+          allWorkspaces = wData.workspaces || [];
+        }
         updateSessionMetrics();
         populateBotFilters();
         renderSessions();
@@ -2728,12 +2713,17 @@ export function getDashboardHtml(): string {
       const total = allSessions.length;
       const active = allSessions.filter(s => s.isActive).length;
       const totalTurns = allSessions.reduce((sum, s) => sum + (s.turnCount || 0), 0);
+      const totalBytes = (allWorkspaces && allWorkspaces.length > 0)
+        ? allWorkspaces.reduce((sum, w) => sum + (w.sizeBytes || 0), 0)
+        : allSessions.reduce((sum, s) => sum + (s.workspaceSizeBytes || 0), 0);
       const mTot = document.getElementById("mTotalSessions");
       const mAct = document.getElementById("mActiveSessions");
       const mTur = document.getElementById("mTotalTurns");
+      const mDsk = document.getElementById("mTotalDiskUsage");
       if (mTot) mTot.textContent = total;
       if (mAct) mAct.textContent = active;
       if (mTur) mTur.textContent = totalTurns;
+      if (mDsk) mDsk.textContent = formatBytes(totalBytes);
     }
 
     function renderSessions() {
@@ -2741,6 +2731,7 @@ export function getDashboardHtml(): string {
       if (!container) return;
 
       const botFilter = document.getElementById("sessionsBotFilter") ? document.getElementById("sessionsBotFilter").value : "";
+      const statusFilter = document.getElementById("sessionsStatusFilter") ? document.getElementById("sessionsStatusFilter").value : "all";
       const searchInput = document.getElementById("sessionsSearchInput");
       const search = searchInput ? (searchInput.value || "").trim().toLowerCase() : "";
 
@@ -2748,58 +2739,190 @@ export function getDashboardHtml(): string {
       if (botFilter) {
         filtered = filtered.filter(s => s.botId === botFilter);
       }
+      if (statusFilter === "active") {
+        filtered = filtered.filter(s => s.isActive);
+      } else if (statusFilter === "inactive") {
+        filtered = filtered.filter(s => !s.isActive);
+      } else if (statusFilter === "orphaned") {
+        filtered = [];
+      }
       if (search) {
         filtered = filtered.filter(s =>
           (s.chatId && s.chatId.toLowerCase().includes(search)) ||
           (s.sessionId && s.sessionId.toLowerCase().includes(search)) ||
           (s.activeEngine && s.activeEngine.toLowerCase().includes(search)) ||
           (s.title && s.title.toLowerCase().includes(search)) ||
-          (s.botName && s.botName.toLowerCase().includes(search))
+          (s.botName && s.botName.toLowerCase().includes(search)) ||
+          (s.workspacePath && s.workspacePath.toLowerCase().includes(search))
         );
       }
 
-      if (filtered.length === 0) {
-        container.innerHTML = \`
-          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
-            <div style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.25rem;">\${t("noSessionsFound")}</div>
-          </div>
-        \`;
-        return;
+      // Filter orphaned workspaces
+      let orphaned = (allWorkspaces || []).filter(w => !w.isKnownSession);
+      if (botFilter) {
+        orphaned = orphaned.filter(w => w.botId === botFilter);
+      }
+      if (search) {
+        orphaned = orphaned.filter(w =>
+          (w.folderName && w.folderName.toLowerCase().includes(search)) ||
+          (w.chatId && w.chatId.toLowerCase().includes(search)) ||
+          (w.sessionId && w.sessionId.toLowerCase().includes(search)) ||
+          (w.path && w.path.toLowerCase().includes(search)) ||
+          (w.botName && w.botName.toLowerCase().includes(search))
+        );
       }
 
-      let html = "";
-      for (const s of filtered) {
-        const isActive = s.isActive;
-        const channelBadgeClass = s.channelType === "telegram" ? "channel-tg" : "channel-dc";
-        const channelName = s.channelType ? s.channelType.toUpperCase() : "BOT";
-        const dateStr = s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString() : "--";
+      if (statusFilter !== "orphaned") {
+        if (filtered.length === 0) {
+          container.innerHTML = \`
+            <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+              <div style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.25rem;">\${t("noSessionsFound")}</div>
+            </div>
+          \`;
+        } else {
+          let html = "";
+          for (const s of filtered) {
+            const isActive = s.isActive;
+            const channelBadgeClass = s.channelType === "telegram" ? "channel-tg" : "channel-dc";
+            const channelName = s.channelType ? s.channelType.toUpperCase() : "BOT";
+            const dateStr = s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString() : "--";
+            const fileCount = s.workspaceFileCount || 0;
+            const sizeStr = formatBytes(s.workspaceSizeBytes || 0);
 
+            html += \`
+              <div class="session-card \${isActive ? 'is-active' : ''}">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
+                  <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                    <span class="channel-badge \${channelBadgeClass}">\${channelName}</span>
+                    <span class="badge-status \${isActive ? 'badge-active' : 'badge-inactive'}">
+                      \${isActive ? '● ' + t("sessionActive") : '○ ' + t("sessionInactive")}
+                    </span>
+                    <span class="badge-engine">\${escapeHtml(s.activeEngine || "claude")}</span>
+                    <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+                      \${escapeHtml(s.botName || s.botId)}
+                    </span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+                      #\${s.sessionNum || 1}
+                    </span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 0.45rem;">
+                    <button class="btn btn-secondary btn-sm" onclick="openSessionTurns('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                      \${t("viewTurns")} (\${s.turnCount || 0})
+                    </button>
+                    \${s.workspaceExists ? \`
+                      <button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(s.workspacePath)}')">
+                        \${t("exploreWorkspace")} (\${fileCount})
+                      </button>
+                    \` : \`
+                      <button class="btn btn-secondary btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+                        \${t("exploreWorkspace")} (0)
+                      </button>
+                    \`}
+                    \${!isActive ? \`
+                      <button class="btn btn-secondary btn-sm" onclick="switchSessionActive('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                        \${t("setActiveSession")}
+                      </button>
+                    \` : ''}
+                    <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" title="Delete" onclick="deleteSessionPrompt('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div class="card-meta-grid">
+                  <div class="meta-item">
+                    <span class="meta-label">Chat ID</span>
+                    <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(s.chatId)}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Session ID</span>
+                    <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(s.sessionId)}">
+                      \${escapeHtml(s.sessionId ? s.sessionId.slice(0, 18) + '...' : '--')}
+                    </span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Model & Effort</span>
+                    <span class="meta-val">\${escapeHtml(s.model || "default")} \${s.effort ? '(' + escapeHtml(s.effort) + ')' : ''}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Workspace & Storage</span>
+                    <span class="meta-val">
+                      \${s.workspaceExists ? \`
+                        <span style="color: var(--badge-green-text); cursor: pointer;" onclick="openWorkspaceFiles('\${escapeHtml(s.workspacePath)}')">
+                          📁 \${fileCount} files • \${sizeStr}
+                        </span>
+                      \` : \`<span style="color: var(--text-muted);">📁 \${t("workspaceNone")}</span>\`}
+                    </span>
+                  </div>
+                  <div class="meta-item" style="grid-column: 1 / -1;">
+                    <span class="meta-label">Workspace Path</span>
+                    <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.73rem; color: var(--text-muted); word-break: break-all;">
+                      \${escapeHtml(s.workspacePath || '--')}
+                    </span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Last Active</span>
+                    <span class="meta-val" style="font-size: 0.76rem; color: var(--text-secondary);">\${dateStr}</span>
+                  </div>
+                </div>
+              </div>
+            \`;
+          }
+          container.innerHTML = html;
+        }
+      } else {
+        container.innerHTML = "";
+      }
+
+      // Render orphaned workspaces
+      const orphanSection = document.getElementById("orphanedWorkspacesSection");
+      const orphanContainer = document.getElementById("orphanedListContainer");
+      if (orphanSection && orphanContainer) {
+        if (statusFilter === "active" || statusFilter === "inactive") {
+          orphanSection.style.display = "none";
+        } else if (statusFilter === "orphaned") {
+          orphanSection.style.display = "block";
+          if (orphaned.length === 0) {
+            orphanContainer.innerHTML = \`
+              <div class="card" style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+                \${t("noOrphanedFound")}
+              </div>
+            \`;
+          } else {
+            renderOrphanCards(orphaned, orphanContainer);
+          }
+        } else {
+          // "all"
+          if (orphaned.length > 0) {
+            orphanSection.style.display = "block";
+            renderOrphanCards(orphaned, orphanContainer);
+          } else {
+            orphanSection.style.display = "none";
+          }
+        }
+      }
+    }
+
+    function renderOrphanCards(orphans, container) {
+      let html = "";
+      for (const w of orphans) {
+        const dateStr = w.mtime ? new Date(w.mtime).toLocaleString() : "--";
         html += \`
-          <div class="session-card \${isActive ? 'is-active' : ''}">
+          <div class="workspace-card" style="border-left: 3px solid var(--badge-amber-text); margin-bottom: 0.75rem;">
             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
               <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
-                <span class="channel-badge \${channelBadgeClass}">\${channelName}</span>
-                <span class="badge-status \${isActive ? 'badge-active' : 'badge-inactive'}">
-                  \${isActive ? '● ' + t("sessionActive") : '○ ' + t("sessionInactive")}
+                <span style="font-size: 1.1rem;">📁</span>
+                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); font-family: var(--font-mono);">
+                  \${escapeHtml(w.folderName)}
                 </span>
-                <span class="badge-engine">\${escapeHtml(s.activeEngine || "claude")}</span>
-                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
-                  \${escapeHtml(s.botName || s.botId)}
-                </span>
-                <span style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
-                  #\${s.sessionNum || 1}
-                </span>
+                <span class="badge-status badge-orphaned">▲ \${t("workspaceOrphaned")}</span>
+                \${w.botName ? \`<span style="font-size: 0.8rem; color: var(--text-secondary);">(\${escapeHtml(w.botName)})</span>\` : ''}
               </div>
               <div style="display: flex; align-items: center; gap: 0.45rem;">
-                <button class="btn btn-secondary btn-sm" onclick="openSessionTurns('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
-                  \${t("viewTurns")} (\${s.turnCount || 0})
+                <button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(w.path)}')">
+                  \${t("exploreFiles")} (\${w.fileCount})
                 </button>
-                \${!isActive ? \`
-                  <button class="btn btn-secondary btn-sm" onclick="switchSessionActive('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
-                    \${t("setActiveSession")}
-                  </button>
-                \` : ''}
-                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteSessionPrompt('\${escapeHtml(s.botId)}', '\${escapeHtml(s.chatId)}', '\${escapeHtml(s.sessionId)}')">
+                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteWorkspaceConfirm('\${escapeHtml(w.path)}', '\${escapeHtml(w.folderName)}')">
                   ✕
                 </button>
               </div>
@@ -2808,31 +2931,25 @@ export function getDashboardHtml(): string {
             <div class="card-meta-grid">
               <div class="meta-item">
                 <span class="meta-label">Chat ID</span>
-                <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(s.chatId)}</span>
+                <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(w.chatId || "--")}</span>
               </div>
               <div class="meta-item">
                 <span class="meta-label">Session ID</span>
-                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(s.sessionId)}">
-                  \${escapeHtml(s.sessionId ? s.sessionId.slice(0, 18) + '...' : '--')}
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(w.sessionId || '')}">
+                  \${escapeHtml(w.sessionId ? w.sessionId.slice(0, 18) + '...' : '--')}
                 </span>
               </div>
               <div class="meta-item">
-                <span class="meta-label">Model & Effort</span>
-                <span class="meta-val">\${escapeHtml(s.model || "default")} \${s.effort ? '(' + escapeHtml(s.effort) + ')' : ''}</span>
+                <span class="meta-label">File Count & Size</span>
+                <span class="meta-val">\${w.fileCount} files • \${formatBytes(w.sizeBytes)}</span>
               </div>
               <div class="meta-item">
-                <span class="meta-label">Workspace Directory</span>
-                <span class="meta-val">
-                  \${s.workspaceExists ? \`
-                    <span style="color: var(--badge-green-text); cursor: pointer;" onclick="switchToWorkspaceView('\${escapeHtml(s.workspacePath)}')">
-                      📁 \${t("workspaceReady")}
-                    </span>
-                  \` : \`<span style="color: var(--text-muted);">📁 \${t("workspaceNone")}</span>\`}
-                </span>
-              </div>
-              <div class="meta-item">
-                <span class="meta-label">Last Active</span>
+                <span class="meta-label">Last Modified</span>
                 <span class="meta-val" style="font-size: 0.76rem; color: var(--text-secondary);">\${dateStr}</span>
+              </div>
+              <div class="meta-item" style="grid-column: 1 / -1;">
+                <span class="meta-label">Physical Path</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); word-break: break-all;">\${escapeHtml(w.path)}</span>
               </div>
             </div>
           </div>
@@ -2965,19 +3082,16 @@ export function getDashboardHtml(): string {
       const confirmDelete = confirm(t("deleteSessionConfirm", { id: sessionId }));
       if (!confirmDelete) return;
 
-      const deleteWorkspace = confirm(t("deleteSessionAndWorkspace"));
-
       try {
         const res = await fetch("/api/sessions", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ botId, chatId, sessionId, deleteWorkspace })
+          body: JSON.stringify({ botId, chatId, sessionId, deleteWorkspace: true })
         });
         const data = await res.json();
         if (data.ok) {
           showToast(t("sessionDeletedToast"), "success");
           fetchSessions();
-          fetchWorkspaces();
         } else {
           showToast(data.error || "Failed to delete session", "error");
         }
@@ -2986,126 +3100,11 @@ export function getDashboardHtml(): string {
       }
     }
 
-    // Workspaces Logic
     async function fetchWorkspaces() {
-      try {
-        const res = await fetch("/api/workspaces");
-        if (!res.ok) throw new Error("Failed to fetch workspaces");
-        const data = await res.json();
-        allWorkspaces = data.workspaces || [];
-        updateWorkspaceMetrics();
-        populateBotFilters();
-        renderWorkspaces();
-      } catch (err) {
-        // silent fallback
-      }
-    }
-
-    function updateWorkspaceMetrics() {
-      const total = allWorkspaces.length;
-      const active = allWorkspaces.filter(w => w.isActiveSession).length;
-      const totalBytes = allWorkspaces.reduce((sum, w) => sum + (w.sizeBytes || 0), 0);
-      const mTot = document.getElementById("mTotalWorkspaces");
-      const mAct = document.getElementById("mActiveWorkspaces");
-      const mDsk = document.getElementById("mTotalDiskUsage");
-      if (mTot) mTot.textContent = total;
-      if (mAct) mAct.textContent = active;
-      if (mDsk) mDsk.textContent = formatBytes(totalBytes);
-    }
-
-    function renderWorkspaces() {
-      const container = document.getElementById("workspacesListContainer");
-      if (!container) return;
-
-      const botFilter = document.getElementById("workspacesBotFilter") ? document.getElementById("workspacesBotFilter").value : "";
-      const searchInput = document.getElementById("workspacesSearchInput");
-      const search = searchInput ? (searchInput.value || "").trim().toLowerCase() : "";
-
-      let filtered = allWorkspaces;
-      if (botFilter) {
-        filtered = filtered.filter(w => w.botId === botFilter);
-      }
-      if (search) {
-        filtered = filtered.filter(w =>
-          (w.folderName && w.folderName.toLowerCase().includes(search)) ||
-          (w.chatId && w.chatId.toLowerCase().includes(search)) ||
-          (w.sessionId && w.sessionId.toLowerCase().includes(search)) ||
-          (w.path && w.path.toLowerCase().includes(search))
-        );
-      }
-
-      if (filtered.length === 0) {
-        container.innerHTML = \`
-          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
-            <div style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.25rem;">\${t("noWorkspacesFound")}</div>
-          </div>
-        \`;
-        return;
-      }
-
-      let html = "";
-      for (const w of filtered) {
-        const statusBadge = w.isActiveSession
-          ? \`<span class="badge-status badge-active">● \${t("workspaceActive")}</span>\`
-          : (w.isKnownSession
-            ? \`<span class="badge-status badge-inactive">○ \${t("workspaceHistory")}</span>\`
-            : \`<span class="badge-status badge-orphaned">▲ \${t("workspaceOrphaned")}</span>\`);
-
-        const dateStr = w.mtime ? new Date(w.mtime).toLocaleString() : "--";
-
-        html += \`
-          <div class="workspace-card">
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
-              <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
-                <span style="font-size: 1.1rem;">📁</span>
-                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); font-family: var(--font-mono);">
-                  \${escapeHtml(w.folderName)}
-                </span>
-                \${statusBadge}
-                \${w.botName ? \`<span style="font-size: 0.8rem; color: var(--text-secondary);">(\${escapeHtml(w.botName)})</span>\` : ''}
-              </div>
-              <div style="display: flex; align-items: center; gap: 0.45rem;">
-                <button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(w.path)}')">
-                  \${t("exploreFiles")} (\${w.fileCount})
-                </button>
-                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteWorkspaceConfirm('\${escapeHtml(w.path)}', '\${escapeHtml(w.folderName)}')">
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div class="card-meta-grid">
-              <div class="meta-item">
-                <span class="meta-label">Chat ID</span>
-                <span class="meta-val" style="font-family: var(--font-mono);">\${escapeHtml(w.chatId || "--")}</span>
-              </div>
-              <div class="meta-item">
-                <span class="meta-label">Session ID</span>
-                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.75rem;" title="\${escapeHtml(w.sessionId || '')}">
-                  \${escapeHtml(w.sessionId ? w.sessionId.slice(0, 18) + '...' : '--')}
-                </span>
-              </div>
-              <div class="meta-item">
-                <span class="meta-label">File Count & Size</span>
-                <span class="meta-val">\${w.fileCount} files • \${formatBytes(w.sizeBytes)}</span>
-              </div>
-              <div class="meta-item">
-                <span class="meta-label">Last Modified</span>
-                <span class="meta-val" style="font-size: 0.76rem; color: var(--text-secondary);">\${dateStr}</span>
-              </div>
-              <div class="meta-item" style="grid-column: 1 / -1;">
-                <span class="meta-label">Physical Path</span>
-                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted);">\${escapeHtml(w.path)}</span>
-              </div>
-            </div>
-          </div>
-        \`;
-      }
-      container.innerHTML = html;
+      return fetchSessions();
     }
 
     function switchToWorkspaceView(path) {
-      switchTab("workspaces");
       openWorkspaceFiles(path);
     }
 

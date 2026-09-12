@@ -28,6 +28,8 @@ export interface SessionSummary {
   lastActiveAt: number;
   workspacePath: string;
   workspaceExists: boolean;
+  workspaceFileCount?: number;
+  workspaceSizeBytes?: number;
 }
 
 export interface WorkspaceSummary {
@@ -332,6 +334,14 @@ export class Gateway {
         const safeChatId = chat.chatId.replace(/[^a-zA-Z0-9_-]/g, "_");
         for (const s of chat.sessions) {
           const wsPath = join(this.dataDir, "workspaces", bot.botId, `${safeChatId}_${s.sessionId}`);
+          const wsExists = existsSync(wsPath);
+          let wsFileCount = 0;
+          let wsSizeBytes = 0;
+          if (wsExists) {
+            const stats = getDirectoryStats(wsPath);
+            wsFileCount = stats.fileCount;
+            wsSizeBytes = stats.sizeBytes;
+          }
           results.push({
             botId: bot.botId,
             botName: bot.name,
@@ -348,7 +358,9 @@ export class Gateway {
             createdAt: s.createdAt,
             lastActiveAt: s.lastActiveAt,
             workspacePath: wsPath,
-            workspaceExists: existsSync(wsPath),
+            workspaceExists: wsExists,
+            workspaceFileCount: wsFileCount,
+            workspaceSizeBytes: wsSizeBytes,
           });
         }
       }

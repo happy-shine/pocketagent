@@ -1691,14 +1691,14 @@ export function getDashboardHtml(): string {
         sessionInactive: "非活跃",
         viewTurns: "💬 查看对话记录",
         setActiveSession: "⚡ 设为活跃会话",
-        deleteSessionConfirm: "确定要删除会话 \"{id}\" 吗？",
+        deleteSessionConfirm: "确定要删除会话「{id}」吗？",
         deleteSessionAndWorkspace: "同时删除该会话关联的本地工作区目录",
         
         workspaceActive: "活跃会话",
         workspaceHistory: "历史会话",
         workspaceOrphaned: "无归属孤立目录",
         exploreFiles: "📂 浏览文件",
-        deleteWorkspaceConfirm: "确定要物理删除工作区目录 \"{name}\" 吗？此操作不可逆！",
+        deleteWorkspaceConfirm: "确定要物理删除工作区目录「{name}」吗？此操作不可逆！",
 
         modalSessionTurnsTitle: "会话对话记录",
         modalNewSessionTitle: "新建会话",
@@ -1848,14 +1848,14 @@ export function getDashboardHtml(): string {
         sessionInactive: "Inactive",
         viewTurns: "💬 Dialogue History",
         setActiveSession: "⚡ Set Active",
-        deleteSessionConfirm: "Are you sure you want to delete session \"{id}\"?",
+        deleteSessionConfirm: "Are you sure you want to delete session '{id}'?",
         deleteSessionAndWorkspace: "Also delete associated local workspace directory",
 
         workspaceActive: "Active Session",
         workspaceHistory: "Historical Session",
         workspaceOrphaned: "Orphaned Folder",
         exploreFiles: "📂 Explore Files",
-        deleteWorkspaceConfirm: "Are you sure you want to delete workspace \"{name}\"? This cannot be undone.",
+        deleteWorkspaceConfirm: "Are you sure you want to delete workspace '{name}'? This cannot be undone.",
 
         modalSessionTurnsTitle: "Session Dialogue History",
         modalNewSessionTitle: "Create New Session",

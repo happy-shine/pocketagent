@@ -19,11 +19,16 @@
 
 ## Overview
 
-Terminal agents like **Claude Code**, **OpenAI Codex**, and Google **Antigravity (AGY)** are far more than code generators. With full host permissions, they can run bash commands, monitor server processes, manage Docker containers, execute Python data scripts, and invoke custom extension tools.
+Terminal agents like **Claude Code**, **OpenAI Codex**, and Google **Antigravity (AGY)** are far more than mere code generators. With full host permissions, they can run bash commands, monitor server processes, manage background services, execute Python data scripts, and invoke custom extension tools.
 
 Their main drawback is that **they require you to stay at your desk in front of a terminal**.
 
-**PocketAgent** is a lightweight local gateway daemon that bridges these three CLI agents directly to **Telegram** and **Discord**. Whether you are on mobile, a tablet, a secondary laptop, or desktop chat, you can dispatch tasks directly to your machine without keeping a terminal open or setting up complicated SSH tunnels and remote desktops.
+While some tools offer official remote features or web interfaces, they come with practical trade-offs:
+- **No vendor lock-in, freedom of choice**: Official remotes exclusively control their own CLI (Claude remote only controls Claude). PocketAgent provides a unified gateway: whether you prefer Claude Code, OpenAI Codex, or Google Antigravity, you can operate your local machine through the same familiar Telegram / Discord interface without juggling separate remote tools, and switch anytime if needed.
+- **Mobile terminal friction vs. native messaging**: Official remote setups typically rely on web terminals or standalone interfaces, which frequently suffer from disconnects, session timeouts, and clumsy mobile virtual keyboards. PocketAgent delivers native Telegram and Discord messaging — send a task, lock your screen, and receive asynchronous push notifications upon completion.
+- **Team collaboration & shared CLI accounts**: Official remote tools are strictly single-user. PocketAgent natively supports Telegram and Discord groups, allowing team members to collaborate within the same shared conversation context while pooling the host machine's authenticated CLI accounts and subscriptions without needing separate setups or extra seats.
+
+**PocketAgent** is a lightweight local gateway daemon that bridges these three CLI agents directly to your chat clients. Whether you are on mobile, a tablet, a secondary laptop, or desktop chat, dispatch tasks directly to your machine without keeping a terminal open or configuring complex SSH tunnels.
 
 ```text
     Telegram / Discord (Mobile / Desktop / Web / Tablet)
@@ -43,7 +48,7 @@ Their main drawback is that **they require you to stay at your desk in front of 
         └─────────────────┼─────────────────┘
                           ▼
               Your Local Computer & OS
-   (Bash/Zsh • Python • Git • Docker • File System • Skills)
+   (Bash/Zsh • Python • Git • Services • File System • Skills)
 ```
 
 ---
@@ -53,7 +58,7 @@ Their main drawback is that **they require you to stay at your desk in front of 
 - **Ubiquitous Terminal Access Across Devices**: Runs real CLI processes on your machine with native shell, git, and filesystem permissions. Beyond writing code, you can monitor servers, inspect production logs, run maintenance scripts, and review diffs from any chat client.
 - **Mid-Conversation Engine Switching (`/engine`)**: Switch between Claude Code, OpenAI Codex, and Antigravity anytime within the same conversation. PocketAgent automatically extracts conversation history, modified files, and task goals to hand over context without losing track.
 - **3-CLI Unified Skill Hub**: Manage custom extension skills centrally in `~/.pocketagent/skills/`. Skills are automatically symlinked across Claude, Codex, and AGY, eliminating the need to maintain separate tool definitions for each engine.
-- **Multi-Bot & Multi-Channel**: Run multiple Telegram and Discord bots concurrently on a single gateway. Each bot can be configured with its own default engine, model, reasoning effort, and custom system prompt (`SOUL.md`).
+- **Multi-Bot, Group Collaboration & Multi-Channel**: Run multiple Telegram and Discord bots concurrently on a single gateway across DMs and group channels. Group members share conversation context and host CLI subscriptions; each bot can be configured with its own default engine, model, reasoning effort, and custom system prompt (`SOUL.md`).
 - **Local Web Dashboard**: Built-in minimalist console at `http://127.0.0.1:18790` for live status monitoring, configuration hot reload (`Cmd+S`), workspace and file inspection, turn-by-turn dialogue logs, and online skill editing.
 - **100% Local & Secure**: Operates strictly on your own hardware without third-party cloud intermediaries. New conversations require approving a 6-digit pairing code in the terminal before gaining access.
 
@@ -63,7 +68,7 @@ Their main drawback is that **they require you to stay at your desk in front of 
 
 | Scenario | Message / Command | Local Machine Action |
 | :--- | :--- | :--- |
-| **Remote DevOps** | `Check why the staging nginx container restarted` | CLI inspects `docker logs`, identifies the error, and replies with a summary |
+| **System DevOps** | `Check why the local web service threw 502 errors` | CLI inspects port status and server logs, identifies the root cause, and replies with a summary |
 | **Log & Data Processing** | `Summarize status code breakdown from access.log today` | CLI executes a Python or awk script to parse local logs and returns the summary |
 | **Code Changes on the Go** | `Update auth token expiration to 2h in auth.ts and run vitest` | CLI edits the file, executes the test suite, and outputs the git diff and test status |
 | **Multi-Engine Workflow** | Draft architecture with Claude, then send `/engine` to switch to AGY | Automatically hands off context to Antigravity for implementation against a large codebase |

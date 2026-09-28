@@ -450,17 +450,16 @@ export class ApiServer {
   }
 
   private async handleSoul(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const botId = url.searchParams.get("bot_id");
-    if (!botId) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Missing bot_id" }));
-      return;
-    }
-
-    const agentsDir = join(this.config.dataDir, "agents");
-    const soulPath = join(agentsDir, botId, "SOUL.md");
+    let botId = url.searchParams.get("bot_id");
 
     if (req.method === "GET") {
+      if (!botId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Missing bot_id" }));
+        return;
+      }
+      const agentsDir = join(this.config.dataDir, "agents");
+      const soulPath = join(agentsDir, botId, "SOUL.md");
       let content: string | null = null;
       if (existsSync(soulPath)) {
         content = readFileSync(soulPath, "utf-8");
@@ -474,12 +473,25 @@ export class ApiServer {
       const body = await readBody(req);
       let content: string;
       try {
-        content = JSON.parse(body).content;
+        const parsed = JSON.parse(body);
+        content = parsed.content;
+        if (!botId && parsed.bot_id) {
+          botId = String(parsed.bot_id);
+        }
       } catch {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON body, expected {content: string}" }));
         return;
       }
+
+      if (!botId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Missing bot_id" }));
+        return;
+      }
+
+      const agentsDir = join(this.config.dataDir, "agents");
+      const soulPath = join(agentsDir, botId, "SOUL.md");
       mkdirSync(join(agentsDir, botId), { recursive: true });
       writeFileSync(soulPath, content, "utf-8");
       this.log.info({ botId, soulPath }, "SOUL.md updated");
@@ -489,6 +501,12 @@ export class ApiServer {
     }
 
     if (req.method === "DELETE") {
+      if (!botId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Missing bot_id" }));
+        return;
+      }
+      const soulPath = join(this.config.dataDir, "agents", botId, "SOUL.md");
       if (existsSync(soulPath)) {
         unlinkSync(soulPath);
         this.log.info({ botId }, "SOUL.md deleted");

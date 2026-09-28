@@ -218,6 +218,90 @@ export function registerHandlers(
       });
     }
   });
+
+  bot.on("message:voice", (ctx) => {
+    if (!messageHandler) return;
+    const msg = contextToInbound(ctx);
+    if (!msg) return;
+
+    const caption = ctx.message.caption ?? "";
+
+    if (msg.isGroup) {
+      const voice = ctx.message.voice;
+      recordGroupMessage(msg.chatId, {
+        messageId: msg.messageId,
+        senderName: msg.senderName,
+        senderId: msg.senderId,
+        text: caption ? `[Voice] ${caption}` : "[Voice]",
+        timestamp: msg.timestamp,
+        media: [`voice:${voice.file_id}`],
+      });
+
+      const result = checkGroupMention(ctx, msg, caption);
+      if (result === null) return;
+      msg.text = result;
+    } else {
+      msg.text = caption;
+    }
+
+    const voice = ctx.message.voice;
+    const attachment: Attachment = {
+      type: "voice",
+      fileId: voice.file_id,
+      fileName: `voice_${voice.file_unique_id}.oga`,
+      mimeType: voice.mime_type ?? "audio/ogg",
+    };
+
+    msg.attachments = [attachment];
+    messageHandler(msg).catch((err: unknown) => {
+      log.error({ error: err instanceof Error ? err.message : String(err) }, "Voice handler failed");
+    });
+  });
+
+  bot.on("message:audio", (ctx) => {
+    if (!messageHandler) return;
+    const msg = contextToInbound(ctx);
+    if (!msg) return;
+
+    const caption = ctx.message.caption ?? "";
+    const audio = ctx.message.audio;
+    const fileName = audio.file_name ?? `audio_${audio.file_unique_id}.mp3`;
+
+    if (msg.isGroup) {
+      recordGroupMessage(msg.chatId, {
+        messageId: msg.messageId,
+        senderName: msg.senderName,
+        senderId: msg.senderId,
+        text: caption ? `[Audio: ${fileName}] ${caption}` : `[Audio: ${fileName}]`,
+        timestamp: msg.timestamp,
+        media: [`audio:${audio.file_id}:${fileName}`],
+      });
+
+      const result = checkGroupMention(ctx, msg, caption);
+      const mediaGroupId = ctx.message.media_group_id;
+      if (result === null && !mediaGroupId) return;
+      msg.text = result ?? "";
+    } else {
+      msg.text = caption;
+    }
+
+    const attachment: Attachment = {
+      type: "audio",
+      fileId: audio.file_id,
+      fileName,
+      mimeType: audio.mime_type ?? "audio/mpeg",
+    };
+
+    const mediaGroupId = ctx.message.media_group_id;
+    if (mediaGroupId) {
+      bufferMediaGroup(mediaGroupId, msg, [attachment], msg.text, messageHandler, log);
+    } else {
+      msg.attachments = [attachment];
+      messageHandler(msg).catch((err: unknown) => {
+        log.error({ error: err instanceof Error ? err.message : String(err) }, "Audio handler failed");
+      });
+    }
+  });
 }
 
 function checkGroupMention(ctx: Context, _msg: InboundMessage, text: string): string | null {
@@ -275,7 +359,7 @@ function bufferMediaGroup(
   mediaGroupBuffers.set(mediaGroupId, buffer);
 }
 
-function contextToInbound(ctx: Context): InboundMessage | null {
+export function contextToInbound(ctx: Context): InboundMessage | null {
   const msg = ctx.message;
   if (!msg) return null;
 
@@ -315,6 +399,26 @@ function contextToInbound(ctx: Context): InboundMessage | null {
       });
       if (!replyText) replyText = doc.file_name ? `[File: ${doc.file_name}]` : "[Document]";
     }
+    if (r.voice) {
+      const v = r.voice as { file_id: string; file_unique_id?: string; mime_type?: string };
+      replyAttachments.push({
+        type: "voice",
+        fileId: v.file_id,
+        fileName: v.file_unique_id ? `voice_${v.file_unique_id}.oga` : "voice.oga",
+        mimeType: v.mime_type ?? "audio/ogg",
+      });
+      if (!replyText) replyText = "[Voice]";
+    }
+    if (r.audio) {
+      const a = r.audio as { file_id: string; file_unique_id?: string; file_name?: string; mime_type?: string };
+      replyAttachments.push({
+        type: "audio",
+        fileId: a.file_id,
+        fileName: a.file_name ?? (a.file_unique_id ? `audio_${a.file_unique_id}.mp3` : "audio.mp3"),
+        mimeType: a.mime_type ?? "audio/mpeg",
+      });
+      if (!replyText) replyText = a.file_name ? `[Audio: ${a.file_name}]` : "[Audio]";
+    }
   }
 
   return {
@@ -323,7 +427,7 @@ function contextToInbound(ctx: Context): InboundMessage | null {
     senderId,
     senderName,
     messageId: String(msg.message_id),
-    text: msg.text ?? "",
+    text: msg.text ?? msg.caption ?? "",
     isGroup: msg.chat.type === "group" || msg.chat.type === "supergroup",
     timestamp: msg.date,
     threadId: msg.message_thread_id ? String(msg.message_thread_id) : undefined,

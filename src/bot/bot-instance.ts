@@ -782,9 +782,16 @@ export class BotInstance {
     const hasAttachments = (msg.attachments && msg.attachments.length > 0) || (msg.replyAttachments && msg.replyAttachments.length > 0);
     if (!msg.text.trim()) {
       if (hasAttachments) {
-        msg.text = (msg.attachments?.[0]?.type === "photo" || msg.replyAttachments?.[0]?.type === "photo")
-          ? "Please inspect the attached image."
-          : "Please inspect the attached file.";
+        const firstType = msg.attachments?.[0]?.type ?? msg.replyAttachments?.[0]?.type;
+        if (firstType === "photo") {
+          msg.text = "Please inspect the attached image.";
+        } else if (firstType === "voice") {
+          msg.text = "Please listen to the attached voice message and respond.";
+        } else if (firstType === "audio") {
+          msg.text = "Please listen to the attached audio file and respond.";
+        } else {
+          msg.text = "Please inspect the attached file.";
+        }
       } else {
         if (msg.channelType === "discord") {
           await channel.send({

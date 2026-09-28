@@ -160,8 +160,10 @@ export class DiscordAdapter implements ChannelAdapter {
       if (message.attachments.size > 0) {
         for (const [, att] of message.attachments) {
           const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
+          const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
+          const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
           inboundAttachments.push({
-            type: isPhoto ? "photo" : "document",
+            type: isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document")),
             fileId: att.url,
             fileName: att.name,
             mimeType: att.contentType ?? undefined,
@@ -185,15 +187,26 @@ export class DiscordAdapter implements ChannelAdapter {
             if (refMsg.attachments && refMsg.attachments.size > 0) {
               for (const [, att] of refMsg.attachments) {
                 const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
+                const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
+                const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
                 replyAttachments.push({
-                  type: isPhoto ? "photo" : "document",
+                  type: isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document")),
                   fileId: att.url,
                   fileName: att.name,
                   mimeType: att.contentType ?? undefined,
                 });
               }
               if (!replyText) {
-                replyText = replyAttachments[0]?.type === "photo" ? "[Photo]" : `[File: ${replyAttachments[0]?.fileName || "Document"}]`;
+                const firstType = replyAttachments[0]?.type;
+                if (firstType === "photo") {
+                  replyText = "[Photo]";
+                } else if (firstType === "voice") {
+                  replyText = "[Voice]";
+                } else if (firstType === "audio") {
+                  replyText = replyAttachments[0]?.fileName ? `[Audio: ${replyAttachments[0].fileName}]` : "[Audio]";
+                } else {
+                  replyText = `[File: ${replyAttachments[0]?.fileName || "Document"}]`;
+                }
               }
             }
           }

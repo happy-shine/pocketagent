@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync, mkdtempSync, existsSync, lstatSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync, existsSync, lstatSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SkillRegistry } from "../skills/registry.js";
@@ -87,6 +87,45 @@ description: Query group chats
     expect(synced[0].synced.claude).toBe(true);
     expect(synced[0].synced.agy).toBe(true);
     expect(synced[0].synced.codex).toBe(true);
+  });
+
+  it("ingests external symlinked skills and cleans dangling symlinks", () => {
+    // 1. External skill outside Hub and CLI dirs
+    const externalSkillDir = join(testDir, "external-skill");
+    mkdirSync(join(externalSkillDir, "scripts"), { recursive: true });
+    writeFileSync(
+      join(externalSkillDir, "SKILL.md"),
+      `---
+name: external-skill
+description: External skill test
+---
+# External Skill`,
+    );
+    writeFileSync(join(externalSkillDir, "scripts", "run.py"), "print('ext')");
+
+    // Put a symlink in claudeDir pointing to externalSkillDir
+    symlinkSync(externalSkillDir, join(claudeDir, "external-skill"), "dir");
+
+    // Put a dangling symlink in agyDir pointing to non-existent hub skill
+    symlinkSync(join(hubDir, "dangling-skill"), join(agyDir, "dangling-skill"), "dir");
+
+    // Run sync
+    const synced = registry.sync();
+    expect(synced.length).toBe(1);
+    expect(synced[0].name).toBe("external-skill");
+
+    // Hub should have the canonical files copied
+    expect(existsSync(join(hubDir, "external-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(hubDir, "external-skill", "scripts", "run.py"))).toBe(true);
+
+    // Symlinks in all 3 CLIs should point to Hub
+    expect(lstatSync(join(claudeDir, "external-skill")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(agyDir, "external-skill")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(codexDir, "external-skill")).isSymbolicLink()).toBe(true);
+
+    // Dangling symlink should be cleaned up
+    expect(existsSync(join(agyDir, "dangling-skill"))).toBe(false);
+    expect(lstatSync(join(agyDir, "dangling-skill"), { throwIfNoEntry: false })).toBeUndefined();
   });
 
   it("generates markdown catalog prompt for system prompt injection", () => {

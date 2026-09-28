@@ -96,7 +96,7 @@ export class SkillRegistry {
       { type: "codex" as const, dir: this.codexSkillsDir },
     ];
 
-    // 1. Ingest real skill directories from CLI folders into Hub if missing
+    // 1. Ingest real skill directories or external symlinks from CLI folders into Hub if missing
     for (const { dir } of cliDirs) {
       if (!existsSync(dir)) continue;
       try {
@@ -112,11 +112,17 @@ export class SkillRegistry {
 
           try {
             const stat = lstatSync(srcSkillDir);
-            if (!stat.isSymbolicLink()) {
+            let isTargetingHub = false;
+            if (stat.isSymbolicLink()) {
+              const currentTarget = resolve(dir, readlinkSync(srcSkillDir));
+              isTargetingHub = currentTarget === resolve(hubSkillDir);
+            }
+
+            if (!isTargetingHub) {
               if (!existsSync(hubSkillDir)) {
-                cpSync(srcSkillDir, hubSkillDir, { recursive: true });
+                cpSync(srcSkillDir, hubSkillDir, { recursive: true, dereference: true });
               }
-              // Replace real directory with symlink to Hub
+              // Replace real directory or external symlink with symlink to Hub
               rmSync(srcSkillDir, { recursive: true, force: true });
               symlinkSync(hubSkillDir, srcSkillDir, "dir");
             }
@@ -159,6 +165,27 @@ export class SkillRegistry {
           }
         }
       }
+    }
+
+    // 3. Clean up dangling symlinks in CLI dirs that point to non-existent skills
+    for (const { dir } of cliDirs) {
+      if (!existsSync(dir)) continue;
+      try {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue;
+          const targetLink = join(dir, entry.name);
+          try {
+            const stat = lstatSync(targetLink);
+            if (stat.isSymbolicLink()) {
+              const resolvedTarget = resolve(dir, readlinkSync(targetLink));
+              if (!existsSync(resolvedTarget)) {
+                rmSync(targetLink, { force: true });
+              }
+            }
+          } catch {}
+        }
+      } catch {}
     }
 
     return this.list();

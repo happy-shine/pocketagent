@@ -1051,8 +1051,18 @@ export class BotInstance {
       return { status: "timeout", error, output };
     }
     if (response.isError) {
-      const error = response.errorMessage || output || "Engine reported an error";
-      await deliver(`Run failed: ${error}`);
+      // If valid output was generated and no fatal error was reported, treat as successful
+      // despite any intermediate engine warnings or retried steps
+      if (output && !response.errorMessage) {
+        if (isSilentOutput(output)) {
+          return { status: "silent", output };
+        }
+        await deliver(output);
+        return { status: "ok", output };
+      }
+
+      const error = response.errorMessage || "Engine reported an error";
+      await deliver(output ? `${output}\n\n_(Run failed: ${error})_` : `Run failed: ${error}`);
       return { status: "error", error, output };
     }
     if (isSilentOutput(output)) {
@@ -1114,11 +1124,17 @@ export class BotInstance {
         text += event.text;
         finalText += event.text;
       } else if (event.type === "result") {
+        const hadPriorText = Boolean(text);
         if (event.result && !text) {
           text = event.result;
           finalText = event.result;
         }
-        if (event.isError) isError = true;
+        if (event.isError) {
+          isError = true;
+          if (!errorMessage && !hadPriorText && event.result) {
+            errorMessage = event.result;
+          }
+        }
       } else if (event.type === "error") {
         isError = true;
         errorMessage = event.message;

@@ -146,6 +146,34 @@ describe("BotInstance scheduled task runs", () => {
     expect((channel.send.mock.calls[0] as unknown as [any])[0].text).toContain("Run failed");
   });
 
+  it("treats run as ok when engine produces valid output despite transient isError in result", async () => {
+    const { bot, channel } = makeBot(async function* () {
+      yield { type: "text", text: "Generated Market Report" };
+      yield { type: "result", isError: true };
+    });
+    const result = await bot.runScheduledTask(job, run);
+    expect(result).toEqual({ status: "ok", output: "Generated Market Report" });
+    const sentText = (channel.send.mock.calls[0] as unknown as [any])[0].text;
+    expect(sentText).not.toContain("Run failed");
+    expect(sentText).toContain("Generated Market Report");
+  });
+
+  it("reports actual error message without using generated output as error", async () => {
+    const { bot, channel } = makeBot(async function* () {
+      yield { type: "text", text: "Partial draft before crash" };
+      yield { type: "error", message: "Out of memory" };
+      yield { type: "result", isError: true };
+    });
+    const result = await bot.runScheduledTask(job, run);
+    expect(result).toMatchObject({
+      status: "error",
+      error: "Out of memory",
+      output: "Partial draft before crash",
+    });
+    const sentText = (channel.send.mock.calls[0] as unknown as [any])[0].text;
+    expect(sentText).toContain("Run failed: Out of memory");
+  });
+
   it("terminates the engine when a run exceeds its timeout", async () => {
     let unblock!: () => void;
     const blocked = new Promise<void>((resolve) => (unblock = resolve));

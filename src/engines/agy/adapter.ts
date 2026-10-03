@@ -196,6 +196,15 @@ export class AgyEngineAdapter implements EngineAdapter {
 
         const eventType = (event.event as string) || (event.type as string);
 
+        // Error event
+        if (eventType === "error") {
+          const msg = typeof event.message === "string"
+            ? event.message
+            : (typeof event.error === "string" ? event.error : "Agy engine error");
+          yield { type: "error", message: msg };
+          return;
+        }
+
         // Session init
         if (eventType === "init" && typeof event.conversation_id === "string") {
           session.agySessionId = event.conversation_id;
@@ -232,10 +241,21 @@ export class AgyEngineAdapter implements EngineAdapter {
         if (eventType === "result") {
           const resObj = (event.result ?? {}) as Record<string, unknown>;
           const responseText = typeof resObj.response === "string" ? resObj.response : undefined;
+          const errorText = typeof resObj.error === "string" && resObj.error.trim() ? resObj.error.trim() : undefined;
+
+          if (errorText) {
+            yield { type: "error", message: errorText };
+          }
+
+          // Agy may mark status="ERROR" if any intermediate tool or API retry had an issue during the turn,
+          // even if it successfully recovered and generated the full response.
+          // Only treat as error if there is an explicit error message or if no response was produced.
+          const isError = Boolean(errorText) || (resObj.status === "ERROR" && !responseText);
+
           yield {
             type: "result",
             result: responseText,
-            isError: resObj.status === "ERROR",
+            isError,
           };
           return;
         }

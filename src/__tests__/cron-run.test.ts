@@ -93,6 +93,22 @@ describe("BotInstance scheduled task runs", () => {
     expect(sent.text).toContain("Today's digest");
   });
 
+  it("posts only the final answer, not narration between tool calls", async () => {
+    const { bot, channel } = makeBot(async function* () {
+      yield { type: "text", text: "I have launched the query and am waiting.\n" };
+      yield { type: "tool_started", name: "Bash" };
+      yield { type: "text", text: "Still waiting for the download.\n" };
+      yield { type: "tool_started", name: "Bash" };
+      yield { type: "text", text: "Final report" };
+      yield { type: "result" };
+    });
+    const result = await bot.runScheduledTask(job, run);
+    expect(result.output).toBe("Final report");
+    const sent = (channel.send.mock.calls[0] as unknown as [any])[0].text;
+    expect(sent).toContain("Final report");
+    expect(sent).not.toContain("waiting");
+  });
+
   it("does not use the bot's model when the task picks another engine", async () => {
     const { bot, engineManager } = makeBot(async function* () {
       yield { type: "text", text: "ok" };

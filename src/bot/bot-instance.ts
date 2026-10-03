@@ -30,6 +30,8 @@ const SESSIONS_PER_PAGE = 10;
 
 interface TurnResponse {
   text: string;
+  // Text written after the last tool call, i.e. the final answer without progress narration
+  finalText: string;
   isError: boolean;
   errorMessage?: string;
 }
@@ -1029,7 +1031,7 @@ export class BotInstance {
     try {
       response = await this.collectResponse(session, prompt);
     } catch (err) {
-      response = { text: "", isError: true, errorMessage: err instanceof Error ? err.message : String(err) };
+      response = { text: "", finalText: "", isError: true, errorMessage: err instanceof Error ? err.message : String(err) };
     } finally {
       clearTimeout(timer);
       // Every run starts from a clean context; only the workspace directory carries over
@@ -1038,7 +1040,8 @@ export class BotInstance {
 
     const header = `**${job.name}**`;
     const deliver = (text: string) => new ProgressTracker(channel, job.chatId).finish(`${header}\n\n${text}`);
-    const output = extractButtons(response.text).text.trim();
+    // Only the final answer is posted; narration between tool calls ("Running the query...") is dropped
+    const output = extractButtons(response.finalText.trim() ? response.finalText : response.text).text.trim();
 
     if (timedOut) {
       const error = `Timed out after ${Math.round(run.timeoutMs / 60000)} min`;
@@ -1089,6 +1092,7 @@ export class BotInstance {
 
   private async collectResponse(session: Session, promptText: string, tracker?: ProgressTracker): Promise<TurnResponse> {
     let text = "";
+    let finalText = "";
     let isError = false;
     let errorMessage: string | undefined;
     for await (const event of this.engineManager.sendMessage(
@@ -1102,12 +1106,15 @@ export class BotInstance {
         tracker?.thinking();
       } else if (event.type === "tool_started") {
         tracker?.toolStart(event.name, event.detail);
+        finalText = "";
       } else if (event.type === "text") {
         tracker?.appendText(event.text);
         text += event.text;
+        finalText += event.text;
       } else if (event.type === "result") {
         if (event.result && !text) {
           text = event.result;
+          finalText = event.result;
         }
         if (event.isError) isError = true;
       } else if (event.type === "error") {
@@ -1118,7 +1125,7 @@ export class BotInstance {
     if (!text && tracker?.getBuffer()) {
       text = tracker.getBuffer();
     }
-    return { text, isError, errorMessage };
+    return { text, finalText, isError, errorMessage };
   }
 
   private async handleHelp(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {

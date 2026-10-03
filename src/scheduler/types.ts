@@ -74,6 +74,8 @@ export interface CronRunRecord {
   startedAt: number;
   finishedAt: number;
   status: CronRunStatus;
+  output?: string;
+  /** Legacy: records written before full output was kept only have the first 500 characters */
   outputPreview?: string;
   error?: string;
 }

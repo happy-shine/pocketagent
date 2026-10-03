@@ -35,11 +35,11 @@ interface TurnResponse {
 }
 
 const CRON_STATUS_LABELS: Record<string, string> = {
-  ok: "✓ ok",
-  silent: "✓ nothing to report",
-  error: "✗ error",
-  timeout: "✗ timed out",
-  skipped: "↷ skipped",
+  ok: "succeeded",
+  silent: "nothing to report",
+  error: "failed",
+  timeout: "timed out",
+  skipped: "skipped",
 };
 
 /** Strips `[button: A | B]` and `<<A>>` markup from a reply and returns the button labels. */
@@ -929,7 +929,7 @@ export class BotInstance {
     const jobTz = scheduleTimezone(res.job.schedule, tz);
     await channel.send({
       chatId: msg.chatId,
-      text: `⏰ Scheduled task created: *${res.job.name}*\n${describeSchedule(res.job.schedule, tz)}${next ? `\nNext run: ${formatTime(next, jobTz)}` : ""}`,
+      text: `Scheduled task created: *${res.job.name}*\n${describeSchedule(res.job.schedule, tz)}${next ? `\nNext run: ${formatTime(next, jobTz)}` : ""}`,
     });
   }
 
@@ -938,20 +938,20 @@ export class BotInstance {
     switch (action) {
       case "run": {
         const res = scheduler.runNow(job.id);
-        return res.ok ? `▶ Running "${job.name}" now, the result will be posted here.` : `Could not run "${job.name}": ${res.error}`;
+        return res.ok ? `Running "${job.name}" now, the result will be posted here.` : `Could not run "${job.name}": ${res.error}`;
       }
       case "pause":
         scheduler.update(job.id, { enabled: false });
-        return `⏸ Paused "${job.name}".`;
+        return `Paused "${job.name}".`;
       case "resume": {
         const res = scheduler.update(job.id, { enabled: true });
         const next = res.job?.state.nextRunAt;
         const tz = scheduleTimezone(job.schedule, scheduler.timezone());
-        return res.job ? `▶ Resumed "${job.name}".${next ? ` Next run: ${formatTime(next, tz)}` : ""}` : `Could not resume: ${res.error}`;
+        return res.job ? `Resumed "${job.name}".${next ? ` Next run: ${formatTime(next, tz)}` : ""}` : `Could not resume: ${res.error}`;
       }
       case "delete":
         scheduler.remove(job.id);
-        return `🗑 Deleted "${job.name}".`;
+        return `Deleted "${job.name}".`;
       default:
         return "Unknown action.";
     }
@@ -969,7 +969,7 @@ export class BotInstance {
     }
 
     const defaultTz = scheduler.timezone();
-    const lines: string[] = [`⏰ *Scheduled tasks* (${jobs.length})`, ""];
+    const lines: string[] = [`*Scheduled tasks* (${jobs.length})`, ""];
     const buttons: InlineButton[][] = [];
     jobs.forEach((job, i) => {
       const n = i + 1;
@@ -987,10 +987,10 @@ export class BotInstance {
       lines.push("");
 
       buttons.push([
-        { text: `▶ Run #${n}`, data: `cron:run:${job.id}` },
+        { text: `Run #${n}`, data: `cron:run:${job.id}` },
         job.enabled
-          ? { text: `⏸ Pause #${n}`, data: `cron:pause:${job.id}` }
-          : { text: `▶ Resume #${n}`, data: `cron:resume:${job.id}` },
+          ? { text: `Pause #${n}`, data: `cron:pause:${job.id}` }
+          : { text: `Resume #${n}`, data: `cron:resume:${job.id}` },
       ]);
     });
     lines.push("Delete with `/cron rm <number>`.");
@@ -1036,18 +1036,18 @@ export class BotInstance {
       this.engineManager.release(session.sessionId, session.activeEngine);
     }
 
-    const header = `⏰ **${job.name}**`;
+    const header = `**${job.name}**`;
     const deliver = (text: string) => new ProgressTracker(channel, job.chatId).finish(`${header}\n\n${text}`);
     const output = extractButtons(response.text).text.trim();
 
     if (timedOut) {
       const error = `Timed out after ${Math.round(run.timeoutMs / 60000)} min`;
-      await deliver(output ? `${output}\n\n_(${error}, output may be incomplete)_` : `✗ ${error}`);
+      await deliver(output ? `${output}\n\n_(${error}, output may be incomplete)_` : error);
       return { status: "timeout", error, output };
     }
     if (response.isError) {
       const error = response.errorMessage || output || "Engine reported an error";
-      await deliver(`✗ Run failed: ${error}`);
+      await deliver(`Run failed: ${error}`);
       return { status: "error", error, output };
     }
     if (isSilentOutput(output)) {

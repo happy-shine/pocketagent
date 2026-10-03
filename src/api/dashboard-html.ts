@@ -815,14 +815,156 @@ export function getDashboardHtml(): string {
       max-height: 7.5em;
       overflow: hidden;
     }
-    .cron-run-row {
+    .status-dot {
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: currentColor;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .st-ok { color: var(--badge-green-text); }
+    .st-fail { color: var(--badge-red-text); }
+    .st-muted { color: var(--text-muted); }
+    .cron-runs-browser {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 0.85rem;
+      height: min(68vh, 640px);
+      min-height: 380px;
+    }
+    @media (max-width: 768px) {
+      .cron-runs-browser {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+    }
+    .cron-run-list {
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 0.55rem 0.75rem;
+      overflow-y: auto;
+      background: var(--bg-card-subtle);
+    }
+    .cron-run-item {
+      padding: 0.6rem 0.8rem;
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
+      gap: 0.15rem;
       font-size: 0.8rem;
+    }
+    .cron-run-item:hover { background: var(--bg-hover); }
+    .cron-run-item.selected {
+      background: var(--bg-card);
+      box-shadow: inset 3px 0 0 var(--border-focus);
+    }
+    .cron-run-detail {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-input);
+      overflow: hidden;
+    }
+    .cron-run-detail-header {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+    }
+    .cron-run-detail-body {
+      padding: 1rem 1.25rem;
+      overflow: auto;
+      flex: 1;
+    }
+    .cron-run-note {
+      font-size: 0.8rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      margin-bottom: 0.85rem;
+      background: var(--tag-bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    .cron-run-note.is-error {
+      background: var(--badge-red-bg);
+      color: var(--badge-red-text);
+      border-color: var(--badge-red-border);
+    }
+    .cron-run-note.is-warn {
+      background: var(--badge-amber-bg);
+      color: var(--badge-amber-text);
+      border-color: var(--badge-amber-border);
+    }
+    .md-body {
+      font-size: 0.86rem;
+      line-height: 1.7;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+    .md-body > :first-child { margin-top: 0; }
+    .md-body h1 { font-size: 1.15rem; font-weight: 700; margin: 1.1rem 0 0.6rem; }
+    .md-body h2 { font-size: 1.05rem; font-weight: 650; margin: 1.1rem 0 0.5rem; }
+    .md-body h3 { font-size: 0.97rem; font-weight: 650; margin: 1rem 0 0.45rem; }
+    .md-body h4, .md-body h5, .md-body h6 { font-size: 0.9rem; font-weight: 600; margin: 0.85rem 0 0.35rem; }
+    .md-body p { margin: 0 0 0.6rem; }
+    .md-body hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+    .md-body .md-list { margin: 0 0 0.6rem; }
+    .md-body .md-li { display: flex; gap: 0.5rem; }
+    .md-body .md-marker { color: var(--text-muted); flex-shrink: 0; min-width: 0.9rem; }
+    .md-body code {
+      font-family: var(--font-mono);
+      font-size: 0.8em;
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.05rem 0.3rem;
+    }
+    .md-body pre {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.65rem 0.8rem;
+      overflow-x: auto;
+      margin: 0 0 0.6rem;
+    }
+    .md-body pre code { background: none; border: none; padding: 0; }
+    .md-body table {
+      border-collapse: collapse;
+      margin: 0 0 0.75rem;
+      font-size: 0.82rem;
+      display: block;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .md-body th, .md-body td {
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .md-body th { background: var(--bg-card-subtle); font-weight: 600; }
+    .md-body blockquote {
+      border-left: 3px solid var(--border);
+      padding-left: 0.75rem;
+      color: var(--text-secondary);
+      margin: 0 0 0.6rem;
+    }
+    .md-body a { color: var(--text-primary); text-decoration: underline; }
+    .md-raw {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      color: var(--text-primary);
     }
 
     /* Dialogue Turns Modal */
@@ -1838,7 +1980,7 @@ export function getDashboardHtml(): string {
 
   <!-- Modal: Scheduled Task Run History -->
   <div id="modalCronRuns" class="modal-backdrop">
-    <div class="modal modal-lg">
+    <div class="modal modal-xl">
       <div class="modal-header">
         <div>
           <div class="modal-title" data-i18n="cronRunsTitle">Run History</div>
@@ -1846,11 +1988,17 @@ export function getDashboardHtml(): string {
         </div>
         <button class="modal-close" onclick="closeModal('modalCronRuns')">×</button>
       </div>
-      <div class="modal-body">
-        <div id="cronRunsList" class="turns-container"></div>
+      <div class="modal-body" style="padding: 1rem;">
+        <div class="cron-runs-browser">
+          <div id="cronRunList" class="cron-run-list"></div>
+          <div class="cron-run-detail">
+            <div id="cronRunDetailHeader" class="cron-run-detail-header"></div>
+            <div id="cronRunDetailBody" class="cron-run-detail-body"></div>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('modalCronRuns')" data-i18n="modalCancel">Close</button>
+        <button class="btn btn-secondary" onclick="closeModal('modalCronRuns')" data-i18n="cronClose">Close</button>
       </div>
     </div>
   </div>
@@ -1929,9 +2077,9 @@ export function getDashboardHtml(): string {
         cronStatusEnabled: "已启用",
         cronStatusPaused: "已暂停",
         cronStatusRunning: "运行中",
-        cronRunNow: "▶ 立即运行",
-        cronPause: "⏸ 暂停",
-        cronResume: "▶ 恢复",
+        cronRunNow: "立即运行",
+        cronPause: "暂停",
+        cronResume: "恢复",
         cronEdit: "编辑",
         cronHistory: "运行记录",
         cronWorkspace: "工作目录",
@@ -1943,11 +2091,11 @@ export function getDashboardHtml(): string {
         cronNever: "从未运行",
         cronPausedReason: "暂停原因：{reason}",
         cronLastError: "上次错误：{error}",
-        cronResult_ok: "✓ 成功",
-        cronResult_silent: "✓ 无需通知",
-        cronResult_error: "✗ 失败",
-        cronResult_timeout: "✗ 超时",
-        cronResult_skipped: "↷ 跳过",
+        cronResult_ok: "成功",
+        cronResult_silent: "无需通知",
+        cronResult_error: "失败",
+        cronResult_timeout: "超时",
+        cronResult_skipped: "跳过",
         cronTrigger_manual: "手动",
         cronTrigger_schedule: "定时",
         cronModalNewTitle: "新建定时任务",
@@ -1973,6 +2121,15 @@ export function getDashboardHtml(): string {
         cronRunsEmpty: "暂无运行记录",
         cronMissingFields: "请填写 Bot、Chat ID、计划和 Prompt",
         cronInheritEngine: "机器人默认",
+        cronDelete: "删除",
+        cronClose: "关闭",
+        cronCopy: "复制",
+        cronCopied: "已复制到剪贴板",
+        cronViewRaw: "查看原文",
+        cronViewRendered: "查看排版",
+        cronRunSilentNote: "本次运行判断没有需要通知的内容，未向聊天推送消息。",
+        cronRunTruncatedNote: "这条是旧记录，只保存了输出的前 500 个字符。之后的运行会保存完整输出。",
+        cronRunNoOutput: "本次运行没有输出。",
         
         sessionsTitle: "会话与工作区管理",
         sessionsDesc: "查看各机器人会话生命周期、多轮对话记录，以及 1:1 绑定的本地 CLI 物理工作区目录 (~/.pocketagent/workspaces)",
@@ -2314,9 +2471,9 @@ export function getDashboardHtml(): string {
         cronStatusEnabled: "Enabled",
         cronStatusPaused: "Paused",
         cronStatusRunning: "Running",
-        cronRunNow: "▶ Run Now",
-        cronPause: "⏸ Pause",
-        cronResume: "▶ Resume",
+        cronRunNow: "Run Now",
+        cronPause: "Pause",
+        cronResume: "Resume",
         cronEdit: "Edit",
         cronHistory: "History",
         cronWorkspace: "Workspace",
@@ -2328,11 +2485,11 @@ export function getDashboardHtml(): string {
         cronNever: "Never run",
         cronPausedReason: "Paused: {reason}",
         cronLastError: "Last error: {error}",
-        cronResult_ok: "✓ OK",
-        cronResult_silent: "✓ Nothing to report",
-        cronResult_error: "✗ Failed",
-        cronResult_timeout: "✗ Timed out",
-        cronResult_skipped: "↷ Skipped",
+        cronResult_ok: "Succeeded",
+        cronResult_silent: "Nothing to report",
+        cronResult_error: "Failed",
+        cronResult_timeout: "Timed out",
+        cronResult_skipped: "Skipped",
         cronTrigger_manual: "manual",
         cronTrigger_schedule: "scheduled",
         cronModalNewTitle: "New Scheduled Task",
@@ -2358,6 +2515,15 @@ export function getDashboardHtml(): string {
         cronRunsEmpty: "No runs yet",
         cronMissingFields: "Please fill in bot, chat ID, schedule and prompt",
         cronInheritEngine: "Bot Default",
+        cronDelete: "Delete",
+        cronClose: "Close",
+        cronCopy: "Copy",
+        cronCopied: "Copied to clipboard",
+        cronViewRaw: "View Source",
+        cronViewRendered: "View Formatted",
+        cronRunSilentNote: "This run found nothing worth reporting, so nothing was posted to the chat.",
+        cronRunTruncatedNote: "This is an older record that only kept the first 500 characters of output. New runs keep the full output.",
+        cronRunNoOutput: "This run produced no output.",
       }
     };
 
@@ -2378,6 +2544,9 @@ export function getDashboardHtml(): string {
     let allCronJobs = [];
     let cronTimezone = "";
     let editingCronId = null;
+    let cronRuns = [];
+    let selectedCronRun = 0;
+    let cronRunRaw = false;
 
     function formatBytes(bytes) {
       if (!bytes || bytes === 0) return "0 B";
@@ -3996,10 +4165,10 @@ export function getDashboardHtml(): string {
       for (const job of filtered) {
         const id = escapeHtml(job.id);
         const statusBadge = job.running
-          ? \`<span class="badge-status badge-active">▶ \${t("cronStatusRunning")}</span>\`
+          ? \`<span class="badge-status badge-active"><span class="status-dot"></span>\${t("cronStatusRunning")}</span>\`
           : job.enabled
-            ? \`<span class="badge-status badge-active">● \${t("cronStatusEnabled")}</span>\`
-            : \`<span class="badge-status badge-paused">⏸ \${t("cronStatusPaused")}</span>\`;
+            ? \`<span class="badge-status badge-active"><span class="status-dot"></span>\${t("cronStatusEnabled")}</span>\`
+            : \`<span class="badge-status badge-paused"><span class="status-dot"></span>\${t("cronStatusPaused")}</span>\`;
         const channelBadgeClass = job.channelType === "telegram" ? "channel-tg" : "channel-dc";
         const lastRun = job.state.lastRunAt
           ? \`<span style="color: \${failed(job) ? 'var(--badge-red-text)' : 'var(--badge-green-text)'};">\${t("cronResult_" + job.state.lastStatus)}</span>
@@ -4032,7 +4201,7 @@ export function getDashboardHtml(): string {
                 <button class="btn btn-secondary btn-sm" onclick="openCronModal('\${id}')">\${t("cronEdit")}</button>
                 <button class="btn btn-secondary btn-sm" onclick="openCronRuns('\${id}')">\${t("cronHistory")} (\${job.state.runCount || 0})</button>
                 \${ws ? \`<button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(ws.path)}')">\${t("cronWorkspace")} (\${ws.fileCount || 0})</button>\` : ''}
-                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" title="Delete" onclick="deleteCron('\${id}')">✕</button>
+                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteCron('\${id}')">\${t("cronDelete")}</button>
               </div>
             </div>
             <div class="cron-prompt">\${escapeHtml(job.prompt)}</div>
@@ -4212,35 +4381,212 @@ export function getDashboardHtml(): string {
 
     async function openCronRuns(id) {
       const job = allCronJobs.find(j => j.id === id);
-      const list = document.getElementById("cronRunsList");
       document.getElementById("cronRunsSubtitle").textContent = job ? \`\${job.name} · \${job.id}\` : id;
-      list.innerHTML = "";
+      cronRuns = [];
+      selectedCronRun = 0;
+      document.getElementById("cronRunList").innerHTML = "";
+      document.getElementById("cronRunDetailHeader").innerHTML = "";
+      document.getElementById("cronRunDetailBody").innerHTML = "";
       openModal("modalCronRuns");
       try {
         const data = await cronRequest("/api/cron/runs?id=" + encodeURIComponent(id));
-        const runs = (data.runs || []).slice().reverse();
-        if (runs.length === 0) {
-          list.innerHTML = \`<div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">\${t("cronRunsEmpty")}</div>\`;
+        cronRuns = (data.runs || []).slice().reverse();
+        if (cronRuns.length === 0) {
+          document.getElementById("cronRunDetailBody").innerHTML = \`<div class="st-muted" style="text-align: center; padding: 3rem 1rem; font-size: 0.85rem;">\${t("cronRunsEmpty")}</div>\`;
           return;
         }
-        list.innerHTML = runs.map(r => {
-          const isFail = r.status === "error" || r.status === "timeout";
-          const color = isFail ? "var(--badge-red-text)" : r.status === "skipped" ? "var(--text-muted)" : "var(--badge-green-text)";
-          return \`
-            <div class="cron-run-row">
-              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
-                <span style="font-weight: 600; color: \${color};">\${t("cronResult_" + r.status)}</span>
-                <span style="color: var(--text-secondary);">#\${r.runNum} · \${formatCronTs(r.startedAt)}</span>
-                <span style="color: var(--text-muted);">\${t("cronTrigger_" + r.trigger)}\${r.status !== "skipped" ? ' · ' + formatDuration(r.finishedAt - r.startedAt) : ''}</span>
-              </div>
-              \${r.error ? \`<div style="color: \${isFail ? 'var(--badge-red-text)' : 'var(--text-muted)'};">\${escapeHtml(r.error)}</div>\` : ''}
-              \${r.outputPreview ? \`<div class="cron-prompt">\${escapeHtml(r.outputPreview)}</div>\` : ''}
-            </div>
-          \`;
-        }).join("");
+        selectCronRun(0);
       } catch (err) {
-        list.innerHTML = \`<div style="color: var(--badge-red-text);">\${escapeHtml(err.message)}</div>\`;
+        document.getElementById("cronRunDetailBody").innerHTML = \`<div class="cron-run-note is-error">\${escapeHtml(err.message)}</div>\`;
       }
+    }
+
+    function cronStatusClass(status) {
+      if (status === "error" || status === "timeout") return "st-fail";
+      if (status === "skipped") return "st-muted";
+      return "st-ok";
+    }
+
+    function cronRunMeta(r) {
+      const parts = [t("cronTrigger_" + r.trigger)];
+      if (r.status !== "skipped") parts.push(formatDuration(r.finishedAt - r.startedAt));
+      return parts.join(" · ");
+    }
+
+    function selectCronRun(index) {
+      selectedCronRun = index;
+      cronRunRaw = false;
+      document.getElementById("cronRunList").innerHTML = cronRuns.map((r, i) => {
+        const cls = cronStatusClass(r.status);
+        return \`
+          <div class="cron-run-item \${i === index ? 'selected' : ''}" onclick="selectCronRun(\${i})">
+            <div style="display: flex; align-items: center; gap: 0.45rem;">
+              <span class="status-dot \${cls}"></span>
+              <span class="\${cls}" style="font-weight: 600;">\${t("cronResult_" + r.status)}</span>
+              <span class="st-muted" style="margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem;">#\${r.runNum}</span>
+            </div>
+            <div style="color: var(--text-secondary);">\${formatCronTs(r.startedAt)}</div>
+            <div class="st-muted" style="font-size: 0.72rem;">\${cronRunMeta(r)}</div>
+          </div>
+        \`;
+      }).join("");
+      renderCronRunDetail();
+    }
+
+    function cronRunOutput(r) {
+      return (r.output ?? r.outputPreview ?? "").replace("[SILENT]", "").trim();
+    }
+
+    function renderCronRunDetail() {
+      const r = cronRuns[selectedCronRun];
+      if (!r) return;
+      const output = cronRunOutput(r);
+      const cls = cronStatusClass(r.status);
+
+      document.getElementById("cronRunDetailHeader").innerHTML = \`
+        <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+          <span style="display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600;" class="\${cls}">
+            <span class="status-dot"></span>\${t("cronResult_" + r.status)}
+          </span>
+          <span style="color: var(--text-secondary);">#\${r.runNum} · \${formatCronTs(r.startedAt)}</span>
+          <span class="st-muted">\${cronRunMeta(r)}</span>
+        </div>
+        \${output ? \`
+          <div style="display: flex; gap: 0.4rem;">
+            <button class="btn btn-secondary btn-sm" onclick="toggleCronRunRaw()">\${t(cronRunRaw ? "cronViewRendered" : "cronViewRaw")}</button>
+            <button class="btn btn-secondary btn-sm" onclick="copyCronRunOutput()">\${t("cronCopy")}</button>
+          </div>
+        \` : ''}
+      \`;
+
+      let html = "";
+      if (r.status === "silent") {
+        html += \`<div class="cron-run-note">\${t("cronRunSilentNote")}</div>\`;
+      }
+      if (r.error) {
+        html += \`<div class="cron-run-note \${r.status === "skipped" ? '' : 'is-error'}">\${escapeHtml(r.error)}</div>\`;
+      }
+      if (!r.output && r.outputPreview && r.outputPreview.length >= 500) {
+        html += \`<div class="cron-run-note is-warn">\${t("cronRunTruncatedNote")}</div>\`;
+      }
+      if (output) {
+        html += cronRunRaw
+          ? \`<pre class="md-raw">\${escapeHtml(output)}</pre>\`
+          : \`<div class="md-body">\${renderMarkdown(output)}</div>\`;
+      } else if (r.status === "ok") {
+        html += \`<div class="st-muted" style="font-size: 0.85rem;">\${t("cronRunNoOutput")}</div>\`;
+      }
+      const body = document.getElementById("cronRunDetailBody");
+      body.innerHTML = html;
+      body.scrollTop = 0;
+    }
+
+    function toggleCronRunRaw() {
+      cronRunRaw = !cronRunRaw;
+      renderCronRunDetail();
+    }
+
+    async function copyCronRunOutput() {
+      const r = cronRuns[selectedCronRun];
+      if (!r) return;
+      try {
+        await navigator.clipboard.writeText(cronRunOutput(r));
+        showToast(t("cronCopied"), "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    // Minimal Markdown renderer for run output. Input is escaped first, so only the tags below are produced.
+    function renderMarkdown(src) {
+      const lines = String(src || "").replace(/\\r\\n/g, "\\n").split("\\n");
+      const out = [];
+      let para = [];
+      let listItems = null;
+      const flushPara = () => {
+        if (para.length) out.push("<p>" + para.map(mdInline).join("<br>") + "</p>");
+        para = [];
+      };
+      const flushList = () => {
+        if (listItems) out.push('<div class="md-list">' + listItems.join("") + "</div>");
+        listItems = null;
+      };
+      const flushAll = () => { flushPara(); flushList(); };
+      const tableCells = (row) => row.trim().replace(/^\\|/, "").replace(/\\|$/, "").split("|").map(c => c.trim());
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        let m;
+
+        if (trimmed.startsWith("\`\`\`")) {
+          flushAll();
+          const code = [];
+          for (i++; i < lines.length && !lines[i].trim().startsWith("\`\`\`"); i++) code.push(lines[i]);
+          out.push("<pre><code>" + escapeHtml(code.join("\\n")) + "</code></pre>");
+          continue;
+        }
+        if (!trimmed) {
+          flushAll();
+          continue;
+        }
+        if ((m = trimmed.match(/^(#{1,6})\\s+(.*)$/))) {
+          flushAll();
+          out.push("<h" + m[1].length + ">" + mdInline(m[2]) + "</h" + m[1].length + ">");
+          continue;
+        }
+        if (/^([-*_])(\\s*\\1){2,}$/.test(trimmed)) {
+          flushAll();
+          out.push("<hr>");
+          continue;
+        }
+        if (trimmed.startsWith("|") && i + 1 < lines.length && /^\\s*\\|?\\s*:?-{3,}/.test(lines[i + 1])) {
+          flushAll();
+          const head = tableCells(line);
+          const rows = [];
+          for (i += 2; i < lines.length && lines[i].trim().startsWith("|"); i++) rows.push(tableCells(lines[i]));
+          i--;
+          out.push(
+            "<table><thead><tr>" + head.map(c => "<th>" + mdInline(c) + "</th>").join("") + "</tr></thead><tbody>" +
+            rows.map(r => "<tr>" + r.map(c => "<td>" + mdInline(c) + "</td>").join("") + "</tr>").join("") +
+            "</tbody></table>"
+          );
+          continue;
+        }
+        if ((m = line.match(/^(\\s*)([-*+]|\\d+[.)])\\s+(.*)$/))) {
+          flushPara();
+          if (!listItems) listItems = [];
+          const level = Math.floor(m[1].replace(/\\t/g, "  ").length / 2);
+          const marker = /\\d/.test(m[2]) ? escapeHtml(m[2]) : "&bull;";
+          listItems.push(
+            '<div class="md-li" style="margin-left: ' + (level * 1.25) + 'rem;"><span class="md-marker">' + marker + "</span><span>" + mdInline(m[3]) + "</span></div>"
+          );
+          continue;
+        }
+        if (trimmed.startsWith(">")) {
+          flushAll();
+          out.push("<blockquote>" + mdInline(trimmed.replace(/^>\\s?/, "")) + "</blockquote>");
+          continue;
+        }
+        if (listItems && /^\\s+/.test(line)) {
+          // Indented continuation of the previous list item
+          const last = listItems.length - 1;
+          listItems[last] = listItems[last].replace(/<\\/span><\\/div>$/, "<br>" + mdInline(trimmed) + "</span></div>");
+          continue;
+        }
+        flushList();
+        para.push(trimmed);
+      }
+      flushAll();
+      return out.join("");
+    }
+
+    function mdInline(text) {
+      return escapeHtml(text)
+        .replace(/\`([^\`]+)\`/g, "<code>$1</code>")
+        .replace(/\\*\\*([^*]+)\\*\\*/g, "<strong>$1</strong>")
+        .replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/(^|[\\s(])(https?:\\/\\/[^\\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
     }
 
     function escapeHtml(str) {

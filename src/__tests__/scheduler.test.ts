@@ -147,7 +147,7 @@ describe("Scheduler", () => {
 
     const saved = new CronStore(dir).loadJobs()[0];
     expect(saved.state).toMatchObject({ lastStatus: "ok", runCount: 1, nextRunAt: START + 20 * MIN });
-    expect(scheduler.listRuns(job!.id)).toEqual([expect.objectContaining({ status: "ok", outputPreview: "done" })]);
+    expect(scheduler.listRuns(job!.id)).toEqual([expect.objectContaining({ status: "ok", output: "done" })]);
 
     await vi.advanceTimersByTimeAsync(10 * MIN);
     expect(executor).toHaveBeenCalledTimes(2);

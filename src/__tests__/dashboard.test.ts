@@ -50,6 +50,30 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     }
   });
 
+  it("renders run output Markdown safely", () => {
+    const [src] = [...getDashboardHtml().matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    const slice = (from: string, to: string) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
+    const code = [
+      slice("function renderMarkdown", "function escapeHtml"),
+      slice("function escapeHtml", "\n    }\n") + "\n    }",
+      "return renderMarkdown;",
+    ].join("\n");
+    const renderMarkdown = new Function(code)() as (md: string) => string;
+
+    const html = renderMarkdown(
+      "# Report\n- point **ES 7778**\n  * nested `7720`\n1. first\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<img src=x onerror=alert(1)> [x](javascript:alert(1)) https://e.com/?a=1&b=2",
+    );
+    expect(html).toContain("<h1>Report</h1>");
+    expect(html).toContain("<strong>ES 7778</strong>");
+    expect(html).toContain('margin-left: 1.25rem;"><span class="md-marker">&bull;</span><span>nested <code>7720</code>');
+    expect(html).toContain('<span class="md-marker">1.</span>');
+    expect(html).toContain("<th>a</th><th>b</th>");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain('href="javascript');
+    expect(html).toContain('<a href="https://e.com/?a=1&amp;b=2"');
+  });
+
   it("saveConfig saves valid YAML and returns parsed config", () => {
     const validYaml = `
 defaultEngine: agy

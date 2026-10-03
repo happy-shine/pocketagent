@@ -17,7 +17,7 @@ import type {
 const MAX_SLEEP_MS = 60_000;
 const BUSY_RETRY_MS = 5_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
-const OUTPUT_PREVIEW_CHARS = 500;
+const MAX_STORED_OUTPUT_CHARS = 20_000;
 const MAX_PROMPT_CHARS = 8000;
 const MAX_NAME_CHARS = 60;
 
@@ -323,7 +323,7 @@ export class Scheduler {
       startedAt: run.startedAt,
       finishedAt,
       status: result.status,
-      outputPreview: result.output?.slice(0, OUTPUT_PREVIEW_CHARS),
+      output: result.output?.slice(0, MAX_STORED_OUTPUT_CHARS),
       error: result.error,
     });
 
@@ -339,7 +339,7 @@ export class Scheduler {
     } else if (job.state.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
       this.pause(job, `${MAX_CONSECUTIVE_FAILURES} consecutive failures (last: ${result.error ?? result.status})`);
       this.opts
-        .notify?.(job, `⏸ Scheduled task "${job.name}" was paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures.\nLast error: ${result.error ?? result.status}\nUse /cron to resume it.`)
+        .notify?.(job, `Scheduled task "${job.name}" was paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures.\nLast error: ${result.error ?? result.status}\nUse /cron to resume it.`)
         .catch((err) => this.log.warn({ error: err, jobId: job.id }, "Failed to send scheduler notification"));
     }
     this.persist();

@@ -23,6 +23,7 @@ export interface Session {
   claudeSessionId?: string;
   codexSessionId?: string;
   agySessionId?: string;
+  grokSessionId?: string;
 
   // Track switching
   lastEngine?: EngineType;

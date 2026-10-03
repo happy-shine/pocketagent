@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SkillRegistry } from "../skills/registry.js";
 
-describe("SkillRegistry 3-CLI interoperability", () => {
+describe("SkillRegistry 4-CLI interoperability", () => {
   let testDir: string;
   let hubDir: string;
   let agyDir: string;
   let claudeDir: string;
   let codexDir: string;
+  let grokDir: string;
   let registry: SkillRegistry;
 
   beforeEach(() => {
@@ -18,17 +19,20 @@ describe("SkillRegistry 3-CLI interoperability", () => {
     agyDir = join(testDir, "agy");
     claudeDir = join(testDir, "claude");
     codexDir = join(testDir, "codex");
+    grokDir = join(testDir, "grok");
 
     mkdirSync(hubDir, { recursive: true });
     mkdirSync(agyDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(codexDir, { recursive: true });
+    mkdirSync(grokDir, { recursive: true });
 
     registry = new SkillRegistry({
       hubDir,
       agySkillsDir: agyDir,
       claudeSkillsDir: claudeDir,
       codexSkillsDir: codexDir,
+      grokSkillsDir: grokDir,
     });
   });
 
@@ -55,7 +59,7 @@ Instructions here.`,
     expect(meta.description).toBe("Useful for sample testing");
   });
 
-  it("ingests existing skills from CLI dirs into Hub and establishes 3-way symlinks", () => {
+  it("ingests existing skills from CLI dirs into Hub and establishes 4-way symlinks", () => {
     // Put a skill in claudeDir only
     const claudeSkill = join(claudeDir, "chat-query");
     mkdirSync(join(claudeSkill, "scripts"), { recursive: true });
@@ -79,14 +83,16 @@ description: Query group chats
     expect(existsSync(join(hubSkill, "SKILL.md"))).toBe(true);
     expect(existsSync(join(hubSkill, "scripts", "query.py"))).toBe(true);
 
-    // All 3 CLI dirs should have valid symlinks pointing to Hub
+    // All 4 CLI dirs should have valid symlinks pointing to Hub
     expect(lstatSync(join(claudeDir, "chat-query")).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(agyDir, "chat-query")).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(codexDir, "chat-query")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(grokDir, "chat-query")).isSymbolicLink()).toBe(true);
 
     expect(synced[0].synced.claude).toBe(true);
     expect(synced[0].synced.agy).toBe(true);
     expect(synced[0].synced.codex).toBe(true);
+    expect(synced[0].synced.grok).toBe(true);
   });
 
   it("ingests external symlinked skills and cleans dangling symlinks", () => {
@@ -118,10 +124,11 @@ description: External skill test
     expect(existsSync(join(hubDir, "external-skill", "SKILL.md"))).toBe(true);
     expect(existsSync(join(hubDir, "external-skill", "scripts", "run.py"))).toBe(true);
 
-    // Symlinks in all 3 CLIs should point to Hub
+    // Symlinks in all 4 CLIs should point to Hub
     expect(lstatSync(join(claudeDir, "external-skill")).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(agyDir, "external-skill")).isSymbolicLink()).toBe(true);
     expect(lstatSync(join(codexDir, "external-skill")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(grokDir, "external-skill")).isSymbolicLink()).toBe(true);
 
     // Dangling symlink should be cleaned up
     expect(existsSync(join(agyDir, "dangling-skill"))).toBe(false);
@@ -139,7 +146,7 @@ description: External skill test
     expect(prompt).toContain("run.py");
   });
 
-  it("creates a new skill and immediately synchronizes across all 3 CLIs", () => {
+  it("creates a new skill and immediately synchronizes across all 4 CLIs", () => {
     const created = registry.createSkill("market-fetcher", "Fetches market data");
     expect(created.name).toBe("market-fetcher");
     expect(existsSync(join(hubDir, "market-fetcher", "SKILL.md"))).toBe(true);
@@ -147,6 +154,7 @@ description: External skill test
     expect(existsSync(join(agyDir, "market-fetcher", "SKILL.md"))).toBe(true);
     expect(existsSync(join(claudeDir, "market-fetcher", "SKILL.md"))).toBe(true);
     expect(existsSync(join(codexDir, "market-fetcher", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(grokDir, "market-fetcher", "SKILL.md"))).toBe(true);
   });
 
   it("retrieves skill details, raw SKILL.md, and file list", () => {
@@ -175,12 +183,13 @@ Updated instructions here.
     expect(detail?.skillMd).toBe(updatedMd);
   });
 
-  it("deletes skill permanently and unlinks from all 3 CLIs", () => {
+  it("deletes skill permanently and unlinks from all 4 CLIs", () => {
     registry.createSkill("temp-skill", "Temporary skill to delete");
     expect(existsSync(join(hubDir, "temp-skill"))).toBe(true);
     expect(existsSync(join(claudeDir, "temp-skill"))).toBe(true);
     expect(existsSync(join(agyDir, "temp-skill"))).toBe(true);
     expect(existsSync(join(codexDir, "temp-skill"))).toBe(true);
+    expect(existsSync(join(grokDir, "temp-skill"))).toBe(true);
 
     const ok = registry.deleteSkill("temp-skill");
     expect(ok).toBe(true);
@@ -189,6 +198,7 @@ Updated instructions here.
     expect(existsSync(join(claudeDir, "temp-skill"))).toBe(false);
     expect(existsSync(join(agyDir, "temp-skill"))).toBe(false);
     expect(existsSync(join(codexDir, "temp-skill"))).toBe(false);
+    expect(existsSync(join(grokDir, "temp-skill"))).toBe(false);
     expect(registry.getSkill("temp-skill")).toBeNull();
   });
 });

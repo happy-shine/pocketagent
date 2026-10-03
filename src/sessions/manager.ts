@@ -305,6 +305,7 @@ export class SessionManager {
     if (engine === "claude") session.claudeSessionId = engineSessionId;
     else if (engine === "codex") session.codexSessionId = engineSessionId;
     else if (engine === "agy") session.agySessionId = engineSessionId;
+    else if (engine === "grok") session.grokSessionId = engineSessionId;
     session.lastActiveAt = Date.now();
   }
 
@@ -314,6 +315,7 @@ export class SessionManager {
     if (engine === "claude") return session.claudeSessionId;
     if (engine === "codex") return session.codexSessionId;
     if (engine === "agy") return session.agySessionId;
+    if (engine === "grok") return session.grokSessionId;
     return undefined;
   }
 

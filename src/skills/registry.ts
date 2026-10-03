@@ -24,6 +24,7 @@ export interface SkillInfo {
     agy: boolean;
     claude: boolean;
     codex: boolean;
+    grok: boolean;
   };
 }
 
@@ -32,6 +33,7 @@ export interface SkillRegistryOptions {
   agySkillsDir?: string;
   claudeSkillsDir?: string;
   codexSkillsDir?: string;
+  grokSkillsDir?: string;
 }
 
 export class SkillRegistry {
@@ -41,6 +43,7 @@ export class SkillRegistry {
   readonly agySkillsDir: string;
   readonly claudeSkillsDir: string;
   readonly codexSkillsDir: string;
+  readonly grokSkillsDir: string;
 
   constructor(opts?: SkillRegistryOptions) {
     const home = homedir();
@@ -48,6 +51,7 @@ export class SkillRegistry {
     this.agySkillsDir = opts?.agySkillsDir ?? join(home, ".gemini", "config", "skills");
     this.claudeSkillsDir = opts?.claudeSkillsDir ?? join(home, ".claude", "skills");
     this.codexSkillsDir = opts?.codexSkillsDir ?? join(home, ".codex", "skills");
+    this.grokSkillsDir = opts?.grokSkillsDir ?? join(process.env.GROK_HOME || join(home, ".grok"), "skills");
   }
 
   static getInstance(opts?: SkillRegistryOptions): SkillRegistry {
@@ -81,7 +85,7 @@ export class SkillRegistry {
   }
 
   /**
-   * Consolidate skills from all 3 CLI directories into Hub,
+   * Consolidate skills from all 4 CLI directories into Hub,
    * and ensure symlinks are created in all CLI directories.
    */
   sync(): SkillInfo[] {
@@ -89,11 +93,13 @@ export class SkillRegistry {
     mkdirSync(this.agySkillsDir, { recursive: true });
     mkdirSync(this.claudeSkillsDir, { recursive: true });
     mkdirSync(this.codexSkillsDir, { recursive: true });
+    mkdirSync(this.grokSkillsDir, { recursive: true });
 
     const cliDirs = [
       { type: "claude" as const, dir: this.claudeSkillsDir },
       { type: "agy" as const, dir: this.agySkillsDir },
       { type: "codex" as const, dir: this.codexSkillsDir },
+      { type: "grok" as const, dir: this.grokSkillsDir },
     ];
 
     // 1. Ingest real skill directories or external symlinks from CLI folders into Hub if missing
@@ -135,7 +141,7 @@ export class SkillRegistry {
       }
     }
 
-    // 2. Ensure all skills in hubDir are symlinked into all 3 CLI directories
+    // 2. Ensure all skills in hubDir are symlinked into all 4 CLI directories
     if (existsSync(this.hubDir)) {
       const hubEntries = readdirSync(this.hubDir, { withFileTypes: true });
       for (const entry of hubEntries) {
@@ -240,6 +246,7 @@ export class SkillRegistry {
           agy: checkSynced(this.agySkillsDir),
           claude: checkSynced(this.claudeSkillsDir),
           codex: checkSynced(this.codexSkillsDir),
+          grok: checkSynced(this.grokSkillsDir),
         },
       });
     }
@@ -389,7 +396,7 @@ python3 ${scriptPath} [options]
   }
 
   /**
-   * Permanently delete a skill from Hub and remove symlinks across all 3 CLIs
+   * Permanently delete a skill from Hub and remove symlinks across all 4 CLIs
    */
   deleteSkill(name: string): boolean {
     const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
@@ -401,8 +408,8 @@ python3 ${scriptPath} [options]
     // 1. Remove Hub canonical directory
     rmSync(hubSkillDir, { recursive: true, force: true });
 
-    // 2. Remove symlinks in all 3 CLIs
-    const cliDirs = [this.claudeSkillsDir, this.agySkillsDir, this.codexSkillsDir];
+    // 2. Remove symlinks in all 4 CLIs
+    const cliDirs = [this.claudeSkillsDir, this.agySkillsDir, this.codexSkillsDir, this.grokSkillsDir];
     for (const dir of cliDirs) {
       const target = join(dir, safeName);
       try {

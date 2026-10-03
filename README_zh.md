@@ -1,7 +1,7 @@
 # PocketAgent 🎒
 
 <p align="center">
-  <strong>通过 Telegram & Discord 随时随地连接你的 Claude Code、OpenAI Codex 与 Google Antigravity (AGY)。</strong><br>
+  <strong>通过 Telegram & Discord 随时随地连接你的 Claude Code、OpenAI Codex、Google Antigravity (AGY) 与 xAI Grok。</strong><br>
   打破终端窗口限制，跨端随行、异步交互、远程运维、数据处理与代码编写。
 </p>
 
@@ -19,36 +19,36 @@
 
 ## 为什么需要 PocketAgent？
 
-像 **Claude Code**、**OpenAI Codex** 和 Google **Antigravity (AGY)** 这类终端智能体，本质上并不只是写代码的工具。它们拥有宿主操作系统的完整权限：除了编程与运维，还能解析文档与长图、生成图像、联网检索最新新闻、跑 Python 脚本处理个人数据，以及调用各类自定义技能（Skills）。
+像 **Claude Code**、**OpenAI Codex**、Google **Antigravity (AGY)** 和 xAI **Grok** 这类终端智能体，本质上并不只是写代码的工具。它们拥有宿主操作系统的完整权限：除了编程与运维，还能解析文档与长图、生成图像、联网检索最新新闻、跑 Python 脚本处理个人数据，以及调用各类自定义技能（Skills）。
 
 但它们最大的痛点是：**你必须坐在电脑前守着终端窗口**。
 
 虽然部分工具提供了官方的远程控制或 Web 界面，但在日常使用中仍有明显局限：
-- **打破厂商生态绑定**：官方方案仅能控制自家 CLI（Claude 只能连 Claude）。PocketAgent 提供了统一接入网关，无论你偏好使用 Claude Code、OpenAI Codex 还是 Google Antigravity，都能通过同一套 Telegram / Discord 界面直接操作本地机器，无需为不同工具维护多套远程方案，需要时也可随时自由切换。
+- **打破厂商生态绑定**：官方方案仅能控制自家 CLI（Claude 只能连 Claude）。PocketAgent 提供了统一接入网关，无论你偏好使用 Claude Code、OpenAI Codex、Google Antigravity 还是 Grok，都能通过同一套 Telegram / Discord 界面直接操作本地机器，无需为不同工具维护多套远程方案，需要时也可随时自由切换。
 - **移动端终端折磨 vs. 原生即时通讯**：官方远程方案多采用 Web 终端或独立界面，在移动设备上极易切后台断连、会话超时，且虚拟键盘操作繁琐。PocketAgent 接入 Telegram / Discord，发完消息即可锁屏离开，任务完成后后台自动推送通知。
 - **群聊协作与账号共享**：官方远程工具均为单人独占，而 PocketAgent 天然支持拉入团队群组。群成员可以实时共享同一个任务的会话上下文，共同查看执行细节与产出；同时直接复用宿主机上的 CLI 登录授权与账号订阅配额，无需每位成员单独配置环境或订阅付费。
 
-**PocketAgent** 是一个跑在本地的轻量级网关，把这三个 CLI 直接接入到 **Telegram** 与 **Discord**。无论是在手机、平板、远程笔记本还是桌面端聊天软件里，随时随地发条消息，本地电脑就会直接在后台执行任务并推送通知，甚至可以拉入团队群组协同使用，彻底摆脱终端窗口与复杂 SSH 配置的束缚。
+**PocketAgent** 是一个跑在本地的轻量级网关，把这四个 CLI 直接接入到 **Telegram** 与 **Discord**。无论是在手机、平板、远程笔记本还是桌面端聊天软件里，随时随地发条消息，本地电脑就会直接在后台执行任务并推送通知，甚至可以拉入团队群组协同使用，彻底摆脱终端窗口与复杂 SSH 配置的束缚。
 
 ```text
-    Telegram / Discord (手机 / 平板 / 电脑客户端 / Web)
-                          │
-                          ▼
-            PocketAgent 本地网关 (守护进程)
-             ├─ 6 位配对码安全准入
-             ├─ 统一会话总账 (Universal Ledger)
-             ├─ 3-CLI 技能中心 (~/.pocketagent/skills)
-             └─ Web 管理后台 (http://127.0.0.1:18790)
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   Claude Code       OpenAI Codex    Google Antigravity
-      (CLI)             (CLI)              (AGY)
-        │                 │                 │
-        └─────────────────┼─────────────────┘
-                          ▼
-                你的本地电脑与操作系统环境
-   (Bash/Zsh • Python • Git • 系统服务 • 文件系统 • 自定义技能)
+     Telegram / Discord (手机 / 平板 / 电脑客户端 / Web)
+                              │
+                              ▼
+             PocketAgent 本地网关 (守护进程)
+               ├─ 6 位配对码安全准入
+               ├─ 统一会话总账 (Universal Ledger)
+               ├─ 4-CLI 技能中心 (~/.pocketagent/skills)
+               └─ Web 管理后台 (http://127.0.0.1:18790)
+                              │
+      ┌───────────────┬───────┴───────┬───────────────┐
+      ▼               ▼               ▼               ▼
+ Claude Code     OpenAI Codex    Antigravity       xAI Grok
+    (CLI)           (CLI)           (AGY)           (CLI)
+      │               │               │               │
+      └───────────────┴───────┬───────┴───────────────┘
+                              ▼
+                  你的本地电脑与操作系统环境
+ (Bash/Zsh • Python • Git • 系统服务 • 文件系统 • 自定义技能)
 ```
 
 ---
@@ -56,8 +56,8 @@
 ## 核心特性
 
 - **跨端随行，随地交互**：直接以本地真实进程运行 CLI，拥有完整的系统权限与网络访问。不只是写代码改 Bug，还能随时随地读文档读截图、生成图片、检索实时新闻、排查服务日志与跑数据分析。
-- **三引擎无缝切换 (`/engine`)**：在同一个会话中随时切换 Claude Code、Codex 或 Antigravity。PocketAgent 会自动打包过往对话脉络与修改过的文件列表，在切换时无缝移交上下文，无需重复交代背景。
-- **3-CLI 技能互通中心**：统一管理自定义技能（位于 `~/.pocketagent/skills/`）。写好的技能会自动软链分发给 Claude、Codex 和 AGY，三端都能用，避免重复开发维护。
+- **四引擎无缝切换 (`/engine`)**：在同一个会话中随时切换 Claude Code、Codex、Antigravity 或 Grok。PocketAgent 会自动打包过往对话脉络与修改过的文件列表，在切换时无缝移交上下文，无需重复交代背景。
+- **4-CLI 技能互通中心**：统一管理自定义技能（位于 `~/.pocketagent/skills/`）。写好的技能会自动软链分发给 Claude、Codex、AGY 和 Grok，四端都能用，避免重复开发维护。
 - **多 Bot、群聊协同与多渠道支持**：单实例支持同时挂载多个 Telegram 和 Discord Bot，支持私聊与群组。群成员可实时共享会话上下文与宿主机 CLI 账号配额；每个 Bot 可单独指定默认引擎、模型、推理强度（effort）及专属 System Prompt（`SOUL.md`）。
 - **本地 Web 管理后台**：内置极简风格的 Web 控制台（`http://127.0.0.1:18790`），支持配置热重载（`Cmd+S`）、会话与工作区文件树浏览、历史轮次追溯以及技能在线编辑与同步。
 - **本地运行与配对安全**：纯本地运行，不经过任何第三方云端中转；首次发消息强制要求在终端批准 6 位配对码，杜绝未授权访问。
@@ -86,6 +86,7 @@
   - Claude Code (`claude`)
   - Google Antigravity (`agy`)
   - OpenAI Codex (`codex`)
+  - xAI Grok CLI（`grok`，需先执行 `grok login` 登录）
 - 一个 Telegram Bot Token（从 [@BotFather](https://t.me/BotFather) 获取）或 Discord Bot Token（从 [Discord 开发者中心](https://discord.com/developers/applications) 获取，在 Bot 页面开启 **MESSAGE CONTENT INTENT**）。
 
 ### 2. 下载安装与构建
@@ -111,7 +112,7 @@ pa doctor
 修改 `~/.pocketagent/config.yaml`（首次启动会自动生成，也支持在 Web 后台直接可视化修改）：
 
 ```yaml
-defaultEngine: "claude" # 全局默认引擎: claude | codex | agy
+defaultEngine: "claude" # 全局默认引擎: claude | codex | agy | grok
 
 bots:
   - name: "my-telegram-bot"
@@ -166,7 +167,7 @@ pa pairing approve 123456
 
 | 指令 | 作用说明 |
 | :--- | :--- |
-| `/engine` | 弹出交互菜单，在 Claude / Codex / Agy 之间切换，保留上下文 |
+| `/engine` | 弹出交互菜单，在 Claude / Codex / Agy / Grok 之间切换，保留上下文 |
 | `/model` | 探测并切换当前引擎支持的最新模型 |
 | `/effort` | 调整思考/推理强度级别（`low` / `medium` / `high` / `max`） |
 | `/status` | 查看当前会话状态、活跃引擎、工作区物理路径与轮数统计 |

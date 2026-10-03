@@ -5,9 +5,9 @@ import { configSchema } from "./schema.js";
 import type { GatewayConfig, ResolvedBotConfig, BotConfig } from "./types.js";
 
 const DEFAULT_CONFIG = `# PocketAgent Configuration
-# Bridges Telegram & Discord to Claude Code, Codex, and Antigravity (agy)
+# Bridges Telegram & Discord to Claude Code, Codex, Antigravity (agy), and Grok
 
-defaultEngine: "claude" # claude | codex | agy (switchable dynamically via /engine)
+defaultEngine: "claude" # claude | codex | agy | grok (switchable dynamically via /engine)
 
 bots:
   - name: "my-pocket-bot"

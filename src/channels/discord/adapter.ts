@@ -654,8 +654,8 @@ export class DiscordAdapter implements ChannelAdapter {
     const slashCommands = [
       new SlashCommandBuilder()
         .setName("engine")
-        .setDescription("Switch active CLI engine (claude, codex, agy)")
-        .addStringOption((opt) => opt.setName("name").setDescription("Engine name (claude, codex, agy)").setRequired(false)),
+        .setDescription("Switch active CLI engine (claude, codex, agy, grok)")
+        .addStringOption((opt) => opt.setName("name").setDescription("Engine name (claude, codex, agy, grok)").setRequired(false)),
       new SlashCommandBuilder()
         .setName("model")
         .setDescription("Choose or view models supported by current engine")

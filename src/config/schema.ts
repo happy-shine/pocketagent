@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EngineTypeSchema = z.enum(["claude", "codex", "agy"]);
+export const EngineTypeSchema = z.enum(["claude", "codex", "agy", "grok"]);
 export type EngineType = z.infer<typeof EngineTypeSchema>;
 
 const customModelSchema = z.object({
@@ -69,6 +69,14 @@ const agyEngineSchema = z.object({
   customModels: z.array(customModelSchema).default([]),
 });
 
+const grokEngineSchema = z.object({
+  binary: z.string().default("grok"),
+  model: z.string().optional(),
+  effort: z.string().optional(),
+  extraArgs: z.array(z.string()).default([]),
+  customModels: z.array(customModelSchema).default([]),
+});
+
 const enginesSchema = z.object({
   default: EngineTypeSchema.default("claude"),
   maxProcesses: z.number().int().positive().default(10),
@@ -76,6 +84,7 @@ const enginesSchema = z.object({
   claude: claudeEngineSchema.default(claudeEngineSchema.parse({})),
   codex: codexEngineSchema.default(codexEngineSchema.parse({})),
   agy: agyEngineSchema.default(agyEngineSchema.parse({})),
+  grok: grokEngineSchema.default(grokEngineSchema.parse({})),
 });
 
 const authSchema = z.object({
@@ -122,7 +131,7 @@ export const configSchema = z.preprocess((input) => {
 
   // Support top-level `defaultEngine` or `engine`
   const topEngine = (raw.defaultEngine ?? raw.engine) as string | undefined;
-  if (topEngine && ["claude", "codex", "agy"].includes(topEngine)) {
+  if (topEngine && ["claude", "codex", "agy", "grok"].includes(topEngine)) {
     engines.default ??= topEngine;
   }
 
@@ -138,6 +147,7 @@ export const configSchema = z.preprocess((input) => {
   if (oldEngine?.codex) engines.codex ??= oldEngine.codex;
   if (oldEngine?.claude) engines.claude ??= oldEngine.claude;
   if (oldEngine?.agy) engines.agy ??= oldEngine.agy;
+  if (oldEngine?.grok) engines.grok ??= oldEngine.grok;
 
   if (oldClaude) {
     engines.maxProcesses ??= oldClaude.maxProcesses;

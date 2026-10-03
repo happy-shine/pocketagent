@@ -3,6 +3,7 @@ import type { Session, EngineType } from "../sessions/types.js";
 import { ClaudeEngineAdapter } from "./claude/adapter.js";
 import { AgyEngineAdapter } from "./agy/adapter.js";
 import { CodexEngineAdapter } from "./codex/adapter.js";
+import { GrokEngineAdapter } from "./grok/adapter.js";
 import type {
   BotIdentity,
   EngineAdapter,
@@ -76,6 +77,22 @@ export class EngineManager {
       },
     };
     this.adapters.set("codex", new CodexEngineAdapter(codexConfig, this.log));
+
+    // Initialize Grok adapter
+    const grokConfig: EngineRuntimeConfig = {
+      type: "grok",
+      binary: config.engines.grok.binary,
+      model: config.engines.grok.model,
+      effort: config.engines.grok.effort,
+      extraArgs: config.engines.grok.extraArgs,
+      maxProcesses,
+      idleTimeoutMs,
+      workspaceDir,
+      apiPort,
+      agentsDir,
+      customModels: config.engines.grok.customModels,
+    };
+    this.adapters.set("grok", new GrokEngineAdapter(grokConfig, this.log));
   }
 
   getAdapter(type: EngineType): EngineAdapter {
@@ -165,6 +182,17 @@ export class EngineManager {
         sandbox: config.engines.codex.sandbox,
         approvalPolicy: config.engines.codex.approvalPolicy,
       },
+    });
+
+    const grok = this.adapters.get("grok");
+    grok?.updateConfig({
+      binary: config.engines.grok.binary,
+      model: config.engines.grok.model,
+      effort: config.engines.grok.effort,
+      extraArgs: config.engines.grok.extraArgs,
+      customModels: config.engines.grok.customModels,
+      maxProcesses,
+      idleTimeoutMs,
     });
   }
 

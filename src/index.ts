@@ -29,7 +29,7 @@ const program = new Command();
 program
   .name("pocketagent")
   .alias("pa")
-  .description("Unified Gateway bridging chat platforms to Claude Code, Codex, and Antigravity (agy) CLI engines")
+  .description("Unified Gateway bridging chat platforms to Claude Code, Codex, Antigravity (agy), and Grok CLI engines")
   .version("0.1.0");
 
 function getDataDir(configPath?: string): string {
@@ -73,7 +73,7 @@ function getRunningPid(dataDir: string): number | null {
 function printBanner(): void {
   console.log("");
   console.log("  🎒 PocketAgent v0.1.0");
-  console.log("  3-in-1 Gateway: Claude Code | Codex | Antigravity");
+  console.log("  4-in-1 Gateway: Claude Code | Codex | Antigravity | Grok");
   console.log("  Channels: Telegram | Discord");
   console.log("");
 }
@@ -83,6 +83,7 @@ function checkEngineClis(config: GatewayConfig): void {
     { name: "Claude Code", binary: config.engines.claude.binary, flag: "--version" },
     { name: "Codex CLI", binary: config.engines.codex.binary, flag: "--version" },
     { name: "Antigravity (agy)", binary: config.engines.agy.binary, flag: "--help" },
+    { name: "Grok CLI", binary: config.engines.grok.binary, flag: "--version" },
   ];
 
   for (const eng of engines) {
@@ -141,7 +142,7 @@ async function startForeground(opts: { config?: string }): Promise<void> {
     if (syncedSkills.length > 0) {
       log.info(
         { count: syncedSkills.length, skills: syncedSkills.map((s) => s.name) },
-        "Synchronized custom skills across Claude, Codex, and AGY",
+        "Synchronized custom skills across Claude, Codex, AGY, and Grok",
       );
     }
   } catch (err) {
@@ -468,21 +469,22 @@ program
 
 program
   .command("skills [action] [name]")
-  .description("Manage custom skills interoperability across Claude, Codex, and AGY (list, sync, new)")
+  .description("Manage custom skills interoperability across Claude, Codex, AGY, and Grok (list, sync, new)")
   .option("-d, --description <desc>", "Description for new skill")
   .action(async (action = "list", name, opts) => {
     const registry = SkillRegistry.getInstance();
     const act = (action || "list").toLowerCase();
 
     if (act === "sync") {
-      console.log("Synchronizing custom skills across Claude, Codex, and AGY...");
+      console.log("Synchronizing custom skills across Claude, Codex, AGY, and Grok...");
       const skills = registry.sync();
       console.log(`\n✓ Synchronized ${skills.length} skills (Hub: ${registry.hubDir}):`);
       for (const s of skills) {
         const agy = s.synced.agy ? "✓ AGY" : "✗ AGY";
         const claude = s.synced.claude ? "✓ Claude" : "✗ Claude";
         const codex = s.synced.codex ? "✓ Codex" : "✗ Codex";
-        console.log(`  • ${s.name} [${claude} | ${codex} | ${agy}]`);
+        const grok = s.synced.grok ? "✓ Grok" : "✗ Grok";
+        console.log(`  • ${s.name} [${claude} | ${codex} | ${agy} | ${grok}]`);
       }
       return;
     }
@@ -498,7 +500,7 @@ program
         console.log(`✓ Created new skill: ${created.name}`);
         console.log(`  Location: ${created.dir}`);
         console.log(`  Definition: ${created.skillMdPath}`);
-        console.log(`  Synchronized to Claude, Codex, and AGY successfully.`);
+        console.log(`  Synchronized to Claude, Codex, AGY, and Grok successfully.`);
       } catch (err) {
         console.error("Failed to create skill:", err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -510,7 +512,7 @@ program
     const skills = registry.list();
     if (skills.length === 0) {
       console.log(`No custom skills found in ${registry.hubDir}`);
-      console.log(`Use 'pa skills sync' to ingest existing skills from Claude/AGY/Codex or 'pa skills new <name>' to create one.`);
+      console.log(`Use 'pa skills sync' to ingest existing skills from Claude/AGY/Codex/Grok or 'pa skills new <name>' to create one.`);
       return;
     }
 
@@ -519,7 +521,8 @@ program
       const agy = s.synced.agy ? "✓ AGY" : "✗ AGY";
       const claude = s.synced.claude ? "✓ Claude" : "✗ Claude";
       const codex = s.synced.codex ? "✓ Codex" : "✗ Codex";
-      console.log(`• ${s.name} [${claude} | ${codex} | ${agy}]`);
+      const grok = s.synced.grok ? "✓ Grok" : "✗ Grok";
+      console.log(`• ${s.name} [${claude} | ${codex} | ${agy} | ${grok}]`);
       if (s.description) {
         console.log(`  ${s.description}`);
       }

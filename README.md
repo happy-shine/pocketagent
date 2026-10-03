@@ -1,7 +1,7 @@
 # PocketAgent 🎒
 
 <p align="center">
-  <strong>Control Claude Code, OpenAI Codex, and Google Antigravity (AGY) via Telegram & Discord across any device.</strong><br>
+  <strong>Control Claude Code, OpenAI Codex, Google Antigravity (AGY), and xAI Grok via Telegram & Discord across any device.</strong><br>
   Break out of the terminal. Asynchronous interaction, remote DevOps, data automation, and coding from anywhere.
 </p>
 
@@ -19,36 +19,36 @@
 
 ## Overview
 
-Terminal agents like **Claude Code**, **OpenAI Codex**, and Google **Antigravity (AGY)** are far more than mere code generators. With full host permissions, they can analyze documents and images, generate visual assets, search live web news, manage background services, execute Python data scripts, and invoke custom extension tools.
+Terminal agents like **Claude Code**, **OpenAI Codex**, Google **Antigravity (AGY)**, and xAI **Grok** are far more than mere code generators. With full host permissions, they can analyze documents and images, generate visual assets, search live web news, manage background services, execute Python data scripts, and invoke custom extension tools.
 
 Their main drawback is that **they require you to stay at your desk in front of a terminal**.
 
 While some tools offer official remote features or web interfaces, they come with practical trade-offs:
-- **No vendor lock-in, freedom of choice**: Official remotes exclusively control their own CLI (Claude remote only controls Claude). PocketAgent provides a unified gateway: whether you prefer Claude Code, OpenAI Codex, or Google Antigravity, you can operate your local machine through the same familiar Telegram / Discord interface without juggling separate remote tools, and switch anytime if needed.
+- **No vendor lock-in, freedom of choice**: Official remotes exclusively control their own CLI (Claude remote only controls Claude). PocketAgent provides a unified gateway: whether you prefer Claude Code, OpenAI Codex, Google Antigravity, or Grok, you can operate your local machine through the same familiar Telegram / Discord interface without juggling separate remote tools, and switch anytime if needed.
 - **Mobile terminal friction vs. native messaging**: Official remote setups typically rely on web terminals or standalone interfaces, which frequently suffer from disconnects, session timeouts, and clumsy mobile virtual keyboards. PocketAgent delivers native Telegram and Discord messaging — send a task, lock your screen, and receive asynchronous push notifications upon completion.
 - **Team collaboration & shared CLI accounts**: Official remote tools are strictly single-user. PocketAgent natively supports Telegram and Discord groups, allowing team members to collaborate within the same shared conversation context while pooling the host machine's authenticated CLI accounts and subscriptions without needing separate setups or extra seats.
 
-**PocketAgent** is a lightweight local gateway daemon that bridges these three CLI agents directly to your chat clients. Whether you are on mobile, a tablet, a secondary laptop, or desktop chat, dispatch tasks directly to your machine without keeping a terminal open or configuring complex SSH tunnels.
+**PocketAgent** is a lightweight local gateway daemon that bridges these four CLI agents directly to your chat clients. Whether you are on mobile, a tablet, a secondary laptop, or desktop chat, dispatch tasks directly to your machine without keeping a terminal open or configuring complex SSH tunnels.
 
 ```text
-    Telegram / Discord (Mobile / Desktop / Web / Tablet)
-                          │
-                          ▼
-           PocketAgent Gateway (Local Daemon)
-             ├─ 6-digit Pairing Security Gate
-             ├─ Universal Conversation Ledger
-             ├─ 3-CLI Skill Hub (~/.pocketagent/skills)
-             └─ Web Dashboard (http://127.0.0.1:18790)
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   Claude Code       OpenAI Codex    Google Antigravity
-      (CLI)             (CLI)              (AGY)
-        │                 │                 │
-        └─────────────────┼─────────────────┘
-                          ▼
-              Your Local Computer & OS
-   (Bash/Zsh • Python • Git • Services • File System • Skills)
+     Telegram / Discord (Mobile / Desktop / Web / Tablet)
+                              │
+                              ▼
+             PocketAgent Gateway (Local Daemon)
+               ├─ 6-digit Pairing Security Gate
+               ├─ Universal Conversation Ledger
+               ├─ 4-CLI Skill Hub (~/.pocketagent/skills)
+               └─ Web Dashboard (http://127.0.0.1:18790)
+                              │
+      ┌───────────────┬───────┴───────┬───────────────┐
+      ▼               ▼               ▼               ▼
+ Claude Code     OpenAI Codex    Antigravity       xAI Grok
+    (CLI)           (CLI)           (AGY)           (CLI)
+      │               │               │               │
+      └───────────────┴───────┬───────┴───────────────┘
+                              ▼
+                   Your Local Computer & OS
+ (Bash/Zsh • Python • Git • Services • File System • Skills)
 ```
 
 ---
@@ -56,8 +56,8 @@ While some tools offer official remote features or web interfaces, they come wit
 ## Features
 
 - **Ubiquitous Terminal Access Across Devices**: Runs real CLI processes on your machine with native shell, git, and filesystem permissions. Beyond writing code, you can analyze documents and screenshots, generate images, search live news, inspect server logs, and review diffs from any chat client.
-- **Mid-Conversation Engine Switching (`/engine`)**: Switch between Claude Code, OpenAI Codex, and Antigravity anytime within the same conversation. PocketAgent automatically extracts conversation history, modified files, and task goals to hand over context without losing track.
-- **3-CLI Unified Skill Hub**: Manage custom extension skills centrally in `~/.pocketagent/skills/`. Skills are automatically symlinked across Claude, Codex, and AGY, eliminating the need to maintain separate tool definitions for each engine.
+- **Mid-Conversation Engine Switching (`/engine`)**: Switch between Claude Code, OpenAI Codex, Antigravity, and Grok anytime within the same conversation. PocketAgent automatically extracts conversation history, modified files, and task goals to hand over context without losing track.
+- **4-CLI Unified Skill Hub**: Manage custom extension skills centrally in `~/.pocketagent/skills/`. Skills are automatically symlinked across Claude, Codex, AGY, and Grok, eliminating the need to maintain separate tool definitions for each engine.
 - **Multi-Bot, Group Collaboration & Multi-Channel**: Run multiple Telegram and Discord bots concurrently on a single gateway across DMs and group channels. Group members share conversation context and host CLI subscriptions; each bot can be configured with its own default engine, model, reasoning effort, and custom system prompt (`SOUL.md`).
 - **Local Web Dashboard**: Built-in minimalist console at `http://127.0.0.1:18790` for live status monitoring, configuration hot reload (`Cmd+S`), workspace and file inspection, turn-by-turn dialogue logs, and online skill editing.
 - **100% Local & Secure**: Operates strictly on your own hardware without third-party cloud intermediaries. New conversations require approving a 6-digit pairing code in the terminal before gaining access.
@@ -86,6 +86,7 @@ While some tools offer official remote features or web interfaces, they come wit
   - Claude Code (`claude`)
   - Google Antigravity (`agy`)
   - OpenAI Codex (`codex`)
+  - xAI Grok CLI (`grok`, logged in via `grok login`)
 - A Telegram Bot Token from [@BotFather](https://t.me/BotFather) and/or a Discord Bot Token from [Discord Developer Portal](https://discord.com/developers/applications) (enable **MESSAGE CONTENT INTENT** under the Bot tab).
 
 ### 2. Installation
@@ -111,7 +112,7 @@ Checks your Node.js runtime and detects which CLI engines are installed on your 
 Edit `~/.pocketagent/config.yaml` (created automatically on first run, or edit in the Web Dashboard):
 
 ```yaml
-defaultEngine: "claude" # claude | codex | agy
+defaultEngine: "claude" # claude | codex | agy | grok
 
 bots:
   - name: "my-telegram-bot"

@@ -1025,7 +1025,7 @@ export function getDashboardHtml(): string {
       <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions & Workspaces</div>
       <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
       <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
-      <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (3-CLI)</div>
+      <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (4-CLI)</div>
       <div class="nav-tab" data-tab="yaml" data-i18n="tabYaml">Raw YAML</div>
     </nav>
   </div>
@@ -1056,10 +1056,10 @@ export function getDashboardHtml(): string {
         <div class="metric-card">
           <div class="metric-label" data-i18n="metricDefaultEngine">Default Engine</div>
           <div id="mDefaultEngine" class="metric-value" style="text-transform: uppercase;">--</div>
-          <div class="metric-sub">Claude • Codex • AGY</div>
+          <div class="metric-sub">Claude • Codex • AGY • Grok</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label" data-i18n="metricSkillsCount">3-CLI Skills</div>
+          <div class="metric-label" data-i18n="metricSkillsCount">4-CLI Skills</div>
           <div id="mSkillsCount" class="metric-value">0</div>
           <div class="metric-sub">Unified Hub (~/.pocketagent/skills)</div>
         </div>
@@ -1108,7 +1108,7 @@ export function getDashboardHtml(): string {
       <div class="section-header">
         <div>
           <h1 class="section-title" data-i18n="enginesTitle">Engines Configuration</h1>
-          <p class="section-desc" data-i18n="enginesDesc">Configure Claude Code, OpenAI Codex, and Google Antigravity (AGY) backends</p>
+          <p class="section-desc" data-i18n="enginesDesc">Configure Claude Code, OpenAI Codex, Google Antigravity (AGY), and xAI Grok backends</p>
         </div>
       </div>
 
@@ -1137,6 +1137,13 @@ export function getDashboardHtml(): string {
               <span class="engine-tag">DeepMind</span>
             </div>
             <p class="engine-desc">AGY CLI with native skills, subagents, and Gemini reasoning models</p>
+          </div>
+          <div class="engine-card" data-engine="grok" onclick="selectDefaultEngine('grok')">
+            <div class="engine-card-top">
+              <span class="engine-title">xAI Grok</span>
+              <span class="engine-tag">xAI</span>
+            </div>
+            <p class="engine-desc">Grok Build CLI with headless sessions, subagents, and Grok reasoning models</p>
           </div>
         </div>
       </div>
@@ -1240,6 +1247,35 @@ export function getDashboardHtml(): string {
           <div class="form-group">
             <label class="form-label" data-i18n="extraArgs">Extra Args</label>
             <input id="cfgAgyExtraArgs" type="text" class="form-control" placeholder="--resume">
+          </div>
+        </div>
+      </div>
+
+      <!-- Grok Settings -->
+      <div class="card">
+        <div class="card-title" data-i18n="grokEngine">xAI Grok Engine</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" data-i18n="binaryCommand">Binary Command</label>
+            <input id="cfgGrokBinary" type="text" class="form-control" value="grok">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="defaultModel">Default Model</label>
+            <select id="cfgGrokModel" class="form-control"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="effortLevel">Effort Level</label>
+            <select id="cfgGrokEffort" class="form-control">
+              <option value="">Default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="extraArgs">Extra Args</label>
+            <input id="cfgGrokExtraArgs" type="text" class="form-control" placeholder="--disable-web-search">
           </div>
         </div>
       </div>
@@ -1384,8 +1420,8 @@ export function getDashboardHtml(): string {
     <section id="tab-skills" class="tab-pane">
       <div class="section-header">
         <div>
-          <h1 class="section-title" data-i18n="skillsTitle">Skills (3-CLI Mesh)</h1>
-          <p class="section-desc" data-i18n="skillsDesc">Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, and AGY</p>
+          <h1 class="section-title" data-i18n="skillsTitle">Skills (4-CLI Mesh)</h1>
+          <p class="section-desc" data-i18n="skillsDesc">Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, AGY, and Grok</p>
         </div>
         <div style="display: flex; gap: 0.5rem;">
           <button id="btnSyncSkills" class="btn btn-secondary btn-sm" data-i18n="syncSkills">↻ Sync All Skills</button>
@@ -1452,6 +1488,7 @@ export function getDashboardHtml(): string {
             <option value="claude">Claude Code</option>
             <option value="codex">OpenAI Codex</option>
             <option value="agy">Google Antigravity (AGY)</option>
+            <option value="grok">xAI Grok</option>
           </select>
         </div>
         <div class="form-group">
@@ -1547,7 +1584,7 @@ export function getDashboardHtml(): string {
         <div class="form-group" style="margin-bottom: 0;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
             <label class="form-label" style="margin-bottom: 0;" data-i18n="skillMdLabel">SKILL.md (Instructions & YAML Frontmatter)</label>
-            <span style="font-size: 0.72rem; color: var(--text-muted);">Markdown • Auto-syncs to Claude, Codex, AGY</span>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Markdown • Auto-syncs to Claude, Codex, AGY, Grok</span>
           </div>
           <textarea id="modalSkillMdEditor" class="form-control" style="font-family: var(--font-mono); font-size: 0.82rem; height: 320px; line-height: 1.45; resize: vertical;" spellcheck="false"></textarea>
         </div>
@@ -1604,6 +1641,7 @@ export function getDashboardHtml(): string {
             <option value="claude">Claude Code</option>
             <option value="codex">OpenAI Codex</option>
             <option value="agy">Google Antigravity (AGY)</option>
+            <option value="grok">xAI Grok</option>
           </select>
         </div>
         <div class="form-group">
@@ -1728,7 +1766,7 @@ export function getDashboardHtml(): string {
         metricGatewayStatus: "网关状态",
         metricActiveBots: "已接入机器人",
         metricDefaultEngine: "全局默认引擎",
-        metricSkillsCount: "3-CLI 共享技能",
+        metricSkillsCount: "4-CLI 共享技能",
         configuredBots: "已配置的机器人",
         manageBots: "管理机器人 →",
         engineDiscovery: "引擎与可用模型",
@@ -1755,7 +1793,7 @@ export function getDashboardHtml(): string {
         botDeletedToast: "已移除机器人，点击「保存并热更新」生效。",
 
         enginesTitle: "模型引擎设置",
-        enginesDesc: "配置 Claude Code、OpenAI Codex 与 Google Antigravity (AGY) 执行引擎",
+        enginesDesc: "配置 Claude Code、OpenAI Codex、Google Antigravity (AGY) 与 xAI Grok 执行引擎",
         defaultEngineCard: "全局默认执行引擎",
         defaultEngineCardDesc: "所有未单独指定引擎的机器人会话将默认使用此引擎处理任务",
         concurrencySettings: "并发与超时控制",
@@ -1765,6 +1803,7 @@ export function getDashboardHtml(): string {
         claudeEngine: "Claude Code 引擎 (Anthropic)",
         codexEngine: "OpenAI Codex 引擎 (OpenAI)",
         agyEngine: "Google Antigravity 引擎 (DeepMind)",
+        grokEngine: "xAI Grok 引擎 (xAI)",
         binaryCommand: "命令行二进制 (Binary)",
         defaultModel: "默认模型",
         effortLevel: "思考深度 (Effort)",
@@ -1789,15 +1828,15 @@ export function getDashboardHtml(): string {
         approve: "✓ 批准",
         pairingApprovedToast: "已批准用户 {id} 的配对申请 (Bot: {bot})",
         
-        skillsTitle: "3-CLI 技能中心",
-        skillsDesc: "统一技能库 (~/.pocketagent/skills/) 已物理软链至 Claude、Codex 与 AGY 客户端",
+        skillsTitle: "4-CLI 技能中心",
+        skillsDesc: "统一技能库 (~/.pocketagent/skills/) 已物理软链至 Claude、Codex、AGY 与 Grok 客户端",
         syncSkills: "↻ 全网同步技能",
         newSkill: "+ 新建技能",
         noSkillsFound: "未检测到自定义技能，点击上方「新建技能」快速创建。",
         viewAndEditSkill: "✎ 查看 / 编辑",
-        deleteSkillPrompt: "确定要永久删除技能「{name}」吗？此操作将同时清理 Claude、Codex 与 AGY 中的对应软链！",
+        deleteSkillPrompt: "确定要永久删除技能「{name}」吗？此操作将同时清理 Claude、Codex、AGY 与 Grok 中的对应软链！",
         skillDeletedToast: "技能「{name}」已彻底删除并清理镜像",
-        skillUpdatedToast: "技能「{name}」已保存并同步至 3-CLI",
+        skillUpdatedToast: "技能「{name}」已保存并同步至 4-CLI",
         modalSkillDetailTitle: "技能详情与编辑",
         skillMdLabel: "SKILL.md (指令规范与 Prompt 描述)",
         skillSaveBtn: "保存并全网同步",
@@ -1839,7 +1878,7 @@ export function getDashboardHtml(): string {
         tabEngines: "Engines",
         tabGateway: "Gateway",
         tabSecurity: "Security & Auth",
-        tabSkills: "Skills (3-CLI)",
+        tabSkills: "Skills (4-CLI)",
         tabSessions: "Sessions & Workspaces",
         tabYaml: "Raw YAML",
         
@@ -1895,7 +1934,7 @@ export function getDashboardHtml(): string {
         metricGatewayStatus: "Gateway Status",
         metricActiveBots: "Active Bots",
         metricDefaultEngine: "Default Engine",
-        metricSkillsCount: "3-CLI Skills",
+        metricSkillsCount: "4-CLI Skills",
         configuredBots: "Configured Bots",
         manageBots: "Manage Bots →",
         engineDiscovery: "Engine Discovery & Models",
@@ -1922,7 +1961,7 @@ export function getDashboardHtml(): string {
         botDeletedToast: "Bot removed, click 'Save & Hot Reload' to apply.",
 
         enginesTitle: "Engines Configuration",
-        enginesDesc: "Configure Claude Code, OpenAI Codex, and Google Antigravity (AGY) backends",
+        enginesDesc: "Configure Claude Code, OpenAI Codex, Google Antigravity (AGY), and xAI Grok backends",
         defaultEngineCard: "Default Execution Engine",
         defaultEngineCardDesc: "Engine used for all sessions unless overridden by a bot or /engine command",
         concurrencySettings: "Concurrency & Timeouts",
@@ -1932,6 +1971,7 @@ export function getDashboardHtml(): string {
         claudeEngine: "Claude Code Engine",
         codexEngine: "OpenAI Codex Engine",
         agyEngine: "Google Antigravity (AGY) Engine",
+        grokEngine: "xAI Grok Engine",
         binaryCommand: "Binary Command",
         defaultModel: "Default Model",
         effortLevel: "Effort Level",
@@ -1956,15 +1996,15 @@ export function getDashboardHtml(): string {
         approve: "✓ Approve",
         pairingApprovedToast: "Approved pairing for user {id} (bot: {bot})",
         
-        skillsTitle: "Skills (3-CLI Mesh)",
-        skillsDesc: "Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, and AGY",
+        skillsTitle: "Skills (4-CLI Mesh)",
+        skillsDesc: "Unified hub at ~/.pocketagent/skills/ mirrored to Claude Code, Codex, AGY, and Grok",
         syncSkills: "↻ Sync All Skills",
         newSkill: "+ New Skill",
         noSkillsFound: "No custom skills found. Click 'New Skill' to create one.",
         viewAndEditSkill: "✎ View / Edit",
-        deleteSkillPrompt: "Are you sure you want to delete skill '{name}'? This will also remove symlinks in Claude, Codex, and AGY!",
+        deleteSkillPrompt: "Are you sure you want to delete skill '{name}'? This will also remove symlinks in Claude, Codex, AGY, and Grok!",
         skillDeletedToast: "Skill '{name}' deleted and unlinked",
-        skillUpdatedToast: "Skill '{name}' saved and synced to 3-CLI",
+        skillUpdatedToast: "Skill '{name}' saved and synced to 4-CLI",
         modalSkillDetailTitle: "Skill Details & Editor",
         skillMdLabel: "SKILL.md (Instructions & YAML Frontmatter)",
         skillSaveBtn: "Save & Sync to All",
@@ -2233,6 +2273,12 @@ export function getDashboardHtml(): string {
         document.getElementById("cfgAgyExtraArgs").value = (cfg.engines.agy.extraArgs || []).join(", ");
       }
 
+      if (cfg.engines?.grok) {
+        document.getElementById("cfgGrokBinary").value = cfg.engines.grok.binary || "grok";
+        document.getElementById("cfgGrokEffort").value = cfg.engines.grok.effort || "";
+        document.getElementById("cfgGrokExtraArgs").value = (cfg.engines.grok.extraArgs || []).join(", ");
+      }
+
       document.getElementById("cfgPort").value = cfg.gateway?.port ?? 18790;
       document.getElementById("cfgDataDir").value = cfg.gateway?.dataDir ?? "~/.pocketagent";
       document.getElementById("cfgLogLevel").value = cfg.gateway?.logLevel ?? "info";
@@ -2263,6 +2309,7 @@ export function getDashboardHtml(): string {
         populateModelSelect("cfgClaudeModel", capabilities.claude?.models || [], currentConfig?.engines?.claude?.model);
         populateModelSelect("cfgCodexModel", capabilities.codex?.models || [], currentConfig?.engines?.codex?.model);
         populateModelSelect("cfgAgyModel", capabilities.agy?.models || [], currentConfig?.engines?.agy?.model);
+        populateModelSelect("cfgGrokModel", capabilities.grok?.models || [], currentConfig?.engines?.grok?.model);
 
         renderOverviewEngines();
       } catch {}
@@ -2319,6 +2366,7 @@ export function getDashboardHtml(): string {
         { id: "claude", name: "Claude Code", cap: capabilities.claude },
         { id: "codex", name: "OpenAI Codex", cap: capabilities.codex },
         { id: "agy", name: "Google Antigravity", cap: capabilities.agy },
+        { id: "grok", name: "xAI Grok", cap: capabilities.grok },
       ];
 
       container.innerHTML = engines.map(e => {
@@ -2386,6 +2434,7 @@ export function getDashboardHtml(): string {
                   <option value="claude" \${bot.engine === 'claude' ? 'selected' : ''}>Claude Code</option>
                   <option value="codex" \${bot.engine === 'codex' ? 'selected' : ''}>OpenAI Codex</option>
                   <option value="agy" \${bot.engine === 'agy' ? 'selected' : ''}>Google Antigravity</option>
+                  <option value="grok" \${bot.engine === 'grok' ? 'selected' : ''}>xAI Grok</option>
                 </select>
               </div>
               <div class="form-group">
@@ -2591,6 +2640,7 @@ export function getDashboardHtml(): string {
                 <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? 'Claude' : '!Claude'}</span>
                 <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? 'Codex' : '!Codex'}</span>
                 <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? 'AGY' : '!AGY'}</span>
+                <span class="sync-tag \${s.synced?.grok ? 'sync-on' : 'sync-off'}">\${s.synced?.grok ? 'Grok' : '!Grok'}</span>
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 0.4rem;">
@@ -2634,6 +2684,7 @@ export function getDashboardHtml(): string {
               <span class="sync-tag \${s.synced?.claude ? 'sync-on' : 'sync-off'}">\${s.synced?.claude ? '✓ Claude' : '✗ Claude'}</span>
               <span class="sync-tag \${s.synced?.codex ? 'sync-on' : 'sync-off'}">\${s.synced?.codex ? '✓ Codex' : '✗ Codex'}</span>
               <span class="sync-tag \${s.synced?.agy ? 'sync-on' : 'sync-off'}">\${s.synced?.agy ? '✓ AGY' : '✗ AGY'}</span>
+              <span class="sync-tag \${s.synced?.grok ? 'sync-on' : 'sync-off'}">\${s.synced?.grok ? '✓ Grok' : '✗ Grok'}</span>
             </div>
           </div>
           <div style="font-size: 0.75rem; color: var(--text-muted);">
@@ -3419,6 +3470,13 @@ export function getDashboardHtml(): string {
       currentConfig.engines.agy.model = document.getElementById("cfgAgyModel").value || undefined;
       currentConfig.engines.agy.effort = document.getElementById("cfgAgyEffort").value || undefined;
       currentConfig.engines.agy.extraArgs = document.getElementById("cfgAgyExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
+
+      // Grok
+      if (!currentConfig.engines.grok) currentConfig.engines.grok = {};
+      currentConfig.engines.grok.binary = document.getElementById("cfgGrokBinary").value.trim() || "grok";
+      currentConfig.engines.grok.model = document.getElementById("cfgGrokModel").value || undefined;
+      currentConfig.engines.grok.effort = document.getElementById("cfgGrokEffort").value || undefined;
+      currentConfig.engines.grok.extraArgs = document.getElementById("cfgGrokExtraArgs").value.split(",").map(s => s.trim()).filter(Boolean);
 
       // Gateway
       currentConfig.gateway.port = parseInt(document.getElementById("cfgPort").value, 10) || 18790;

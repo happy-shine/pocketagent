@@ -1,7 +1,7 @@
 # PocketAgent Configuration Example
-# Connects Telegram & Discord to Claude Code, Codex, and Antigravity (agy)
+# Connects Telegram & Discord to Claude Code, Codex, Antigravity (agy), and Grok
 
-# Global default engine (claude | codex | agy), switchable in chat via /engine
+# Global default engine (claude | codex | agy | grok), switchable in chat via /engine
 defaultEngine: "claude"
 
 # Bot instances list (supports multiple bots across Telegram & Discord)

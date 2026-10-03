@@ -34,7 +34,7 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     expect(html).toContain("Workspaces");
     expect(html).toContain("Gateway");
     expect(html).toContain("Security & Auth");
-    expect(html).toContain("Skills (3-CLI)");
+    expect(html).toContain("Skills (4-CLI)");
     expect(html).toContain("Raw YAML");
   });
 

@@ -321,7 +321,7 @@ export class BotInstance {
     });
 
     const input = msg.text.trim().toLowerCase();
-    if (["claude", "codex", "agy"].includes(input)) {
+    if (["claude", "codex", "agy", "grok"].includes(input)) {
       this.sessionManager.setEngine(session.sessionId, input as EngineType);
       await this.sessionManager.flush(msg.chatId);
       await channel.send({
@@ -338,6 +338,7 @@ export class BotInstance {
         [{ text: mark("claude", "Claude Code"), data: "engine:claude" }],
         [{ text: mark("codex", "OpenAI Codex"), data: "engine:codex" }],
         [{ text: mark("agy", "Google Antigravity"), data: "engine:agy" }],
+        [{ text: mark("grok", "xAI Grok"), data: "engine:grok" }],
       ];
       await channel.sendWithButtons(
         msg.chatId,
@@ -347,7 +348,7 @@ export class BotInstance {
     } else {
       await channel.send({
         chatId: msg.chatId,
-        text: `Current engine: *${session.activeEngine.toUpperCase()}*\nSwitch engine using: \`/engine claude\`, \`/engine codex\`, or \`/engine agy\``,
+        text: `Current engine: *${session.activeEngine.toUpperCase()}*\nSwitch engine using: \`/engine claude\`, \`/engine codex\`, \`/engine agy\`, or \`/engine grok\``,
       });
     }
   }
@@ -583,7 +584,7 @@ export class BotInstance {
 
     if (arg) {
       const lower = arg.toLowerCase();
-      if (["claude", "codex", "agy"].includes(lower)) {
+      if (["claude", "codex", "agy", "grok"].includes(lower)) {
         explicitEngine = lower as EngineType;
       } else {
         title = arg;
@@ -747,10 +748,10 @@ export class BotInstance {
 
   private async handleHelp(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
     const helpText = [
-      `🎒 *PocketAgent — 3-in-1 AI Gateway*`,
+      `🎒 *PocketAgent — 4-in-1 AI Gateway*`,
       ``,
       `*Commands:*`,
-      `• \`/engine [claude|codex|agy]\` — Switch CLI engine with seamless context handover`,
+      `• \`/engine [claude|codex|agy|grok]\` — Switch CLI engine with seamless context handover`,
       `• \`/model [name]\` — Dynamically choose or view models supported by current engine`,
       `• \`/effort [low|med|high]\` — Configure reasoning effort depth`,
       `• \`/status\` — View current session, engine, model & status`,

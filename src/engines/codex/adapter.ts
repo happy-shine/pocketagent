@@ -128,7 +128,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     const isForeignModel = (m?: string) => {
       if (!m) return false;
       const lower = m.toLowerCase();
-      return lower.startsWith("gemini") || lower.startsWith("claude") || lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku");
+      return lower.startsWith("gemini") || lower.startsWith("claude") || lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku") || lower.startsWith("grok");
     };
 
     const rawModel = session.engineModels?.codex ?? (!isForeignModel(session.model) ? session.model : undefined);

@@ -1,7 +1,7 @@
 {
   "name": "pocketagent",
   "version": "0.1.0",
-  "description": "Unified Gateway bridging chat platforms (Telegram, Discord) to Claude Code, Codex, and Antigravity (agy) CLI engines with shared context and dynamic model discovery",
+  "description": "Unified Gateway bridging chat platforms (Telegram, Discord) to Claude Code, Codex, Antigravity (agy), and Grok CLI engines with shared context and dynamic model discovery",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

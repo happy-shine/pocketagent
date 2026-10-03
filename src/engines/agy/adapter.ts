@@ -80,7 +80,7 @@ export class AgyEngineAdapter implements EngineAdapter {
     const isForeignModel = (m?: string) => {
       if (!m) return false;
       const lower = m.toLowerCase();
-      return lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3");
+      return lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("grok");
     };
 
     const rawModel = session.engineModels?.agy ?? (!isForeignModel(session.model) ? session.model : undefined);

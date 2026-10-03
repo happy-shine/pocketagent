@@ -43,7 +43,7 @@ When offering the user a discrete choice (e.g. confirming an action, choosing be
 [button: Choice 1 | Choice 2 | Choice 3]
 \`\`\`
 
-The gateway will automatically convert these into tappable Telegram buttons.
+The gateway will automatically convert these into tappable buttons in the chat (Telegram and Discord).
 `.trim();
 }
 

@@ -25,28 +25,7 @@ import type {
   Attachment,
 } from "../types.js";
 import type { MessageStore } from "../../sessions/message-store.js";
-
-function splitDiscordText(text: string, limit = 1900): string[] {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= limit) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitIdx = remaining.lastIndexOf("\n", limit);
-    if (splitIdx === -1 || splitIdx < limit / 2) {
-      splitIdx = remaining.lastIndexOf(" ", limit);
-    }
-    if (splitIdx === -1 || splitIdx < limit / 2) {
-      splitIdx = limit;
-    }
-    chunks.push(remaining.slice(0, splitIdx));
-    remaining = remaining.slice(splitIdx).trimStart();
-  }
-  return chunks;
-}
+import { prepareDiscordText } from "./formatter.js";
 
 export class DiscordAdapter implements ChannelAdapter {
   readonly type = "discord";
@@ -458,7 +437,7 @@ export class DiscordAdapter implements ChannelAdapter {
   async send(msg: OutboundMessage): Promise<string> {
     if (!this.client) return "";
 
-    const chunks = splitDiscordText(msg.text);
+    const chunks = prepareDiscordText(msg.text);
     const firstChunk = chunks[0] || msg.text;
     const files = msg.attachments?.map((a) => {
       const fileName = a.caption && /\.[a-z0-9]+$/i.test(a.caption) ? a.caption : basename(a.path);
@@ -541,7 +520,7 @@ export class DiscordAdapter implements ChannelAdapter {
       }
     }
 
-    const chunks = splitDiscordText(text);
+    const chunks = prepareDiscordText(text);
     const mainText = chunks[0] || text;
 
     const slashInteraction = this.activeSlashInteractions.get(chatId);
@@ -606,7 +585,7 @@ export class DiscordAdapter implements ChannelAdapter {
     if (!channel || !channel.isTextBased()) return;
     const msg = await (channel as any).messages.fetch(messageId).catch(() => null);
     if (msg) {
-      const chunks = splitDiscordText(text);
+      const chunks = prepareDiscordText(text);
       const firstChunk = chunks[0] || text;
       const payload: any = { content: firstChunk };
       if (buttons && buttons.length > 0) {

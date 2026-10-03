@@ -76,12 +76,53 @@ See the <a href="https://example.com/docs">auth docs</a> for context.
 export function getDiscordFormatSkill(): string {
   return `## Output Formatting (Discord Markdown)
 
-Format your responses cleanly for Discord using standard Discord Markdown:
-- Bold: **text**
-- Italic: *text*
-- Code: \`code\`
-- Code blocks: \`\`\`language ... \`\`\`
-- Blockquotes: > quote
-- Bullet points: • or -
-Do NOT use HTML tags (like <b> or <pre>) as Discord does not parse HTML.`;
+Your final reply is posted to Discord as a regular message. Discord renders its own Markdown flavor. Use only the syntax below; never HTML.
+
+### Supported syntax
+
+- \`# Title\`, \`## Section\`, \`### Subsection\`: headings. Only these three levels, and the \`#\` must start the line.
+- \`-# text\`: subtext, a small grey line. Good for dates, sources and footnotes.
+- \`**bold**\`, \`*italic*\`, \`__underline__\`, \`~~strikethrough~~\`, \`||spoiler||\`
+- \`\` \`inline code\` \`\`, and fenced code blocks: three backticks on their own line, optionally followed by a language such as \`python\` for highlighting.
+- \`> quote\` quotes one line; \`>>> quote\` quotes everything after it until the end of the message.
+- \`- item\` or \`1. item\` lists. Nest a sub-item by indenting it with two spaces.
+- \`[title](https://example.com)\`: masked link. \`<https://example.com>\`: a link without a preview card.
+- \`<t:UNIX_SECONDS:f>\`: a timestamp shown in each reader's own timezone (styles: \`t\` time, \`d\` date, \`f\` date and time, \`R\` relative like "in 2 hours").
+
+### Not supported (these show up as literal characters)
+
+- Tables (\`| a | b |\`): write a list instead, one item per row, e.g. \`- **ES** · 方向: 做多 · 结果: 已达标\`. For columns of numbers, use a code block with space-aligned columns.
+- \`####\` and deeper headings: use \`###\` or a **bold** line.
+- Horizontal rules (\`---\`, \`***\`): separate sections with a heading or a blank line.
+- HTML tags (\`<b>\`, \`<br>\`, \`<pre>\`, ...) and Markdown images (\`![](...)\`). To show an image, send the file with the File Transfer API.
+
+The gateway converts stray tables, deep headings and horizontal rules automatically, but writing Discord syntax yourself reads better.
+
+### Escaping
+
+\`*\`, \`_\`, \`~\`, \`|\` and \`\` \` \`\` are formatting characters, and so is \`>\` at the start of a line. When they are meant literally (cron expressions like \`*/5 * * * *\`, file globs, \`a*b\`), wrap the text in inline code or escape each character with a backslash (\`\\*\`).
+
+### Layout
+
+- Lead with the conclusion, then details under \`###\` headings. Keep paragraphs short and put a blank line between blocks.
+- Every bare URL produces a large preview card. Use \`[title](url)\`, or wrap the URL in \`<>\`, unless the preview itself is useful. Never post more than one previewed link per reply.
+- Replies over 2000 characters are split into several messages at line breaks, and code blocks are reopened across splits, so long answers are fine. Just avoid single lines over 2000 characters.
+- Never use \`@everyone\` or \`@here\`. Mention a user only as \`<@USER_ID>\`, and only when asked to.
+
+### Example of a well-formed reply
+
+\`\`\`\`
+### Analysis complete
+Found **3 issues** in the authentication flow:
+- **Token expiry**: refresh is not triggered on 401
+- **CSRF check**: missing on \`/logout\`
+  - affects every browser session
+- **Rate limit**: login accepts unbounded attempts
+
+\`\`\`ts
+if (response.status === 401) await refreshToken();
+\`\`\`
+-# Details: [auth docs](https://example.com/docs)
+\`\`\`\`
+`;
 }

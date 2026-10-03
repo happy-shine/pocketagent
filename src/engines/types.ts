@@ -91,6 +91,8 @@ export interface EngineAdapter {
     request: Record<string, unknown>,
     timeoutMs?: number,
   ): Promise<Record<string, unknown> | null>;
+  /** Terminates and forgets the session's process so the next turn starts from scratch. */
+  release(sessionId: string): void;
   shutdown(): Promise<void>;
   updateConfig(config: Partial<EngineRuntimeConfig>): void;
   getRunningCount(): number;

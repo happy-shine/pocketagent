@@ -419,6 +419,11 @@ export function getDashboardHtml(): string {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 1px var(--border-focus);
     }
+    .form-control:disabled {
+      background-color: var(--bg-card-subtle);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
     select.form-control {
       appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
@@ -787,6 +792,39 @@ export function getDashboardHtml(): string {
       text-transform: uppercase;
     }
 
+    .badge-paused {
+      background: var(--badge-amber-bg);
+      color: var(--badge-amber-text);
+      border: 1px solid var(--badge-amber-border);
+    }
+    .badge-failed {
+      background: var(--badge-red-bg);
+      color: var(--badge-red-text);
+      border: 1px solid var(--badge-red-border);
+    }
+    .cron-prompt {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.65rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 7.5em;
+      overflow: hidden;
+    }
+    .cron-run-row {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+    }
+
     /* Dialogue Turns Modal */
     .turns-container {
       display: flex;
@@ -1023,6 +1061,7 @@ export function getDashboardHtml(): string {
       <div class="nav-tab" data-tab="bots" data-i18n="tabBots">Bots</div>
       <div class="nav-tab" data-tab="engines" data-i18n="tabEngines">Engines</div>
       <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions & Workspaces</div>
+      <div class="nav-tab" data-tab="cron" data-i18n="tabCron">Scheduled Tasks</div>
       <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
       <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
       <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (4-CLI)</div>
@@ -1345,6 +1384,61 @@ export function getDashboardHtml(): string {
       </div>
     </section>
 
+    <!-- TAB: Scheduled Tasks -->
+    <section id="tab-cron" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="cronTitle">Scheduled Tasks</h1>
+          <p class="section-desc" data-i18n="cronDesc">Prompts the gateway runs automatically on a schedule, posting each result to its chat. Each run starts a fresh session with its own persistent working directory.</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btnRefreshCron" class="btn btn-secondary btn-sm" data-i18n="refreshSessions">↻ Refresh</button>
+          <button id="btnNewCron" class="btn btn-primary btn-sm" data-i18n="cronNew">+ New Task</button>
+        </div>
+      </div>
+
+      <div class="grid-metrics">
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="cronMetricTotal">Total Tasks</div>
+          <div id="mCronTotal" class="metric-value">0</div>
+          <div id="mCronTimezone" class="metric-sub">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="cronMetricEnabled">Enabled</div>
+          <div id="mCronEnabled" class="metric-value" style="color: var(--badge-green-text);">0</div>
+          <div class="metric-sub" data-i18n="cronMetricEnabledSub">Waiting for their next run</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="cronMetricRunning">Running Now</div>
+          <div id="mCronRunning" class="metric-value">0</div>
+          <div class="metric-sub" data-i18n="cronMetricRunningSub">Unattended CLI runs in progress</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="cronMetricAttention">Needs Attention</div>
+          <div id="mCronAttention" class="metric-value" style="color: var(--badge-red-text);">0</div>
+          <div class="metric-sub" data-i18n="cronMetricAttentionSub">Paused or last run failed</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <select id="cronBotFilter" class="form-control" style="max-width: 200px;">
+            <option value="" data-i18n="filterAllBots">All Bots</option>
+          </select>
+          <select id="cronStatusFilter" class="form-control" style="max-width: 170px;">
+            <option value="all" data-i18n="filterAllStatus">All Status</option>
+            <option value="enabled" data-i18n="cronFilterEnabled">Enabled</option>
+            <option value="paused" data-i18n="cronFilterPaused">Paused</option>
+          </select>
+          <input id="cronSearchInput" type="text" class="form-control" placeholder="Search by name, prompt, Chat ID..." data-i18n-placeholder="cronSearchPlaceholder">
+        </div>
+      </div>
+
+      <div id="cronListContainer">
+        <!-- Dynamically rendered scheduled task cards -->
+      </div>
+    </section>
+
     <!-- TAB: Gateway -->
     <section id="tab-gateway" class="tab-pane">
       <div class="section-header">
@@ -1660,6 +1754,107 @@ export function getDashboardHtml(): string {
     </div>
   </div>
 
+  <!-- Modal: New / Edit Scheduled Task -->
+  <div id="modalCron" class="modal-backdrop">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div class="modal-title" id="cronModalTitle" data-i18n="cronModalNewTitle">New Scheduled Task</div>
+        <button class="modal-close" onclick="closeModal('modalCron')">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.85rem;">
+          <div class="form-group">
+            <label class="form-label">Bot</label>
+            <select id="cronBotSelect" class="form-control"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Chat ID</label>
+            <input id="cronChatId" type="text" class="form-control" list="cronChatOptions" placeholder="e.g. 1465542100 or -100...">
+            <datalist id="cronChatOptions"></datalist>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="cronFieldName">Name</label>
+          <input id="cronName" type="text" class="form-control" placeholder="AI news digest">
+        </div>
+        <div style="display: grid; grid-template-columns: 160px 1fr 1fr; gap: 0 0.85rem;">
+          <div class="form-group">
+            <label class="form-label" data-i18n="cronFieldKind">Repeat</label>
+            <select id="cronKind" class="form-control">
+              <option value="cron" data-i18n="cronKindCron">Recurring (cron)</option>
+              <option value="at" data-i18n="cronKindAt">Once</option>
+            </select>
+          </div>
+          <div class="form-group" id="cronExprGroup">
+            <label class="form-label" data-i18n="cronFieldExpr">Cron Expression</label>
+            <input id="cronExpr" type="text" class="form-control" style="font-family: var(--font-mono);" placeholder="0 9 * * 1-5">
+          </div>
+          <div class="form-group" id="cronTzGroup">
+            <label class="form-label" data-i18n="cronFieldTz">Timezone</label>
+            <input id="cronTz" type="text" class="form-control" placeholder="Asia/Shanghai">
+          </div>
+          <div class="form-group" id="cronAtGroup" style="display: none; grid-column: span 2;">
+            <label class="form-label" id="cronAtLabel" data-i18n="cronFieldAt">Run At</label>
+            <input id="cronAt" type="datetime-local" class="form-control">
+          </div>
+        </div>
+        <div id="cronExprHint" class="card-desc" style="margin-top: -0.35rem; margin-bottom: 0.85rem;" data-i18n="cronExprHint">minute hour day-of-month month day-of-week, e.g. "0 9 * * 1-5" = weekdays at 09:00, "*/30 * * * *" = every 30 minutes</div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="cronFieldPrompt">Prompt</label>
+          <textarea id="cronPrompt" class="form-control" style="height: 150px; font-size: 0.85rem;" placeholder="Search the web for the most important AI news of the last 24 hours and write a concise digest."></textarea>
+          <div class="card-desc" style="margin-top: 0.35rem;" data-i18n="cronPromptHint">Runs with no conversation history and nobody to answer questions, so make it self-contained. Reply [SILENT] to post nothing.</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 0.85rem;">
+          <div class="form-group">
+            <label class="form-label">Engine</label>
+            <select id="cronEngine" class="form-control">
+              <option value="" data-i18n="cronInheritEngine">Bot Default</option>
+              <option value="claude">Claude Code</option>
+              <option value="codex">OpenAI Codex</option>
+              <option value="agy">Antigravity</option>
+              <option value="grok">xAI Grok</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Model</label>
+            <input id="cronModel" type="text" class="form-control" placeholder="default">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Effort</label>
+            <input id="cronEffort" type="text" class="form-control" placeholder="default">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="cronFieldTimeout">Timeout (min)</label>
+            <input id="cronTimeout" type="number" min="1" class="form-control" placeholder="30">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalCron')" data-i18n="modalCancel">Cancel</button>
+        <button id="btnSaveCron" class="btn btn-primary" data-i18n="cronSave">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Scheduled Task Run History -->
+  <div id="modalCronRuns" class="modal-backdrop">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" data-i18n="cronRunsTitle">Run History</div>
+          <div id="cronRunsSubtitle" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal('modalCronRuns')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="cronRunsList" class="turns-container"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modalCronRuns')" data-i18n="modalCancel">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Workspace Files & Preview -->
   <div id="modalWorkspaceFiles" class="modal-backdrop">
     <div class="modal modal-xl">
@@ -1713,6 +1908,71 @@ export function getDashboardHtml(): string {
         tabSkills: "技能中心",
         tabSessions: "会话与工作区",
         tabYaml: "YAML 源码",
+        tabCron: "定时任务",
+
+        cronTitle: "定时任务",
+        cronDesc: "网关按计划自动执行的 prompt，结果推送到对应聊天。每次运行都是全新会话，工作目录在多次运行之间保留。",
+        cronNew: "+ 新建任务",
+        cronMetricTotal: "任务总数",
+        cronMetricEnabled: "已启用",
+        cronMetricEnabledSub: "等待下一次运行",
+        cronMetricRunning: "正在运行",
+        cronMetricRunningSub: "无人值守的 CLI 运行",
+        cronMetricAttention: "需要关注",
+        cronMetricAttentionSub: "已暂停或上次运行失败",
+        cronDefaultTz: "默认时区：{tz}",
+        cronFilterEnabled: "已启用",
+        cronFilterPaused: "已暂停",
+        cronSearchPlaceholder: "搜索名称 / prompt / Chat ID...",
+        cronEmpty: "还没有定时任务。在聊天里直接说“每天早上 8 点给我发 AI 早报”，或点击“新建任务”。",
+        cronNoMatch: "没有符合条件的任务",
+        cronStatusEnabled: "已启用",
+        cronStatusPaused: "已暂停",
+        cronStatusRunning: "运行中",
+        cronRunNow: "▶ 立即运行",
+        cronPause: "⏸ 暂停",
+        cronResume: "▶ 恢复",
+        cronEdit: "编辑",
+        cronHistory: "运行记录",
+        cronWorkspace: "工作目录",
+        cronSchedule: "计划",
+        cronNextRun: "下次运行",
+        cronLastRun: "上次运行",
+        cronCreatedBy: "创建者",
+        cronOnceAt: "单次：{time}",
+        cronNever: "从未运行",
+        cronPausedReason: "暂停原因：{reason}",
+        cronLastError: "上次错误：{error}",
+        cronResult_ok: "✓ 成功",
+        cronResult_silent: "✓ 无需通知",
+        cronResult_error: "✗ 失败",
+        cronResult_timeout: "✗ 超时",
+        cronResult_skipped: "↷ 跳过",
+        cronTrigger_manual: "手动",
+        cronTrigger_schedule: "定时",
+        cronModalNewTitle: "新建定时任务",
+        cronModalEditTitle: "编辑定时任务",
+        cronFieldName: "名称",
+        cronFieldKind: "重复",
+        cronKindCron: "周期 (cron)",
+        cronKindAt: "单次",
+        cronFieldExpr: "Cron 表达式",
+        cronFieldTz: "时区",
+        cronFieldAt: "运行时间",
+        cronFieldAtTz: "运行时间（{tz}）",
+        cronFieldPrompt: "Prompt",
+        cronFieldTimeout: "超时（分钟）",
+        cronExprHint: "分 时 日 月 周，例如 「0 9 * * 1-5」= 工作日 09:00，「*/30 * * * *」= 每 30 分钟",
+        cronPromptHint: "运行时没有对话历史，也没有人回答问题，请写成自包含的指令。输出 [SILENT] 则不推送。",
+        cronSave: "保存任务",
+        cronSavedToast: "定时任务已保存",
+        cronDeletedToast: "定时任务已删除",
+        cronStartedToast: "已开始运行，结果会推送到聊天",
+        cronDeleteConfirm: "确定删除定时任务「{name}」吗？工作目录会保留。",
+        cronRunsTitle: "运行记录",
+        cronRunsEmpty: "暂无运行记录",
+        cronMissingFields: "请填写 Bot、Chat ID、计划和 Prompt",
+        cronInheritEngine: "机器人默认",
         
         sessionsTitle: "会话与工作区管理",
         sessionsDesc: "查看各机器人会话生命周期、多轮对话记录，以及 1:1 绑定的本地 CLI 物理工作区目录 (~/.pocketagent/workspaces)",
@@ -2033,6 +2293,71 @@ export function getDashboardHtml(): string {
         
         hotReloadSuccess: "✓ Hot Reload Successful",
         hotReloadFailed: "Hot reload failed",
+
+        tabCron: "Scheduled Tasks",
+        cronTitle: "Scheduled Tasks",
+        cronDesc: "Prompts the gateway runs automatically on a schedule, posting each result to its chat. Each run starts a fresh session with its own persistent working directory.",
+        cronNew: "+ New Task",
+        cronMetricTotal: "Total Tasks",
+        cronMetricEnabled: "Enabled",
+        cronMetricEnabledSub: "Waiting for their next run",
+        cronMetricRunning: "Running Now",
+        cronMetricRunningSub: "Unattended CLI runs in progress",
+        cronMetricAttention: "Needs Attention",
+        cronMetricAttentionSub: "Paused or last run failed",
+        cronDefaultTz: "Default timezone: {tz}",
+        cronFilterEnabled: "Enabled",
+        cronFilterPaused: "Paused",
+        cronSearchPlaceholder: "Search by name, prompt, Chat ID...",
+        cronEmpty: "No scheduled tasks yet. Ask in chat, e.g. “every day at 8am send me an AI news digest”, or click New Task.",
+        cronNoMatch: "No tasks match the filters",
+        cronStatusEnabled: "Enabled",
+        cronStatusPaused: "Paused",
+        cronStatusRunning: "Running",
+        cronRunNow: "▶ Run Now",
+        cronPause: "⏸ Pause",
+        cronResume: "▶ Resume",
+        cronEdit: "Edit",
+        cronHistory: "History",
+        cronWorkspace: "Workspace",
+        cronSchedule: "Schedule",
+        cronNextRun: "Next Run",
+        cronLastRun: "Last Run",
+        cronCreatedBy: "Created By",
+        cronOnceAt: "Once at {time}",
+        cronNever: "Never run",
+        cronPausedReason: "Paused: {reason}",
+        cronLastError: "Last error: {error}",
+        cronResult_ok: "✓ OK",
+        cronResult_silent: "✓ Nothing to report",
+        cronResult_error: "✗ Failed",
+        cronResult_timeout: "✗ Timed out",
+        cronResult_skipped: "↷ Skipped",
+        cronTrigger_manual: "manual",
+        cronTrigger_schedule: "scheduled",
+        cronModalNewTitle: "New Scheduled Task",
+        cronModalEditTitle: "Edit Scheduled Task",
+        cronFieldName: "Name",
+        cronFieldKind: "Repeat",
+        cronKindCron: "Recurring (cron)",
+        cronKindAt: "Once",
+        cronFieldExpr: "Cron Expression",
+        cronFieldTz: "Timezone",
+        cronFieldAt: "Run At",
+        cronFieldAtTz: "Run At ({tz})",
+        cronFieldPrompt: "Prompt",
+        cronFieldTimeout: "Timeout (min)",
+        cronExprHint: "minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5' = weekdays at 09:00, '*/30 * * * *' = every 30 minutes",
+        cronPromptHint: "Runs with no conversation history and nobody to answer questions, so make it self-contained. Reply [SILENT] to post nothing.",
+        cronSave: "Save Task",
+        cronSavedToast: "Scheduled task saved",
+        cronDeletedToast: "Scheduled task deleted",
+        cronStartedToast: "Started, the result will be posted to the chat",
+        cronDeleteConfirm: "Delete scheduled task “{name}”? Its workspace folder is kept.",
+        cronRunsTitle: "Run History",
+        cronRunsEmpty: "No runs yet",
+        cronMissingFields: "Please fill in bot, chat ID, schedule and prompt",
+        cronInheritEngine: "Bot Default",
       }
     };
 
@@ -2050,6 +2375,9 @@ export function getDashboardHtml(): string {
     let allWorkspaces = [];
     let activeWsPath = "";
     let activeWsFilePath = "";
+    let allCronJobs = [];
+    let cronTimezone = "";
+    let editingCronId = null;
 
     function formatBytes(bytes) {
       if (!bytes || bytes === 0) return "0 B";
@@ -2085,6 +2413,8 @@ export function getDashboardHtml(): string {
         renderSkills(allSkills);
       }
       renderSessions();
+      populateCronBotFilter();
+      renderCronJobs();
     }
 
     function renderWorkspaces() {
@@ -2135,6 +2465,8 @@ export function getDashboardHtml(): string {
         syncFormToYaml();
       } else if (tabId === "sessions" || tabId === "workspaces") {
         fetchSessions();
+      } else if (tabId === "cron") {
+        fetchCronJobs();
       }
     }
 
@@ -2171,8 +2503,16 @@ export function getDashboardHtml(): string {
           fetchModels(),
           fetchSkills(),
           fetchPairings(),
-          fetchSessions()
+          fetchSessions(),
+          fetchCronJobs()
         ]);
+
+        // Keep run status fresh while the scheduled tasks tab is open
+        setInterval(() => {
+          if (!document.hidden && document.getElementById("tab-cron")?.classList.contains("active")) {
+            fetchCronJobs();
+          }
+        }, 10000);
       } catch (err) {
         console.error("Dashboard initialization error:", err);
       }
@@ -2186,7 +2526,7 @@ export function getDashboardHtml(): string {
 
       on("btnRefresh", "click", async () => {
         showToast(t("refresh") + "...", "info");
-        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions()]);
+        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions(), fetchCronJobs()]);
       });
 
       on("btnSaveConfig", "click", () => saveAndHotReload());
@@ -2207,6 +2547,15 @@ export function getDashboardHtml(): string {
       on("sessionsSearchInput", "input", () => renderSessions());
       
       on("btnCopyWsPreview", "click", () => copyWsPreview());
+
+      on("btnRefreshCron", "click", () => fetchCronJobs());
+      on("btnNewCron", "click", () => openCronModal());
+      on("btnSaveCron", "click", () => saveCronJob());
+      on("cronBotFilter", "change", () => renderCronJobs());
+      on("cronStatusFilter", "change", () => renderCronJobs());
+      on("cronSearchInput", "input", () => renderCronJobs());
+      on("cronKind", "change", () => updateCronKindFields());
+      on("cronBotSelect", "change", () => updateCronChatOptions());
     }
 
     // Fetch Status
@@ -3551,6 +3900,347 @@ export function getDashboardHtml(): string {
         toast.style.opacity = "0";
         setTimeout(() => toast.remove(), 250);
       }, duration);
+    }
+
+    // Scheduled Tasks
+    async function fetchCronJobs() {
+      try {
+        const [cRes, wRes] = await Promise.all([fetch("/api/cron"), fetch("/api/workspaces")]);
+        if (wRes.ok) {
+          allWorkspaces = (await wRes.json()).workspaces || [];
+        }
+        if (!cRes.ok) return;
+        const data = await cRes.json();
+        allCronJobs = data.jobs || [];
+        cronTimezone = data.timezone || "";
+        populateCronBotFilter();
+        renderCronJobs();
+      } catch {}
+    }
+
+    async function cronRequest(url, options) {
+      const res = await fetch(url, options);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+      return data;
+    }
+
+    function populateCronBotFilter() {
+      const sel = document.getElementById("cronBotFilter");
+      if (!sel) return;
+      const current = sel.value;
+      let html = \`<option value="">\${t("filterAllBots")}</option>\`;
+      for (const b of systemStatus?.bots || []) {
+        html += \`<option value="\${escapeHtml(b.botId)}">\${escapeHtml(b.name)} (\${escapeHtml(b.channel)})</option>\`;
+      }
+      sel.innerHTML = html;
+      sel.value = current;
+    }
+
+    function cronBotName(botId) {
+      const bot = (systemStatus?.bots || []).find(b => b.botId === botId);
+      return bot ? bot.name : botId;
+    }
+
+    function formatCronTs(ts) {
+      return toCronInputTime(ts).replace("T", " ");
+    }
+
+    function cronScheduleText(job) {
+      if (job.schedule.kind === "at") return t("cronOnceAt", { time: formatCronTs(job.schedule.at) });
+      return \`\${job.schedule.expr} (\${job.schedule.tz})\`;
+    }
+
+    function formatDuration(ms) {
+      if (ms === undefined || ms === null) return "";
+      const sec = Math.round(ms / 1000);
+      return sec < 60 ? \`\${sec}s\` : \`\${Math.floor(sec / 60)}m \${sec % 60}s\`;
+    }
+
+    function cronWorkspace(job) {
+      return (allWorkspaces || []).find(w => w.botId === job.botId && w.sessionId === "cron-" + job.id);
+    }
+
+    function renderCronJobs() {
+      const container = document.getElementById("cronListContainer");
+      if (!container) return;
+      const jobs = allCronJobs || [];
+      const failed = (j) => j.state.lastStatus === "error" || j.state.lastStatus === "timeout";
+
+      const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+      setText("mCronTotal", jobs.length);
+      setText("mCronEnabled", jobs.filter(j => j.enabled).length);
+      setText("mCronRunning", jobs.filter(j => j.running).length);
+      setText("mCronAttention", jobs.filter(j => (!j.enabled && j.state.pausedReason) || failed(j)).length);
+      setText("mCronTimezone", cronTimezone ? t("cronDefaultTz", { tz: cronTimezone }) : "--");
+
+      const botFilter = document.getElementById("cronBotFilter")?.value || "";
+      const statusFilter = document.getElementById("cronStatusFilter")?.value || "all";
+      const search = (document.getElementById("cronSearchInput")?.value || "").trim().toLowerCase();
+      const filtered = jobs.filter(j =>
+        (!botFilter || j.botId === botFilter) &&
+        (statusFilter === "all" || (statusFilter === "enabled" ? j.enabled : !j.enabled)) &&
+        (!search || [j.name, j.prompt, j.chatId, j.id].some(v => (v || "").toLowerCase().includes(search)))
+      );
+
+      if (filtered.length === 0) {
+        container.innerHTML = \`
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <div style="font-size: 0.95rem;">\${jobs.length === 0 ? t("cronEmpty") : t("cronNoMatch")}</div>
+          </div>
+        \`;
+        return;
+      }
+
+      let html = "";
+      for (const job of filtered) {
+        const id = escapeHtml(job.id);
+        const statusBadge = job.running
+          ? \`<span class="badge-status badge-active">▶ \${t("cronStatusRunning")}</span>\`
+          : job.enabled
+            ? \`<span class="badge-status badge-active">● \${t("cronStatusEnabled")}</span>\`
+            : \`<span class="badge-status badge-paused">⏸ \${t("cronStatusPaused")}</span>\`;
+        const channelBadgeClass = job.channelType === "telegram" ? "channel-tg" : "channel-dc";
+        const lastRun = job.state.lastRunAt
+          ? \`<span style="color: \${failed(job) ? 'var(--badge-red-text)' : 'var(--badge-green-text)'};">\${t("cronResult_" + job.state.lastStatus)}</span>
+             · \${formatCronTs(job.state.lastRunAt)}\${job.state.lastDurationMs !== undefined ? ' · ' + formatDuration(job.state.lastDurationMs) : ''}\`
+          : \`<span style="color: var(--text-muted);">\${t("cronNever")}</span>\`;
+        const creator = job.createdBy.senderName
+          ? \`\${escapeHtml(job.createdBy.senderName)} (\${escapeHtml(job.createdBy.via)})\`
+          : escapeHtml(job.createdBy.via);
+        const ws = cronWorkspace(job);
+        let notice = "";
+        if (!job.enabled && job.state.pausedReason) {
+          notice = \`<div class="badge-status badge-paused" style="text-transform: none; align-self: flex-start;">\${escapeHtml(t("cronPausedReason", { reason: job.state.pausedReason }))}</div>\`;
+        } else if (failed(job) && job.state.lastError) {
+          notice = \`<div class="badge-status badge-failed" style="text-transform: none; align-self: flex-start;">\${escapeHtml(t("cronLastError", { error: job.state.lastError }))}</div>\`;
+        }
+
+        html += \`
+          <div class="session-card \${job.running ? 'is-active' : ''}">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                <span class="channel-badge \${channelBadgeClass}">\${escapeHtml((job.channelType || "bot").toUpperCase())}</span>
+                \${statusBadge}
+                \${job.engine ? \`<span class="badge-engine">\${escapeHtml(job.engine)}</span>\` : ''}
+                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">\${escapeHtml(job.name)}</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">\${id}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary btn-sm" onclick="runCronNow('\${id}')" \${job.running ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>\${t("cronRunNow")}</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleCron('\${id}', \${!job.enabled})">\${job.enabled ? t("cronPause") : t("cronResume")}</button>
+                <button class="btn btn-secondary btn-sm" onclick="openCronModal('\${id}')">\${t("cronEdit")}</button>
+                <button class="btn btn-secondary btn-sm" onclick="openCronRuns('\${id}')">\${t("cronHistory")} (\${job.state.runCount || 0})</button>
+                \${ws ? \`<button class="btn btn-secondary btn-sm" onclick="openWorkspaceFiles('\${escapeHtml(ws.path)}')">\${t("cronWorkspace")} (\${ws.fileCount || 0})</button>\` : ''}
+                <button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" title="Delete" onclick="deleteCron('\${id}')">✕</button>
+              </div>
+            </div>
+            <div class="cron-prompt">\${escapeHtml(job.prompt)}</div>
+            <div class="card-meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">\${t("cronSchedule")}</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.78rem;">\${escapeHtml(cronScheduleText(job))}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("cronNextRun")}</span>
+                <span class="meta-val">\${escapeHtml(job.next_run || "--")}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("cronLastRun")}</span>
+                <span class="meta-val" style="font-size: 0.78rem;">\${lastRun}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Bot · Chat ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.78rem;">\${escapeHtml(cronBotName(job.botId))} · \${escapeHtml(job.chatId)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("cronCreatedBy")}</span>
+                <span class="meta-val">\${creator}</span>
+              </div>
+            </div>
+            \${notice}
+          </div>
+        \`;
+      }
+      container.innerHTML = html;
+    }
+
+    async function runCronNow(id) {
+      try {
+        await cronRequest("/api/cron/run?id=" + encodeURIComponent(id), { method: "POST" });
+        showToast(t("cronStartedToast"), "success");
+        fetchCronJobs();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function toggleCron(id, enabled) {
+      try {
+        await cronRequest("/api/cron/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, enabled })
+        });
+        fetchCronJobs();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function deleteCron(id) {
+      const job = allCronJobs.find(j => j.id === id);
+      if (!confirm(t("cronDeleteConfirm", { name: job ? job.name : id }))) return;
+      try {
+        await cronRequest("/api/cron?id=" + encodeURIComponent(id), { method: "DELETE" });
+        showToast(t("cronDeletedToast"), "success");
+        fetchCronJobs();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    // Wall-clock "YYYY-MM-DDTHH:MM" of a timestamp in the scheduler timezone, for datetime-local inputs
+    function toCronInputTime(ts) {
+      const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+      if (cronTimezone) opts.timeZone = cronTimezone;
+      return new Intl.DateTimeFormat("sv-SE", opts).format(new Date(ts)).replace(" ", "T");
+    }
+
+    function updateCronKindFields() {
+      const isAt = document.getElementById("cronKind").value === "at";
+      document.getElementById("cronExprGroup").style.display = isAt ? "none" : "";
+      document.getElementById("cronTzGroup").style.display = isAt ? "none" : "";
+      document.getElementById("cronAtGroup").style.display = isAt ? "" : "none";
+      document.getElementById("cronExprHint").style.display = isAt ? "none" : "";
+    }
+
+    function updateCronChatOptions() {
+      const botId = document.getElementById("cronBotSelect").value;
+      const seen = new Set();
+      let html = "";
+      for (const s of allSessions || []) {
+        if (s.botId !== botId || seen.has(s.chatId)) continue;
+        seen.add(s.chatId);
+        html += \`<option value="\${escapeHtml(s.chatId)}">\${escapeHtml(s.title || s.channelType || "")}</option>\`;
+      }
+      document.getElementById("cronChatOptions").innerHTML = html;
+    }
+
+    function openCronModal(id) {
+      editingCronId = id || null;
+      const job = id ? allCronJobs.find(j => j.id === id) : null;
+      const val = (elId, v) => { document.getElementById(elId).value = v ?? ""; };
+
+      const botSel = document.getElementById("cronBotSelect");
+      botSel.innerHTML = (systemStatus?.bots || [])
+        .map(b => \`<option value="\${escapeHtml(b.botId)}">\${escapeHtml(b.name)} (\${escapeHtml(b.channel)})</option>\`)
+        .join("");
+      if (job && !Array.from(botSel.options).some(o => o.value === job.botId)) {
+        botSel.innerHTML += \`<option value="\${escapeHtml(job.botId)}">\${escapeHtml(job.botId)}</option>\`;
+      }
+      if (job) botSel.value = job.botId;
+      botSel.disabled = Boolean(job);
+      document.getElementById("cronChatId").disabled = Boolean(job);
+      val("cronChatId", job?.chatId);
+      updateCronChatOptions();
+
+      val("cronName", job?.name);
+      val("cronKind", job?.schedule.kind || "cron");
+      val("cronExpr", job?.schedule.kind === "cron" ? job.schedule.expr : "");
+      val("cronTz", job?.schedule.kind === "cron" ? job.schedule.tz : "");
+      document.getElementById("cronTz").placeholder = cronTimezone || "Asia/Shanghai";
+      val("cronAt", job?.schedule.kind === "at" ? toCronInputTime(job.schedule.at) : "");
+      document.getElementById("cronAtLabel").textContent = cronTimezone ? t("cronFieldAtTz", { tz: cronTimezone }) : t("cronFieldAt");
+      val("cronPrompt", job?.prompt);
+      val("cronEngine", job?.engine);
+      val("cronModel", job?.model);
+      val("cronEffort", job?.effort);
+      val("cronTimeout", job?.timeoutMs ? Math.round(job.timeoutMs / 60000) : "");
+
+      document.getElementById("cronModalTitle").textContent = t(job ? "cronModalEditTitle" : "cronModalNewTitle");
+      updateCronKindFields();
+      openModal("modalCron");
+    }
+
+    async function saveCronJob() {
+      const get = (elId) => document.getElementById(elId).value.trim();
+      const kind = get("cronKind");
+      const body = {
+        name: get("cronName"),
+        prompt: get("cronPrompt"),
+        engine: get("cronEngine"),
+        model: get("cronModel"),
+        effort: get("cronEffort"),
+        timeout_minutes: get("cronTimeout") || null,
+      };
+      if (kind === "cron") {
+        body.cron = get("cronExpr");
+        body.tz = get("cronTz");
+      } else {
+        body.at = get("cronAt");
+      }
+
+      const botId = get("cronBotSelect");
+      const chatId = get("cronChatId");
+      if (!botId || !chatId || !body.prompt || !(body.cron || body.at)) {
+        showToast(t("cronMissingFields"), "error");
+        return;
+      }
+
+      try {
+        if (editingCronId) {
+          await cronRequest("/api/cron/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: editingCronId, ...body })
+          });
+        } else {
+          await cronRequest("/api/cron", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bot_id: botId, chat_id: chatId, ...body })
+          });
+        }
+        closeModal("modalCron");
+        showToast(t("cronSavedToast"), "success");
+        fetchCronJobs();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function openCronRuns(id) {
+      const job = allCronJobs.find(j => j.id === id);
+      const list = document.getElementById("cronRunsList");
+      document.getElementById("cronRunsSubtitle").textContent = job ? \`\${job.name} · \${job.id}\` : id;
+      list.innerHTML = "";
+      openModal("modalCronRuns");
+      try {
+        const data = await cronRequest("/api/cron/runs?id=" + encodeURIComponent(id));
+        const runs = (data.runs || []).slice().reverse();
+        if (runs.length === 0) {
+          list.innerHTML = \`<div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">\${t("cronRunsEmpty")}</div>\`;
+          return;
+        }
+        list.innerHTML = runs.map(r => {
+          const isFail = r.status === "error" || r.status === "timeout";
+          const color = isFail ? "var(--badge-red-text)" : r.status === "skipped" ? "var(--text-muted)" : "var(--badge-green-text)";
+          return \`
+            <div class="cron-run-row">
+              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                <span style="font-weight: 600; color: \${color};">\${t("cronResult_" + r.status)}</span>
+                <span style="color: var(--text-secondary);">#\${r.runNum} · \${formatCronTs(r.startedAt)}</span>
+                <span style="color: var(--text-muted);">\${t("cronTrigger_" + r.trigger)}\${r.status !== "skipped" ? ' · ' + formatDuration(r.finishedAt - r.startedAt) : ''}</span>
+              </div>
+              \${r.error ? \`<div style="color: \${isFail ? 'var(--badge-red-text)' : 'var(--text-muted)'};">\${escapeHtml(r.error)}</div>\` : ''}
+              \${r.outputPreview ? \`<div class="cron-prompt">\${escapeHtml(r.outputPreview)}</div>\` : ''}
+            </div>
+          \`;
+        }).join("");
+      } catch (err) {
+        list.innerHTML = \`<div style="color: var(--badge-red-text);">\${escapeHtml(err.message)}</div>\`;
+      }
     }
 
     function escapeHtml(str) {

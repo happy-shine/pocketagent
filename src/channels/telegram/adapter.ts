@@ -87,6 +87,7 @@ export class TelegramAdapter implements ChannelAdapter {
       { command: "title", description: "Set session title" },
       { command: "btw", description: "Quick side question without interrupting" },
       { command: "stop", description: "Interrupt current task" },
+      { command: "cron", description: "List and manage scheduled tasks" },
       { command: "help", description: "Show help" },
     ];
 

@@ -210,6 +210,16 @@ export class CodexEngineAdapter implements EngineAdapter {
     Object.assign(this.config, config);
   }
 
+  release(sessionId: string): void {
+    const ep = this.processes.get(sessionId);
+    if (!ep) return;
+    this.clearIdleTimer(sessionId);
+    if (ep.process && !ep.process.killed) {
+      ep.process.kill("SIGTERM");
+    }
+    this.processes.delete(sessionId);
+  }
+
   async shutdown(): Promise<void> {
     for (const [id, ep] of this.processes) {
       this.clearIdleTimer(id);

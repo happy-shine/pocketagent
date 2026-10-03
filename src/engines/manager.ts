@@ -128,6 +128,10 @@ export class EngineManager {
     return adapter ? adapter.sendControl(sessionId, request) : false;
   }
 
+  release(sessionId: string, activeEngine: EngineType): void {
+    this.adapters.get(activeEngine)?.release(sessionId);
+  }
+
   hasProcess(sessionId: string, activeEngine: EngineType): boolean {
     const adapter = this.adapters.get(activeEngine);
     return Boolean(adapter && adapter.hasProcess(sessionId));

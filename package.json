@@ -22,6 +22,7 @@
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/transformer-throttler": "^1.2.1",
     "commander": "^14.0.3",
+    "croner": "^10.0.1",
     "discord.js": "^14.27.0",
     "grammy": "^1.42.0",
     "pino": "^10.3.1",

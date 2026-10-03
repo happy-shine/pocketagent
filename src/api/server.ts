@@ -49,6 +49,22 @@ export interface ApiServerConfig {
   getWorkspaceFiles?: (workspacePath: string, subDir?: string) => any[];
   readWorkspaceFile?: (workspacePath: string, filePath: string) => { content: string; size: number; mtime: number };
   deleteWorkspace?: (workspacePath: string) => boolean;
+  cron?: {
+    list: (filter: { botId?: string; chatId?: string }) => unknown[];
+    create: (body: Record<string, unknown>) => CronApiResult;
+    update: (body: Record<string, unknown>) => CronApiResult;
+    remove: (id: string) => CronApiResult;
+    run: (id: string) => CronApiResult;
+    runs: (id: string, limit?: number) => unknown[] | null;
+    timezone: () => string;
+  };
+}
+
+export interface CronApiResult {
+  ok: boolean;
+  error?: string;
+  status?: number;
+  job?: unknown;
 }
 
 export class ApiServer {
@@ -155,6 +171,8 @@ export class ApiServer {
         await this.handleDeleteWorkspace(req, res, url);
       } else if (req.method === "DELETE" && url.pathname === "/api/workspaces") {
         await this.handleDeleteWorkspace(req, res, url);
+      } else if (url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/")) {
+        await this.handleCron(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -447,6 +465,63 @@ export class ApiServer {
     await channel.send({ chatId, text });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+  }
+
+  private async handleCron(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const cron = this.config.cron;
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    };
+    const sendResult = (result: CronApiResult) => {
+      const { status, ...payload } = result;
+      send(result.ok ? 200 : (status ?? 400), payload);
+    };
+    if (!cron) {
+      send(503, { ok: false, error: "Scheduler not available" });
+      return;
+    }
+
+    let body: Record<string, unknown> = {};
+    if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+      const raw = await readBody(req);
+      if (raw.trim()) {
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          send(400, { ok: false, error: "Invalid JSON body" });
+          return;
+        }
+      }
+    }
+    const id = url.searchParams.get("id") ?? (typeof body.id === "string" ? body.id : "");
+    const route = `${req.method} ${url.pathname}`;
+
+    if (route === "GET /api/cron") {
+      const jobs = cron.list({
+        botId: url.searchParams.get("bot_id") ?? undefined,
+        chatId: url.searchParams.get("chat_id") ?? undefined,
+      });
+      send(200, { ok: true, jobs, timezone: cron.timezone() });
+    } else if (route === "POST /api/cron") {
+      sendResult(cron.create(body));
+    } else if (route === "POST /api/cron/update" || route === "PUT /api/cron") {
+      sendResult(cron.update({ ...body, id }));
+    } else if (route === "DELETE /api/cron") {
+      sendResult(cron.remove(id));
+    } else if (route === "POST /api/cron/run") {
+      sendResult(cron.run(id));
+    } else if (route === "GET /api/cron/runs") {
+      const limit = Number(url.searchParams.get("limit") ?? "") || undefined;
+      const runs = cron.runs(id, limit);
+      if (runs) {
+        send(200, { ok: true, runs });
+      } else {
+        send(404, { ok: false, error: "Task not found" });
+      }
+    } else {
+      send(404, { ok: false, error: `No such cron endpoint: ${route}` });
+    }
   }
 
   private async handleSoul(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {

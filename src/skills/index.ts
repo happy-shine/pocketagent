@@ -77,3 +77,38 @@ curl -s "http://127.0.0.1:${apiPort}/api/chat-history?chat_id=${chatId}&since=2h
 \`\`\`
 `.trim();
 }
+
+export function getSchedulerSkill(apiPort: number, botId: string, chatId: string): string {
+  const base = `http://127.0.0.1:${apiPort}/api/cron`;
+  return `
+## Scheduled Tasks
+
+You can schedule tasks that the gateway runs automatically later, once or on a recurring schedule. Each run starts a fresh session in a dedicated working directory, and its final reply is posted to this chat. Use this when the user wants something to happen at a time or on a schedule (e.g. "every weekday at 9am send me an AI news digest", "remind me tomorrow at 3pm to call Alice").
+
+\`\`\`bash
+# Recurring task (5-field cron: minute hour day-of-month month day-of-week)
+curl -s -X POST "${base}" -H "Content-Type: application/json" \\
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","name":"AI news digest","cron":"0 9 * * 1-5","prompt":"Search the web for the most important AI news of the last 24 hours and write a concise digest in Chinese."}'
+
+# One-off task
+curl -s -X POST "${base}" -H "Content-Type: application/json" \\
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","name":"Call Alice","at":"2026-01-31 15:00","prompt":"Reply with a short reminder: call Alice about the contract."}'
+
+# List this chat's tasks
+curl -s "${base}?bot_id=${botId}&chat_id=${chatId}"
+
+# Edit, pause or resume: send only the fields to change ("enabled":false pauses)
+curl -s -X POST "${base}/update" -H "Content-Type: application/json" -d '{"id":"<TASK_ID>","enabled":false}'
+
+# Run now / delete
+curl -s -X POST "${base}/run?id=<TASK_ID>"
+curl -s -X DELETE "${base}?id=<TASK_ID>"
+\`\`\`
+
+- Times without a UTC offset, and cron expressions without \`tz\`, use the gateway's local timezone (the same clock as message timestamps). Pass \`"tz":"<IANA name>"\` only if the user asks for another timezone.
+- The prompt runs later with no conversation history and nobody to answer questions, so make it self-contained: what to do, which sources, output language and format.
+- For monitoring tasks ("tell me when X changes"), have the prompt keep state in files in its working directory and reply exactly [SILENT] when there is nothing new, so nothing is posted.
+- Optional fields: \`engine\` (claude|codex|agy|grok), \`model\`, \`effort\`, \`timeout_minutes\`.
+- After creating a task, confirm its name, the schedule in plain words, and \`next_run\` from the response. If the API returns an error (e.g. the user is not allowed to manage tasks in this group), relay it.
+`.trim();
+}

@@ -399,6 +399,7 @@ export class DiscordAdapter implements ChannelAdapter {
         const ctx = {
           data: customId,
           chatId: btnInteraction.channelId,
+          senderId: btnInteraction.user.id,
           editMessageText: async (newText: string) => {
             await btnInteraction.update({
               content: newText,
@@ -744,6 +745,10 @@ export class DiscordAdapter implements ChannelAdapter {
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Interrupt current running task"),
+      new SlashCommandBuilder()
+        .setName("cron")
+        .setDescription("List and manage scheduled tasks")
+        .addStringOption((opt) => opt.setName("args").setDescription("list | add <schedule> | <prompt> | run|pause|resume|rm <number>").setRequired(false)),
       new SlashCommandBuilder()
         .setName("help")
         .setDescription("Show command help message"),

@@ -38,6 +38,18 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     expect(html).toContain("Raw YAML");
   });
 
+  it("ships a scheduled tasks tab and a script that parses", () => {
+    const html = getDashboardHtml();
+    expect(html).toContain('data-tab="cron"');
+    expect(html).toContain('id="tab-cron"');
+    expect(html).toContain('id="modalCron"');
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const src of scripts) {
+      expect(() => new Function(src)).not.toThrow();
+    }
+  });
+
   it("saveConfig saves valid YAML and returns parsed config", () => {
     const validYaml = `
 defaultEngine: agy

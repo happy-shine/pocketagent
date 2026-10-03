@@ -87,6 +87,16 @@ const enginesSchema = z.object({
   grok: grokEngineSchema.default(grokEngineSchema.parse({})),
 });
 
+const schedulerSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxConcurrent: z.number().int().positive().default(2),
+  defaultTimeoutMs: z.number().int().positive().default(30 * 60 * 1000),
+  catchUpGraceMs: z.number().int().nonnegative().default(10 * 60 * 1000),
+  minIntervalMs: z.number().int().positive().default(5 * 60 * 1000),
+  maxJobsPerChat: z.number().int().positive().default(20),
+  timezone: z.string().optional(), // IANA name; defaults to the system timezone
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -166,6 +176,7 @@ export const configSchema = z.preprocess((input) => {
   gateway: gatewaySchema.default(gatewaySchema.parse({})),
   engines: enginesSchema.default(enginesSchema.parse({})),
   auth: authSchema.default(authSchema.parse({})),
+  scheduler: schedulerSchema.default(schedulerSchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));

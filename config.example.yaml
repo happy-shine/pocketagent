@@ -19,3 +19,13 @@ bots:
   # - name: "my-discord-bot"
   #   channel: discord
   #   token: "MTE3..."
+
+# Optional: scheduled tasks (created by asking the bot in plain words, or via /cron)
+# scheduler:
+#   enabled: true
+#   maxConcurrent: 2            # scheduled runs executing at the same time
+#   defaultTimeoutMs: 1800000   # 30 min per run
+#   catchUpGraceMs: 600000      # run a missed slot late only within 10 min, otherwise skip it
+#   minIntervalMs: 300000       # reject schedules firing more often than every 5 min
+#   maxJobsPerChat: 20
+#   timezone: "Asia/Shanghai"   # defaults to the system timezone

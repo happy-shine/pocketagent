@@ -175,9 +175,20 @@ pa pairing approve 123456
 | `/sessions` | List active sessions with inline buttons to switch or inspect |
 | `/btw <question>` | Ask a quick side question without interrupting active tasks |
 | `/stop` | Abort the current running CLI turn |
+| `/cron` | List scheduled tasks with Run / Pause / Resume buttons; `/cron rm <n>` deletes one |
 | `/help` | Display command help |
 
 ---
+
+## Scheduled Tasks
+
+Ask the bot in plain words, e.g. *"every weekday at 9am send me a digest of the latest AI news"* or *"remind me tomorrow at 3pm to call Alice"*. The CLI creates the task through the local gateway API and confirms the schedule. When it is due, PocketAgent runs the prompt unattended and posts the result to the chat.
+
+- **Isolated runs**: each run starts with a fresh context, so it doesn't touch your conversation. Every task has its own persistent working directory where it can keep state between runs.
+- **Quiet monitoring**: if a run replies `[SILENT]`, nothing is posted. Useful for prompts like "tell me only when X changes".
+- **Manual management**: `/cron add 0 8 * * * | <prompt>` or `/cron add 2026-10-04 09:00 | <prompt>`; `/cron run|pause|resume|rm <n>`.
+- **Safety**: in group chats, only paired / allowlisted users can manage tasks. Tasks are paused after 3 consecutive failures. Runs missed while the machine was asleep are caught up at most once (within `catchUpGraceMs`).
+- Tasks are stored in `~/.pocketagent/cron/`. Optional tuning goes in a `scheduler:` block in `config.yaml` (see `config.example.yaml`).
 
 ## CLI Commands
 

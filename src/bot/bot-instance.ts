@@ -14,8 +14,50 @@ import { SessionManager } from "../sessions/manager.js";
 import { SessionStore } from "../sessions/store.js";
 import type { MessageStore } from "../sessions/message-store.js";
 import type { Session } from "../sessions/types.js";
+import type { Scheduler } from "../scheduler/scheduler.js";
+import {
+  buildCronPrompt,
+  cronSessionId,
+  describeSchedule,
+  formatTime,
+  isSilentOutput,
+  parseScheduleInput,
+  scheduleTimezone,
+} from "../scheduler/schedule.js";
+import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/types.js";
 
 const SESSIONS_PER_PAGE = 10;
+
+interface TurnResponse {
+  text: string;
+  isError: boolean;
+  errorMessage?: string;
+}
+
+const CRON_STATUS_LABELS: Record<string, string> = {
+  ok: "✓ ok",
+  silent: "✓ nothing to report",
+  error: "✗ error",
+  timeout: "✗ timed out",
+  skipped: "↷ skipped",
+};
+
+/** Strips `[button: A | B]` and `<<A>>` markup from a reply and returns the button labels. */
+function extractButtons(response: string): { text: string; buttons?: string[] } {
+  let text = response;
+  const btnList: string[] = [];
+  const buttonMatch = text.match(/\[button:\s*([^\]]+)\]/i);
+  if (buttonMatch) {
+    btnList.push(...buttonMatch[1].split("|").map((b) => b.trim()).filter(Boolean));
+    text = text.replace(buttonMatch[0], "").trim();
+  }
+  const angleButtons = [...text.matchAll(/<<([^>]+)>>/g)].map((m) => m[1]);
+  if (angleButtons.length > 0) {
+    btnList.push(...angleButtons);
+    text = text.replace(/<<[^>]+>>/g, "").trim();
+  }
+  return { text, buttons: btnList.length > 0 ? btnList : undefined };
+}
 
 export class BotInstance {
   readonly botId: string;
@@ -34,6 +76,9 @@ export class BotInstance {
   private lastButtonMsg = new Map<string, string>();
   private chatQueues = new Map<string, Promise<void>>();
   private peerBots: Array<{ name: string; username: string }> = [];
+  private scheduler?: Scheduler;
+  // Sender of the turn currently running per chat, used to attribute API calls the CLI makes during that turn
+  private turnSenders = new Map<string, { senderId: string; senderName: string }>();
 
   constructor(opts: {
     botConfig: ResolvedBotConfig;
@@ -42,9 +87,11 @@ export class BotInstance {
     messageStore: MessageStore;
     dataDir: string;
     log: Logger;
+    scheduler?: Scheduler;
   }) {
     this.config = opts.botConfig;
     this.engineManager = opts.engineManager;
+    this.scheduler = opts.scheduler;
     this.messageStore = opts.messageStore;
     this.dataDir = opts.dataDir;
     this.log = opts.log.child({ bot: opts.botConfig.name, botId: opts.botConfig.botId });
@@ -98,6 +145,39 @@ export class BotInstance {
 
   getPendingPairings() {
     return this.pairingManager.listPending();
+  }
+
+  getTurnSender(chatId: string): { senderId: string; senderName: string } | undefined {
+    return this.turnSenders.get(chatId);
+  }
+
+  /** Chat details as recorded on its sessions; undefined if the bot has never talked in that chat. */
+  getChatInfo(chatId: string): { channelType: string; isGroup: boolean } | undefined {
+    const session = this.sessionManager.getActiveSession(chatId);
+    if (!session) return undefined;
+    return { channelType: session.channelType, isGroup: Boolean(session.isGroup) };
+  }
+
+  /**
+   * Scheduled tasks run unattended with full permissions, so in groups only users the bot explicitly
+   * trusts (paired / allowlisted, or listed on the group) may manage them. In DMs, chat access suffices.
+   */
+  canManageCron(senderId: string | undefined, chatId: string, isGroup: boolean): boolean {
+    if (!senderId) return false;
+    const allowFrom = this.loadAllowFrom();
+    const groups = this.loadRuntimeGroups();
+    const access = checkAccess({
+      senderId,
+      chatId,
+      isGroup,
+      dmPolicy: this.config.dmPolicy,
+      groupPolicy: this.config.groupPolicy,
+      allowFrom: [...allowFrom],
+      groups,
+    });
+    if (!access.allowed) return false;
+    if (!isGroup) return true;
+    return allowFrom.has(senderId) || Boolean(groups[chatId]?.allowFrom?.includes(senderId));
   }
 
   approvePairing(code: string): { senderId: string; chatId?: string } | null {
@@ -195,6 +275,7 @@ export class BotInstance {
     channel.onCommand("title", (msg) => this.handleTitle(msg, channel));
     channel.onCommand("btw", (msg) => this.handleBtw(msg, channel));
     channel.onCommand("stop", (msg) => this.handleStop(msg, channel));
+    channel.onCommand("cron", (msg) => this.handleCron(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
   }
 
@@ -307,6 +388,23 @@ export class BotInstance {
           );
         } catch {}
       }
+    });
+
+    // Scheduled task buttons: cron:<run|pause|resume>:<jobId>
+    channel.onCallback("cron", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
+      const [, action, jobId] = data.split(":");
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
+      const senderId = String(ctx.from?.id ?? ctx.senderId ?? "");
+      const job = jobId ? this.scheduler?.get(jobId) : undefined;
+      if (!job || job.botId !== this.botId || job.chatId !== chatId) return;
+
+      const reply = !this.canManageCron(senderId, chatId, job.isGroup)
+        ? "Only authorized users can manage scheduled tasks in this chat."
+        : this.applyCronAction(job, action);
+      try {
+        await ctx.editMessageText(reply, { reply_markup: { inline_keyboard: [] } });
+      } catch {}
     });
   }
 
@@ -746,6 +844,283 @@ export class BotInstance {
     }
   }
 
+  private async handleCron(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+    const access = this.checkAccess(msg);
+    if (!access.allowed) return;
+    if (!this.scheduler) {
+      await channel.send({ chatId: msg.chatId, text: "Scheduled tasks are not available." });
+      return;
+    }
+
+    const input = msg.text.trim();
+    const sub = input.split(/\s+/)[0]?.toLowerCase() ?? "";
+    const arg = input.slice(sub.length).trim();
+
+    if (sub === "" || sub === "list") {
+      await this.sendCronList(msg.chatId, channel);
+      return;
+    }
+
+    const usage = [
+      "Usage:",
+      "• `/cron` — list scheduled tasks in this chat",
+      "• `/cron add <cron expr | YYYY-MM-DD HH:MM> | <prompt>`",
+      "• `/cron run|pause|resume|rm <number>`",
+      "",
+      "_Tip: you can also just ask in plain words, e.g. \"every day at 8am send me an AI news digest\"._",
+    ].join("\n");
+
+    const actions: Record<string, string> = { run: "run", pause: "pause", resume: "resume", rm: "delete", del: "delete", delete: "delete" };
+    if (sub !== "add" && !actions[sub]) {
+      await channel.send({ chatId: msg.chatId, text: usage });
+      return;
+    }
+
+    if (!this.canManageCron(msg.senderId, msg.chatId, msg.isGroup)) {
+      await channel.send({ chatId: msg.chatId, text: "Only authorized users can manage scheduled tasks in this chat." });
+      return;
+    }
+
+    if (sub === "add") {
+      await this.handleCronAdd(msg, channel, arg, usage);
+      return;
+    }
+
+    const jobs = this.scheduler.list({ botId: this.botId, chatId: msg.chatId });
+    const idx = Number(arg);
+    const job = Number.isInteger(idx) && idx >= 1 ? jobs[idx - 1] : jobs.find((j) => j.id === arg);
+    if (!job) {
+      await channel.send({ chatId: msg.chatId, text: arg ? `No scheduled task "${arg}" in this chat. Use \`/cron\` to list them.` : usage });
+      return;
+    }
+    await channel.send({ chatId: msg.chatId, text: this.applyCronAction(job, actions[sub]) });
+  }
+
+  private async handleCronAdd(msg: InboundMessage, channel: ChannelAdapter, arg: string, usage: string): Promise<void> {
+    const sep = arg.indexOf("|");
+    const spec = sep >= 0 ? arg.slice(0, sep).trim() : "";
+    const prompt = sep >= 0 ? arg.slice(sep + 1).trim() : "";
+    if (!spec || !prompt) {
+      await channel.send({ chatId: msg.chatId, text: usage });
+      return;
+    }
+
+    const tz = this.scheduler!.timezone();
+    const parsed = parseScheduleInput(/^\d{4}-\d{2}-\d{2}/.test(spec) ? { at: spec } : { cron: spec }, tz);
+    if (!parsed.schedule) {
+      await channel.send({ chatId: msg.chatId, text: `Could not create task: ${parsed.error}` });
+      return;
+    }
+
+    const res = this.scheduler!.create({
+      botId: this.botId,
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      isGroup: msg.isGroup,
+      prompt,
+      schedule: parsed.schedule,
+      createdBy: { senderId: msg.senderId, senderName: msg.senderName, via: "command" },
+    });
+    if (!res.job) {
+      await channel.send({ chatId: msg.chatId, text: `Could not create task: ${res.error}` });
+      return;
+    }
+    const next = res.job.state.nextRunAt;
+    const jobTz = scheduleTimezone(res.job.schedule, tz);
+    await channel.send({
+      chatId: msg.chatId,
+      text: `⏰ Scheduled task created: *${res.job.name}*\n${describeSchedule(res.job.schedule, tz)}${next ? `\nNext run: ${formatTime(next, jobTz)}` : ""}`,
+    });
+  }
+
+  private applyCronAction(job: CronJob, action: string): string {
+    const scheduler = this.scheduler!;
+    switch (action) {
+      case "run": {
+        const res = scheduler.runNow(job.id);
+        return res.ok ? `▶ Running "${job.name}" now, the result will be posted here.` : `Could not run "${job.name}": ${res.error}`;
+      }
+      case "pause":
+        scheduler.update(job.id, { enabled: false });
+        return `⏸ Paused "${job.name}".`;
+      case "resume": {
+        const res = scheduler.update(job.id, { enabled: true });
+        const next = res.job?.state.nextRunAt;
+        const tz = scheduleTimezone(job.schedule, scheduler.timezone());
+        return res.job ? `▶ Resumed "${job.name}".${next ? ` Next run: ${formatTime(next, tz)}` : ""}` : `Could not resume: ${res.error}`;
+      }
+      case "delete":
+        scheduler.remove(job.id);
+        return `🗑 Deleted "${job.name}".`;
+      default:
+        return "Unknown action.";
+    }
+  }
+
+  private async sendCronList(chatId: string, channel: ChannelAdapter): Promise<void> {
+    const scheduler = this.scheduler!;
+    const jobs = scheduler.list({ botId: this.botId, chatId });
+    if (jobs.length === 0) {
+      await channel.send({
+        chatId,
+        text: "No scheduled tasks in this chat.\nAsk in plain words (e.g. \"every weekday at 9am send me an AI news digest\") or use `/cron add`.",
+      });
+      return;
+    }
+
+    const defaultTz = scheduler.timezone();
+    const lines: string[] = [`⏰ *Scheduled tasks* (${jobs.length})`, ""];
+    const buttons: InlineButton[][] = [];
+    jobs.forEach((job, i) => {
+      const n = i + 1;
+      const tz = scheduleTimezone(job.schedule, defaultTz);
+      const flag = scheduler.isRunning(job.id) ? " [running]" : job.enabled ? "" : " [paused]";
+      lines.push(`*${n}. ${job.name}*${flag}`);
+      lines.push(describeSchedule(job.schedule, defaultTz));
+      const details: string[] = [];
+      if (job.enabled && job.state.nextRunAt) details.push(`Next: ${formatTime(job.state.nextRunAt, tz)}`);
+      if (job.state.lastRunAt) {
+        details.push(`Last: ${CRON_STATUS_LABELS[job.state.lastStatus ?? ""] ?? job.state.lastStatus} ${formatTime(job.state.lastRunAt, tz)}`);
+      }
+      if (details.length > 0) lines.push(details.join(" · "));
+      if (!job.enabled && job.state.pausedReason) lines.push(`Paused: ${job.state.pausedReason}`);
+      lines.push("");
+
+      buttons.push([
+        { text: `▶ Run #${n}`, data: `cron:run:${job.id}` },
+        job.enabled
+          ? { text: `⏸ Pause #${n}`, data: `cron:pause:${job.id}` }
+          : { text: `▶ Resume #${n}`, data: `cron:resume:${job.id}` },
+      ]);
+    });
+    lines.push("Delete with `/cron rm <number>`.");
+
+    const text = lines.join("\n");
+    if (channel.sendWithButtons) {
+      await channel.sendWithButtons(chatId, text, buttons);
+    } else {
+      await channel.send({ chatId, text: `${text}\nRun or pause with \`/cron run|pause|resume <number>\`.` });
+    }
+  }
+
+  /** Executes one run of a scheduled task in its own session and posts the result to the task's chat. */
+  async runScheduledTask(job: CronJob, run: CronRunContext): Promise<CronExecutionResult> {
+    const channel = job.channelType === "discord" ? this.discord : this.telegram;
+    if (!channel) {
+      const reason = `Bot "${this.name}" has no ${job.channelType} connection`;
+      return { status: "error", error: reason, pauseReason: reason };
+    }
+    if (job.createdBy.senderId && !this.canManageCron(job.createdBy.senderId, job.chatId, job.isGroup)) {
+      const reason = "The task's creator is no longer authorized in this chat";
+      return { status: "error", error: reason, pauseReason: reason };
+    }
+
+    const session = this.buildCronSession(job);
+    const prompt = buildCronPrompt(job, run, this.scheduler?.timezone() ?? "UTC");
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      this.log.warn({ jobId: job.id, timeoutMs: run.timeoutMs }, "Scheduled task timed out, terminating engine");
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }, run.timeoutMs);
+
+    let response: TurnResponse;
+    try {
+      response = await this.collectResponse(session, prompt);
+    } catch (err) {
+      response = { text: "", isError: true, errorMessage: err instanceof Error ? err.message : String(err) };
+    } finally {
+      clearTimeout(timer);
+      // Every run starts from a clean context; only the workspace directory carries over
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }
+
+    const header = `⏰ **${job.name}**`;
+    const deliver = (text: string) => new ProgressTracker(channel, job.chatId).finish(`${header}\n\n${text}`);
+    const output = extractButtons(response.text).text.trim();
+
+    if (timedOut) {
+      const error = `Timed out after ${Math.round(run.timeoutMs / 60000)} min`;
+      await deliver(output ? `${output}\n\n_(${error}, output may be incomplete)_` : `✗ ${error}`);
+      return { status: "timeout", error, output };
+    }
+    if (response.isError) {
+      const error = response.errorMessage || output || "Engine reported an error";
+      await deliver(`✗ Run failed: ${error}`);
+      return { status: "error", error, output };
+    }
+    if (isSilentOutput(output)) {
+      return { status: "silent", output };
+    }
+    await deliver(output || "(Task completed with no output)");
+    return { status: "ok", output };
+  }
+
+  async notifyChat(chatId: string, channelType: string, text: string): Promise<void> {
+    const channel = channelType === "discord" ? this.discord : this.telegram;
+    await channel?.send({ chatId, text });
+  }
+
+  private buildCronSession(job: CronJob): Session {
+    const engine = job.engine ?? this.config.engine;
+    // The bot's model/effort defaults belong to its default engine
+    const useBotDefaults = engine === this.config.engine;
+    const model = job.model ?? (useBotDefaults ? this.config.model : undefined);
+    const effort = job.effort ?? (useBotDefaults ? this.config.effort : undefined);
+    return {
+      sessionId: cronSessionId(job.id),
+      chatId: job.chatId,
+      channelType: job.channelType,
+      activeEngine: engine,
+      model,
+      effort,
+      engineModels: model ? { [engine]: model } : {},
+      engineEfforts: effort ? { [engine]: effort } : {},
+      createdAt: job.createdAt,
+      lastActiveAt: Date.now(),
+      title: job.name,
+      isActive: false,
+      sessionNum: 0,
+      isGroup: job.isGroup,
+      turns: [],
+    };
+  }
+
+  private async collectResponse(session: Session, promptText: string, tracker?: ProgressTracker): Promise<TurnResponse> {
+    let text = "";
+    let isError = false;
+    let errorMessage: string | undefined;
+    for await (const event of this.engineManager.sendMessage(
+      session,
+      promptText,
+      this.botId,
+      this.config.extraArgs,
+      this.botIdentity(),
+    )) {
+      if (event.type === "thinking_started") {
+        tracker?.thinking();
+      } else if (event.type === "tool_started") {
+        tracker?.toolStart(event.name, event.detail);
+      } else if (event.type === "text") {
+        tracker?.appendText(event.text);
+        text += event.text;
+      } else if (event.type === "result") {
+        if (event.result && !text) {
+          text = event.result;
+        }
+        if (event.isError) isError = true;
+      } else if (event.type === "error") {
+        isError = true;
+        errorMessage = event.message;
+      }
+    }
+    if (!text && tracker?.getBuffer()) {
+      text = tracker.getBuffer();
+    }
+    return { text, isError, errorMessage };
+  }
+
   private async handleHelp(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
     const helpText = [
       `🎒 *PocketAgent — 4-in-1 AI Gateway*`,
@@ -759,6 +1134,7 @@ export class BotInstance {
       `• \`/sessions [num]\` — List and switch sessions`,
       `• \`/btw <question>\` — Ask side question in parallel`,
       `• \`/stop\` — Interrupt current task`,
+      `• \`/cron\` — List and manage scheduled tasks (or just ask: "every day at 8am ...")`,
       `• \`/help\` — Show this help message`,
       ``,
       `_Tip: Simply send any message, photo, or file to start coding!_`,
@@ -862,51 +1238,16 @@ export class BotInstance {
       author: msg.senderName,
     });
 
+    this.turnSenders.set(msg.chatId, { senderId: msg.senderId, senderName: msg.senderName });
+
     const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();
 
-    let fullResponse = "";
-    let buttons: string[] | undefined;
-
     try {
-      for await (const event of this.engineManager.sendMessage(
-        session,
-        promptText,
-        this.botId,
-        this.config.extraArgs,
-        this.botIdentity(),
-      )) {
-        if (event.type === "thinking_started") {
-          tracker.thinking();
-        } else if (event.type === "tool_started") {
-          tracker.toolStart(event.name, event.detail);
-        } else if (event.type === "text") {
-          tracker.appendText(event.text);
-          fullResponse += event.text;
-        } else if (event.type === "result") {
-          if (event.result && !fullResponse) {
-            fullResponse = event.result;
-          }
-        }
-      }
-
-      if (!fullResponse && tracker.getBuffer()) {
-        fullResponse = tracker.getBuffer();
-      }
+      const response = await this.collectResponse(session, promptText, tracker);
 
       // Check for inline buttons markup: [button: Opt1 | Opt2] or <<Opt1>>
-      const btnList: string[] = [];
-      const buttonMatch = fullResponse.match(/\[button:\s*([^\]]+)\]/i);
-      if (buttonMatch) {
-        btnList.push(...buttonMatch[1].split("|").map((b) => b.trim()).filter(Boolean));
-        fullResponse = fullResponse.replace(buttonMatch[0], "").trim();
-      }
-      const angleButtons = [...fullResponse.matchAll(/<<([^>]+)>>/g)].map((m) => m[1]);
-      if (angleButtons.length > 0) {
-        btnList.push(...angleButtons);
-        fullResponse = fullResponse.replace(/<<[^>]+>>/g, "").trim();
-      }
-      if (btnList.length > 0) buttons = btnList;
+      const { text: fullResponse, buttons } = extractButtons(response.text);
 
       // Record assistant turn in session history
       this.sessionManager.addTurn(session.sessionId, {
@@ -925,6 +1266,8 @@ export class BotInstance {
         chatId: msg.chatId,
         text: `Error processing turn: ${err instanceof Error ? err.message : String(err)}`,
       });
+    } finally {
+      this.turnSenders.delete(msg.chatId);
     }
   }
 

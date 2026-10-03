@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
-import { ApiServer } from "../api/server.js";
+import { ApiServer, type CronApiResult } from "../api/server.js";
 import { BotInstance } from "../bot/bot-instance.js";
 import { setMessageStore } from "../channels/telegram/handlers.js";
 import { loadConfig, resolveBots, resolveDataDir, saveConfig, syncPairingToConfig } from "../config/loader.js";
@@ -10,6 +10,10 @@ import type { EngineType } from "../config/schema.js";
 import { EngineManager } from "../engines/manager.js";
 import { MessageStore } from "../sessions/message-store.js";
 import { SkillRegistry } from "../skills/index.js";
+import { Scheduler } from "../scheduler/scheduler.js";
+import { CronStore } from "../scheduler/store.js";
+import { cronSessionId, formatTime, parseScheduleInput, scheduleTimezone } from "../scheduler/schedule.js";
+import type { CronCreator, CronJob, CronJobPatch, CronSchedule } from "../scheduler/types.js";
 
 export interface SessionSummary {
   botId: string;
@@ -102,6 +106,7 @@ export class Gateway {
   private configPath: string;
   private configWatcher?: FSWatcher;
   private lastReloadTime = 0;
+  private scheduler: Scheduler;
 
   constructor(config: GatewayConfig, log: Logger, configPath?: string) {
     this.config = config;
@@ -124,6 +129,22 @@ export class Gateway {
       this.dataDir,
     );
 
+    this.scheduler = new Scheduler({
+      store: new CronStore(join(this.dataDir, "cron")),
+      log,
+      getSettings: () => this.config.scheduler,
+      executor: async (job, run) => {
+        const bot = this.bots.get(job.botId);
+        if (!bot) {
+          return { status: "error", error: "Bot not found", pauseReason: "The bot is no longer configured" };
+        }
+        return bot.runScheduledTask(job, run);
+      },
+      notify: async (job, text) => {
+        await this.bots.get(job.botId)?.notifyChat(job.chatId, job.channelType, text);
+      },
+    });
+
     const botConfigs = resolveBots(config);
     for (const botConfig of botConfigs) {
       const bot = new BotInstance({
@@ -133,6 +154,7 @@ export class Gateway {
         messageStore: this.messageStore,
         dataDir: this.dataDir,
         log,
+        scheduler: this.scheduler,
       });
       this.bots.set(bot.botId, bot);
     }
@@ -176,6 +198,18 @@ export class Gateway {
       getWorkspaceFiles: (wsPath, subDir) => this.getWorkspaceFiles(wsPath, subDir),
       readWorkspaceFile: (wsPath, filePath) => this.readWorkspaceFile(wsPath, filePath),
       deleteWorkspace: (wsPath) => this.deleteWorkspace(wsPath),
+      cron: {
+        list: (filter) => this.scheduler.list(filter).map((job) => this.toCronJobView(job)),
+        create: (body) => this.createCronJob(body),
+        update: (body) => this.updateCronJob(body),
+        remove: (id) => this.withCronJob(id, (job) => {
+          this.scheduler.remove(job.id);
+          return { ok: true };
+        }),
+        run: (id) => this.withCronJob(id, (job) => this.scheduler.runNow(job.id)),
+        runs: (id, limit) => (this.scheduler.get(id) ? this.scheduler.listRuns(id, limit) : null),
+        timezone: () => this.scheduler.timezone(),
+      },
     });
     await this.apiServer.start();
 
@@ -187,6 +221,7 @@ export class Gateway {
     }
     this.syncPeerBots();
 
+    this.scheduler.start();
     this.startConfigWatcher();
     this.log.info("PocketAgent Gateway running successfully");
   }
@@ -259,6 +294,7 @@ export class Gateway {
             messageStore: this.messageStore,
             dataDir: this.dataDir,
             log: this.log,
+            scheduler: this.scheduler,
           });
           await newBot.start();
           this.bots.set(newBot.botId, newBot);
@@ -277,6 +313,7 @@ export class Gateway {
       } catch {}
 
       this.config = freshConfig;
+      this.scheduler.refresh();
       this.log.info({ changes }, "Config hot-reloaded successfully");
       return { ok: true, changes };
     } catch (err) {
@@ -453,6 +490,10 @@ export class Gateway {
         }
       }
     }
+    // Scheduled tasks keep a persistent workspace per task
+    for (const job of this.scheduler.list()) {
+      knownSessions.add(`${job.botId}:${cronSessionId(job.id)}`);
+    }
 
     const workspaces: WorkspaceSummary[] = [];
 
@@ -607,6 +648,96 @@ export class Gateway {
     return true;
   }
 
+  private toCronJobView(job: CronJob) {
+    const tz = scheduleTimezone(job.schedule, this.scheduler.timezone());
+    const next = job.enabled ? job.state.nextRunAt : undefined;
+    return {
+      ...job,
+      running: this.scheduler.isRunning(job.id),
+      next_run: next ? `${formatTime(next, tz)} ${tz}` : null,
+    };
+  }
+
+  /**
+   * Requests to the cron API made while a chat turn is running come from the CLI acting for that turn's
+   * sender, so attribute them to that sender and enforce who may manage tasks in the chat.
+   */
+  private resolveCronCaller(botId: string, chatId: string, isGroup: boolean): { createdBy?: CronCreator; error?: string } {
+    const bot = this.bots.get(botId);
+    const sender = bot?.getTurnSender(chatId);
+    if (!bot || !sender) return { createdBy: { via: "api" } };
+    if (!bot.canManageCron(sender.senderId, chatId, isGroup)) {
+      return { error: `${sender.senderName} is not allowed to manage scheduled tasks in this chat` };
+    }
+    return { createdBy: { senderId: sender.senderId, senderName: sender.senderName, via: "agent" } };
+  }
+
+  private withCronJob(id: string, action: (job: CronJob) => CronApiResult): CronApiResult {
+    const job = id ? this.scheduler.get(id) : undefined;
+    if (!job) return { ok: false, error: "Task not found", status: 404 };
+    const caller = this.resolveCronCaller(job.botId, job.chatId, job.isGroup);
+    if (caller.error) return { ok: false, error: caller.error, status: 403 };
+    return action(job);
+  }
+
+  private createCronJob(body: Record<string, unknown>): CronApiResult {
+    const botId = optionalString(body.bot_id);
+    const chatId = optionalString(body.chat_id);
+    if (!botId || !chatId) return { ok: false, error: "Missing bot_id or chat_id" };
+    const bot = this.bots.get(botId);
+    if (!bot) return { ok: false, error: `Unknown bot_id: ${botId}`, status: 404 };
+    const chat = bot.getChatInfo(chatId);
+    if (!chat) return { ok: false, error: `Bot "${bot.name}" has no conversation with chat_id ${chatId}`, status: 404 };
+
+    const caller = this.resolveCronCaller(botId, chatId, chat.isGroup);
+    if (caller.error) return { ok: false, error: caller.error, status: 403 };
+
+    const parsed = parseScheduleInput({ cron: body.cron, tz: body.tz, at: body.at }, this.scheduler.timezone());
+    if (!parsed.schedule) return { ok: false, error: parsed.error };
+
+    const res = this.scheduler.create({
+      botId,
+      chatId,
+      channelType: chat.channelType,
+      isGroup: chat.isGroup,
+      name: optionalString(body.name),
+      prompt: optionalString(body.prompt) ?? "",
+      schedule: parsed.schedule,
+      engine: optionalString(body.engine) as CronJob["engine"],
+      model: optionalString(body.model),
+      effort: optionalString(body.effort),
+      timeoutMs: minutesToMs(body.timeout_minutes),
+      createdBy: caller.createdBy!,
+    });
+    return res.job ? { ok: true, job: this.toCronJobView(res.job) } : { ok: false, error: res.error };
+  }
+
+  private updateCronJob(body: Record<string, unknown>): CronApiResult {
+    return this.withCronJob(optionalString(body.id) ?? "", (job) => {
+      const patch: CronJobPatch = {};
+      if (typeof body.name === "string") patch.name = body.name;
+      if (typeof body.prompt === "string") patch.prompt = body.prompt;
+      if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+      // An empty engine or timeout resets it to the default
+      if (body.engine !== undefined) patch.engine = (optionalString(body.engine) as CronJob["engine"]) ?? undefined;
+      if (typeof body.model === "string") patch.model = body.model;
+      if (typeof body.effort === "string") patch.effort = body.effort;
+      if (body.timeout_minutes !== undefined) patch.timeoutMs = minutesToMs(body.timeout_minutes);
+
+      if (body.cron !== undefined || body.at !== undefined || body.tz !== undefined) {
+        // Changing only `tz` keeps the current cron expression
+        const cron = body.cron ?? (body.at === undefined && job.schedule.kind === "cron" ? job.schedule.expr : undefined);
+        const tz = body.tz ?? (job.schedule.kind === "cron" ? job.schedule.tz : undefined);
+        const parsed = parseScheduleInput({ cron, tz, at: body.at }, this.scheduler.timezone());
+        if (!parsed.schedule) return { ok: false, error: parsed.error };
+        patch.schedule = parsed.schedule as CronSchedule;
+      }
+
+      const res = this.scheduler.update(job.id, patch);
+      return res.job ? { ok: true, job: this.toCronJobView(res.job) } : { ok: false, error: res.error };
+    });
+  }
+
   private startConfigWatcher(): void {
     if (!existsSync(this.configPath)) return;
     try {
@@ -624,6 +755,7 @@ export class Gateway {
 
   async stop(): Promise<void> {
     this.log.info("Stopping PocketAgent Gateway...");
+    this.scheduler.stop();
     if (this.configWatcher) {
       this.configWatcher.close();
     }
@@ -636,4 +768,15 @@ export class Gateway {
     await this.engineManager.shutdown();
     this.log.info("PocketAgent Gateway stopped cleanly");
   }
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value === "number") return String(value);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function minutesToMs(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.round(minutes * 60_000) : NaN;
 }

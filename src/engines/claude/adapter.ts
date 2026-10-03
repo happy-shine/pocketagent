@@ -120,7 +120,9 @@ export class ClaudeEngineAdapter implements EngineAdapter {
 
     proc.on("exit", (code, signal) => {
       this.log.info({ sessionId: session.sessionId, code, signal }, "Claude process exited");
-      this.processes.delete(session.sessionId);
+      if (this.processes.get(session.sessionId) === ep) {
+        this.processes.delete(session.sessionId);
+      }
     });
 
     this.processes.set(session.sessionId, ep);
@@ -272,6 +274,16 @@ export class ClaudeEngineAdapter implements EngineAdapter {
 
   updateConfig(config: Partial<EngineRuntimeConfig>): void {
     Object.assign(this.config, config);
+  }
+
+  release(sessionId: string): void {
+    const ep = this.processes.get(sessionId);
+    if (!ep) return;
+    this.clearIdleTimer(sessionId);
+    if (ep.process && !ep.process.killed) {
+      ep.process.kill("SIGTERM");
+    }
+    this.processes.delete(sessionId);
   }
 
   async shutdown(): Promise<void> {

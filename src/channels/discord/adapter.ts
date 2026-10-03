@@ -148,7 +148,8 @@ export class DiscordAdapter implements ChannelAdapter {
     });
 
     client.on("messageCreate", async (message: Message) => {
-      if (message.author.bot) return;
+      // Ignore bot's own messages to avoid infinite feedback loops
+      if (client.user && message.author.id === client.user.id) return;
 
       let text = message.content.trim();
       const isMentioned = client.user && (message.mentions.has(client.user) || text.includes(client.user.id));
@@ -174,6 +175,7 @@ export class DiscordAdapter implements ChannelAdapter {
       let replyText: string | undefined;
       let replySenderName: string | undefined;
       let isReplyToBot = false;
+      let isReplyToWebhook = false;
       const replyAttachments: Attachment[] = [];
 
       if (message.reference?.messageId) {
@@ -181,8 +183,27 @@ export class DiscordAdapter implements ChannelAdapter {
           const refMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
           if (refMsg) {
             isReplyToBot = client.user ? refMsg.author?.id === client.user.id : false;
+            // Webhook messages have refMsg.webhookId, or other bot forwarders
+            isReplyToWebhook = Boolean(refMsg.webhookId || (refMsg.author?.bot && !isReplyToBot));
             replySenderName = refMsg.author?.displayName || refMsg.author?.username || undefined;
             replyText = refMsg.content || undefined;
+
+            // Extract embed contents if text is empty (e.g. VIP highlight embed card)
+            if (!replyText && refMsg.embeds && refMsg.embeds.length > 0) {
+              const embedParts: string[] = [];
+              for (const embed of refMsg.embeds) {
+                if (embed.title) embedParts.push(embed.title);
+                if (embed.description) embedParts.push(embed.description);
+                if (embed.fields && embed.fields.length > 0) {
+                  for (const field of embed.fields) {
+                    embedParts.push(`${field.name}: ${field.value}`);
+                  }
+                }
+              }
+              if (embedParts.length > 0) {
+                replyText = embedParts.join("\n\n");
+              }
+            }
 
             if (refMsg.attachments && refMsg.attachments.size > 0) {
               for (const [, att] of refMsg.attachments) {
@@ -213,27 +234,64 @@ export class DiscordAdapter implements ChannelAdapter {
         } catch {
           // Ignore reference fetch errors
         }
+
+        // Fallback to MessageStore if reply text couldn't be retrieved via Discord API
+        if (!replyText && this.messageStore) {
+          const stored = this.messageStore.getRecent(message.channelId, 50).find((m) => m.id === message.reference?.messageId);
+          if (stored) {
+            replyText = stored.text;
+            if (!replySenderName) replySenderName = stored.sender;
+            isReplyToWebhook = true;
+          }
+        }
       }
 
       // Record message in group MessageStore for conversation history tracking
       if (this.messageStore && message.guildId) {
+        let storeText = message.content;
+        if (!storeText && message.embeds && message.embeds.length > 0) {
+          const parts: string[] = [];
+          for (const emb of message.embeds) {
+            if (emb.title) parts.push(emb.title);
+            if (emb.description) parts.push(emb.description);
+            for (const f of emb.fields || []) {
+              parts.push(`${f.name}: ${f.value}`);
+            }
+          }
+          storeText = parts.join("\n\n").trim();
+        }
         this.messageStore.append(message.channelId, {
           id: message.id,
           ts: Math.floor(message.createdTimestamp / 1000),
           sender: message.author.displayName || message.author.username,
           senderId: message.author.id,
-          text: message.content,
+          text: storeText,
           media: inboundAttachments.map((a) => `${a.type}:${a.fileId}:${a.fileName ?? ""}`),
         });
+      }
+
+      // Incoming messages from bots/webhooks are recorded in MessageStore above,
+      // but should NOT trigger an LLM run on their own unless explicitly mentioned
+      if (message.author.bot && !isMentioned) {
+        return;
+      }
+
+      // If user replied to a bot or webhook with empty text, provide a default intent
+      if (!text && (isReplyToBot || isReplyToWebhook) && replyText) {
+        text = "请针对被引用的这条消息进行分析和解读。";
       }
 
       // In guild channels, respond only if:
       // 1) In Direct Message (DM), OR
       // 2) Bot is explicitly mentioned, OR
-      // 3) Message is a reply specifically to the bot's message, OR
+      // 3) Message is a reply specifically to the bot's message or a webhook/bot message, OR
       // 4) Message starts with command slash '/'
       const isDM = !message.guildId;
-      if (!isDM && !isMentioned && !isReplyToBot && !text.startsWith("/")) {
+      if (!isDM && !isMentioned && !isReplyToBot && !isReplyToWebhook && !text.startsWith("/")) {
+        return;
+      }
+
+      if (!text && inboundAttachments.length === 0) {
         return;
       }
 

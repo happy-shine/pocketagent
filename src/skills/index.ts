@@ -6,27 +6,30 @@ You can send files to the user and download files the user sent to you via the l
 
 ### 1. Send files to user
 
-When the user asks you to send/export/share/download a file, or when your task creates or generates an output file (reports, scripts, images, audio, etc.) that the user needs, use this API to upload it:
+When the user asks you to send/export/share/download a file, or when your task creates or generates an output file (reports, scripts, images, audio, etc.) that the user needs, send it to the chat:
 
 \`\`\`bash
-curl -s -X POST "http://127.0.0.1:${apiPort}/api/file/upload" \\
-  -F "chat_id=${chatId}" \\
-  -F "file=@/absolute/path/to/file.ext" \\
-  -F "caption=Optional description"
+curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-file" \\
+  -H "Content-Type: application/json" \\
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","file_path":"/absolute/path/to/file.ext","caption":"Optional description"}'
 \`\`\`
 
-- \`file\`: Absolute path to the local file (prefixed with \`@\`).
-- \`caption\`: Optional text description shown with the file in Telegram.
-- For multiple files, call the curl command once per file.
+- \`file_path\`: Absolute path to a local file. Images (jpg, png, gif, webp) are sent as photos, everything else as documents.
+- \`caption\`: Optional text shown with the file.
+- For multiple files, call the command once per file.
 
 ### 2. Download files from user
 
-When the user sends a file (document, photo, audio), the message includes attachment info with a \`file_id\`.
-Download it using:
+Files attached to the message you are answering are already downloaded; their local paths appear in the message as \`[Attached ...: /path]\`.
+For other files (e.g. a \`media\` entry like \`photo:<FILE_ID>\` or \`document:<FILE_ID>:<name>\` in chat history), download by file id:
 
 \`\`\`bash
-curl -s "http://127.0.0.1:${apiPort}/api/file/download?file_id=<FILE_ID>&bot_id=${botId}" -o /path/to/save/filename.ext
+curl -s -X POST "http://127.0.0.1:${apiPort}/api/download-file" \\
+  -H "Content-Type: application/json" \\
+  -d '{"bot_id":"${botId}","file_id":"<FILE_ID>","dest_dir":"/absolute/destination/dir"}'
 \`\`\`
+
+The response contains \`local_path\`, the saved file's location.
 `.trim();
 }
 

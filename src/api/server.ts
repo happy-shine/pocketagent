@@ -148,7 +148,7 @@ export class ApiServer {
       } else if (req.method === "GET" && url.pathname === "/api/chat-history") {
         await this.handleChatHistory(res, url);
       } else if (req.method === "POST" && url.pathname === "/api/download-file") {
-        await this.handleDownloadFile(res, url);
+        await this.handleDownloadFile(req, res, url);
       } else if (req.method === "POST" && url.pathname === "/api/reload-config") {
         await this.handleReloadConfig(res);
       } else if (req.method === "GET" && url.pathname === "/api/sessions") {
@@ -398,15 +398,21 @@ export class ApiServer {
     }
   }
 
-  private async handleSendFile(_req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const chatId = url.searchParams.get("chat_id");
-    const filePath = url.searchParams.get("file_path");
-    const botId = url.searchParams.get("bot_id");
-    const caption = url.searchParams.get("caption") ?? undefined;
+  private async handleSendFile(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const params = await readParams(req, url);
+    const chatId = params.get("chat_id");
+    const filePath = params.get("file_path");
+    const botId = params.get("bot_id");
+    const caption = params.get("caption") ?? undefined;
 
     if (!chatId || !filePath) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Missing chat_id or file_path" }));
+      return;
+    }
+    if (!existsSync(filePath)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `File not found: ${filePath}` }));
       return;
     }
 
@@ -421,9 +427,10 @@ export class ApiServer {
     const ext = fileName.toLowerCase().split(".").pop() ?? "";
     const photoExts = ["jpg", "jpeg", "png", "gif", "webp"];
 
+    // Telegram shows the caption on the photo/document itself; Discord only displays message content
     await channel.send({
       chatId,
-      text: caption ?? "",
+      text: channel.type === "telegram" ? "" : caption ?? "",
       attachments: [{
         type: photoExts.includes(ext) ? "photo" : "file",
         path: filePath,
@@ -635,10 +642,11 @@ export class ApiServer {
     res.end(JSON.stringify(result));
   }
 
-  private async handleDownloadFile(res: ServerResponse, url: URL): Promise<void> {
-    const botId = url.searchParams.get("bot_id");
-    const fileId = url.searchParams.get("file_id");
-    const destDir = url.searchParams.get("dest_dir");
+  private async handleDownloadFile(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const params = await readParams(req, url);
+    const botId = params.get("bot_id");
+    const fileId = params.get("file_id");
+    const destDir = params.get("dest_dir");
 
     if (!botId || !fileId || !destDir) {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -646,8 +654,8 @@ export class ApiServer {
       return;
     }
 
-    const telegram = this.config.getBotTelegram(botId);
-    if (!telegram) {
+    const channel = this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId);
+    if (!channel?.downloadFile) {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: `Bot ${botId} not found` }));
       return;
@@ -655,7 +663,7 @@ export class ApiServer {
 
     try {
       mkdirSync(destDir, { recursive: true });
-      const localPath = await telegram.downloadFile(fileId, destDir);
+      const localPath = await channel.downloadFile(fileId, destDir);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, local_path: localPath }));
     } catch (err) {
@@ -852,6 +860,23 @@ export class ApiServer {
       res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
     }
   }
+}
+
+/** Merges query parameters with a JSON object body (body wins), so endpoints accept either style. */
+async function readParams(req: IncomingMessage, url: URL): Promise<Map<string, string>> {
+  const params = new Map<string, string>(url.searchParams);
+  const body = await readBody(req);
+  if (body.trim()) {
+    try {
+      const json = JSON.parse(body);
+      if (json && typeof json === "object") {
+        for (const [key, value] of Object.entries(json)) {
+          if (value !== undefined && value !== null) params.set(key, String(value));
+        }
+      }
+    } catch {}
+  }
+  return params;
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {

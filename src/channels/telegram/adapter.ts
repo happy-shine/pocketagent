@@ -142,7 +142,8 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async send(msg: OutboundMessage): Promise<string> {
-    const chunks = splitMessage(msg.text);
+    // Telegram rejects empty messages; file-only sends carry their text as the attachment caption
+    const chunks = msg.text ? splitMessage(msg.text) : [];
     let lastMessageId = "";
 
     for (let i = 0; i < chunks.length; i++) {

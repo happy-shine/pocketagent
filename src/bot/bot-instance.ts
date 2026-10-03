@@ -1038,7 +1038,9 @@ export class BotInstance {
       this.engineManager.release(session.sessionId, session.activeEngine);
     }
 
-    const header = `**${job.name}**`;
+    // A heading one level above the report's ### sections, so consecutive task messages are easy to tell apart
+    // on Discord, which groups messages from the same bot; Telegram renders it as a bold line.
+    const header = `## ${job.name}`;
     const deliver = (text: string) => new ProgressTracker(channel, job.chatId).finish(`${header}\n\n${text}`);
     // Only the final answer is posted; narration between tool calls ("Running the query...") is dropped
     const output = extractButtons(response.finalText.trim() ? response.finalText : response.text).text.trim();

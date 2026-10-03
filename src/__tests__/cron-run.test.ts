@@ -118,6 +118,16 @@ describe("BotInstance scheduled task runs", () => {
     expect(session).toMatchObject({ activeEngine: "codex", model: undefined });
   });
 
+  it("starts Discord messages with a heading so consecutive reports stay distinct", async () => {
+    const { bot } = makeBot(async function* () {
+      yield { type: "text", text: "### 核心观点\n- point" };
+    });
+    const discord = { type: "discord", send: vi.fn(async () => "1"), editMessage: vi.fn() };
+    (bot as any).discord = discord;
+    await bot.runScheduledTask({ ...job, channelType: "discord" }, run);
+    expect((discord.send.mock.calls[0] as unknown as [any])[0].text).toBe("## AI digest\n\n### 核心观点\n- point");
+  });
+
   it("posts nothing when the run replies [SILENT]", async () => {
     const { bot, channel } = makeBot(async function* () {
       yield { type: "text", text: "No changes. [SILENT]" };

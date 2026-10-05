@@ -41,6 +41,9 @@ export interface Session {
 
   // In-session turns history
   turns: SessionHistoryItem[];
+
+  // Workspace folder key, defaults to sessionId; side sessions (/btw) set it to share their parent session's files
+  workspaceId?: string;
 }
 
 export interface ChatSessionState {

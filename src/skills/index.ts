@@ -115,3 +115,35 @@ curl -s -X DELETE "${base}?id=<TASK_ID>"
 - After creating a task, confirm its name, the schedule in plain words, and \`next_run\` from the response. If the API returns an error (e.g. the user is not allowed to manage tasks in this group), relay it.
 `.trim();
 }
+
+export function getBackgroundJobSkill(apiPort: number, botId: string, chatId: string): string {
+  const base = `http://127.0.0.1:${apiPort}/api/jobs`;
+  return `
+## Background Jobs (for genuinely long commands only)
+
+While you wait on a command, this chat is blocked for everyone in it. For the rare command that runs for a long time, hand it to the gateway as a background job instead: the gateway runs it outside your turn, you end your turn, and when the command exits the gateway sends you a message in this same conversation with its exit code and the end of its output, so you can continue the work.
+
+Start a background job ONLY if ALL of these are true:
+1. It is one non-interactive shell command or script that you expect to run for MORE THAN 5 MINUTES, and you can point to concrete evidence for that: file size against bandwidth, dataset size, number of epochs, a previous run's duration. Typical cases: downloading multi-GB files or datasets, training or fine-tuning, a full build of a large project, a long crawl or batch-processing run.
+2. There is nothing else useful you can do until it finishes.
+
+In every other case run the command directly, as usual. Never use a background job for:
+- commands that should finish within a few minutes: package installs, git operations, small or medium downloads, normal builds and test runs, quick scripts;
+- reading, editing or searching files, or anything you could do with your normal tools;
+- splitting one piece of work into several jobs, or checking on or waiting for another job.
+If you are not sure it will take more than 5 minutes, it does not qualify: run it directly. A job that finishes quickly costs the user an extra round trip.
+
+\`\`\`bash
+curl -s -X POST "${base}" -H "Content-Type: application/json" -H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID" \\
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","title":"Download the 40GB dataset","command":"cd /abs/path && wget -c -q --show-progress https://example.com/data.tar","then":"Verify the checksum, extract it and tell the user how many files it contains"}'
+\`\`\`
+
+- \`command\` runs with bash in \`cwd\` (defaults to your current workspace). Make it non-interactive and self-contained: absolute paths, \`-y\` flags, resumable downloads (\`wget -c\`, \`curl -C -\`), results written to files. Its output goes to a log file.
+- \`then\`: what you will do once it finishes. It is handed back to you with the result.
+- Optional: \`cwd\` (absolute path), \`timeout_minutes\` (default 360).
+- Keep the \`X-PocketAgent-Session\` header exactly as shown; the shell fills it in. At most 2 jobs per message.
+- After starting a job, tell the user in one or two sentences what is running and roughly how long it may take, then END YOUR TURN. Do not sleep, poll, tail the log or check on the job: the gateway will message you when it exits.
+- When the gateway's "[Background job #N ...]" message arrives, continue from where you left off and reply with the outcome.
+- Only if the user asks about or wants to stop a job: list this chat's jobs with \`curl -s "${base}?bot_id=${botId}&chat_id=${chatId}"\`, stop one with \`curl -s -X POST "${base}/cancel?id=<JOB_ID>" -H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID"\`. Users can also manage jobs with \`/jobs\`.
+`.trim();
+}

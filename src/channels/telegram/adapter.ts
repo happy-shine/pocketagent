@@ -88,6 +88,7 @@ export class TelegramAdapter implements ChannelAdapter {
       { command: "btw", description: "Quick side question without interrupting" },
       { command: "stop", description: "Interrupt current task" },
       { command: "cron", description: "List and manage scheduled tasks" },
+      { command: "jobs", description: "List background jobs, stop them or view logs" },
       { command: "help", description: "Show help" },
     ];
 
@@ -150,7 +151,7 @@ export class TelegramAdapter implements ChannelAdapter {
       const chunk = chunks[i];
       const isFirst = i === 0;
       const replyId = isFirst && msg.replyToMessageId ? Number(msg.replyToMessageId) : undefined;
-      const replyOpts = replyId ? { reply_parameters: { message_id: replyId } } : {};
+      const replyOpts = replyId ? { reply_parameters: { message_id: replyId, allow_sending_without_reply: true } } : {};
       const parseOpts = msg.parseMode ? { parse_mode: msg.parseMode as "MarkdownV2" | "HTML" } : {};
 
       let sent;
@@ -162,7 +163,8 @@ export class TelegramAdapter implements ChannelAdapter {
       } catch (err) {
         if (msg.parseMode && err instanceof Error && err.message?.includes("can't parse entities")) {
           this.log.warn({ parseMode: msg.parseMode }, "parse failed in send, falling back to plain text");
-          const fallback = msg.plainFallback ?? stripHtml(chunk);
+          // plainFallback covers the whole text, so it only stands in for a single-chunk message
+          const fallback = chunks.length === 1 ? msg.plainFallback ?? stripHtml(chunk) : stripHtml(chunk);
           const fallbackChunks = splitMessage(fallback);
           sent = await this.bot.api.sendMessage(msg.chatId, (fallbackChunks[0] ?? fallback).slice(0, 4096), replyOpts);
         } else {

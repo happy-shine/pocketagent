@@ -23,6 +23,7 @@ export class EngineManager {
 
     const maxProcesses = config.engines.maxProcesses;
     const idleTimeoutMs = config.engines.idleTimeoutMs;
+    const backgroundJobs = config.jobs.enabled;
     const workspaceDir = `${dataDir}/workspaces`;
     const agentsDir = `${dataDir}/agents`;
 
@@ -38,6 +39,7 @@ export class EngineManager {
       workspaceDir,
       apiPort,
       agentsDir,
+      backgroundJobs,
       customModels: config.engines.claude.customModels,
     };
     this.adapters.set("claude", new ClaudeEngineAdapter(claudeConfig, this.log));
@@ -54,6 +56,7 @@ export class EngineManager {
       workspaceDir,
       apiPort,
       agentsDir,
+      backgroundJobs,
       customModels: config.engines.agy.customModels,
     };
     this.adapters.set("agy", new AgyEngineAdapter(agyConfig, this.log));
@@ -70,6 +73,7 @@ export class EngineManager {
       workspaceDir,
       apiPort,
       agentsDir,
+      backgroundJobs,
       customModels: config.engines.codex.customModels,
       codex: {
         sandbox: config.engines.codex.sandbox,
@@ -90,6 +94,7 @@ export class EngineManager {
       workspaceDir,
       apiPort,
       agentsDir,
+      backgroundJobs,
       customModels: config.engines.grok.customModels,
     };
     this.adapters.set("grok", new GrokEngineAdapter(grokConfig, this.log));
@@ -150,6 +155,7 @@ export class EngineManager {
   updateConfig(config: GatewayConfig): void {
     const maxProcesses = config.engines.maxProcesses;
     const idleTimeoutMs = config.engines.idleTimeoutMs;
+    const backgroundJobs = config.jobs.enabled;
 
     const claude = this.adapters.get("claude");
     claude?.updateConfig({
@@ -160,6 +166,7 @@ export class EngineManager {
       customModels: config.engines.claude.customModels,
       maxProcesses,
       idleTimeoutMs,
+      backgroundJobs,
     });
 
     const agy = this.adapters.get("agy");
@@ -171,6 +178,7 @@ export class EngineManager {
       customModels: config.engines.agy.customModels,
       maxProcesses,
       idleTimeoutMs,
+      backgroundJobs,
     });
 
     const codex = this.adapters.get("codex");
@@ -182,6 +190,7 @@ export class EngineManager {
       customModels: config.engines.codex.customModels,
       maxProcesses,
       idleTimeoutMs,
+      backgroundJobs,
       codex: {
         sandbox: config.engines.codex.sandbox,
         approvalPolicy: config.engines.codex.approvalPolicy,
@@ -197,6 +206,7 @@ export class EngineManager {
       customModels: config.engines.grok.customModels,
       maxProcesses,
       idleTimeoutMs,
+      backgroundJobs,
     });
   }
 

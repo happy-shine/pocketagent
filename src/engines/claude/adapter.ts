@@ -47,7 +47,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     const sessionDir = join(
       this.config.workspaceDir,
       botId,
-      `${safeChatId}_${session.sessionId}`,
+      `${safeChatId}_${session.workspaceId ?? session.sessionId}`,
     );
     mkdirSync(sessionDir, { recursive: true });
 
@@ -60,6 +60,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       channelType: session.channelType,
       isGroup: Boolean(session.isGroup),
       identity,
+      backgroundJobs: this.config.backgroundJobs,
     });
     const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
     if (promptContent) {
@@ -105,7 +106,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     const proc = spawn(this.config.binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
     });
 
     const ep: EngineProcess = {

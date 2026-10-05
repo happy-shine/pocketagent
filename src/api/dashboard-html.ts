@@ -826,6 +826,30 @@ export function getDashboardHtml(): string {
     .st-ok { color: var(--badge-green-text); }
     .st-fail { color: var(--badge-red-text); }
     .st-muted { color: var(--text-muted); }
+    .job-log {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      line-height: 1.45;
+      color: var(--text-primary);
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 60vh;
+      min-height: 8rem;
+      overflow: auto;
+    }
+    .job-latest {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--badge-green-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .cron-runs-browser {
       display: grid;
       grid-template-columns: 240px 1fr;
@@ -1204,6 +1228,7 @@ export function getDashboardHtml(): string {
       <div class="nav-tab" data-tab="engines" data-i18n="tabEngines">Engines</div>
       <div class="nav-tab" data-tab="sessions" data-i18n="tabSessions">Sessions & Workspaces</div>
       <div class="nav-tab" data-tab="cron" data-i18n="tabCron">Scheduled Tasks</div>
+      <div class="nav-tab" data-tab="jobs" data-i18n="tabJobs">Background Jobs</div>
       <div class="nav-tab" data-tab="gateway" data-i18n="tabGateway">Gateway</div>
       <div class="nav-tab" data-tab="security" data-i18n="tabSecurity">Security & Auth</div>
       <div class="nav-tab" data-tab="skills" data-i18n="tabSkills">Skills (4-CLI)</div>
@@ -1578,6 +1603,61 @@ export function getDashboardHtml(): string {
 
       <div id="cronListContainer">
         <!-- Dynamically rendered scheduled task cards -->
+      </div>
+    </section>
+
+    <!-- TAB: Background Jobs -->
+    <section id="tab-jobs" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title" data-i18n="jobsTitle">Background Jobs</h1>
+          <p class="section-desc" data-i18n="jobsDesc">Long-running commands the agent handed to the gateway (big downloads, training runs, full builds). They run outside the chat; when one exits, the gateway sends the result back to the conversation that started it so the agent can continue. Jobs keep running across gateway restarts.</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="btnRefreshJobs" class="btn btn-secondary btn-sm" data-i18n="refreshSessions">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="grid-metrics">
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="jobsMetricRunning">Running</div>
+          <div id="mJobsRunning" class="metric-value" style="color: var(--badge-green-text);">0</div>
+          <div class="metric-sub" data-i18n="jobsMetricRunningSub">Commands executing now</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="jobsMetricQueued">Queued</div>
+          <div id="mJobsQueued" class="metric-value">0</div>
+          <div class="metric-sub" data-i18n="jobsMetricQueuedSub">Waiting for a free slot</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="jobsMetricDone">Succeeded</div>
+          <div id="mJobsDone" class="metric-value">0</div>
+          <div class="metric-sub" data-i18n="jobsMetricDoneSub">Finished with exit code 0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label" data-i18n="jobsMetricFailed">Failed / Timed Out</div>
+          <div id="mJobsFailed" class="metric-value" style="color: var(--badge-red-text);">0</div>
+          <div class="metric-sub" data-i18n="jobsMetricFailedSub">Worth a look</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <select id="jobsBotFilter" class="form-control" style="max-width: 200px;">
+            <option value="" data-i18n="filterAllBots">All Bots</option>
+          </select>
+          <select id="jobsStatusFilter" class="form-control" style="max-width: 170px;">
+            <option value="all" data-i18n="filterAllStatus">All Status</option>
+            <option value="active" data-i18n="jobsFilterActive">In Progress</option>
+            <option value="finished" data-i18n="jobsFilterFinished">Finished</option>
+            <option value="failed" data-i18n="jobsFilterFailed">Failed</option>
+          </select>
+          <input id="jobsSearchInput" type="text" class="form-control" placeholder="Search by title, command, Chat ID..." data-i18n-placeholder="jobsSearchPlaceholder">
+        </div>
+      </div>
+
+      <div id="jobsListContainer">
+        <!-- Dynamically rendered background job cards -->
       </div>
     </section>
 
@@ -2003,6 +2083,26 @@ export function getDashboardHtml(): string {
     </div>
   </div>
 
+  <!-- Modal: Background Job Log -->
+  <div id="modalJobLog" class="modal-backdrop">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" data-i18n="jobLogTitle">Job Log</div>
+          <div id="jobLogSubtitle" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;"></div>
+        </div>
+        <button class="modal-close" onclick="closeJobLog()">×</button>
+      </div>
+      <div class="modal-body" style="padding: 1rem;">
+        <div id="jobLogMeta" class="st-muted" style="font-size: 0.78rem; margin-bottom: 0.5rem;"></div>
+        <pre id="jobLogContent" class="job-log"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeJobLog()" data-i18n="cronClose">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Workspace Files & Preview -->
   <div id="modalWorkspaceFiles" class="modal-backdrop">
     <div class="modal modal-xl">
@@ -2128,6 +2228,51 @@ export function getDashboardHtml(): string {
         cronViewRaw: "查看原文",
         cronViewRendered: "查看排版",
         cronRunSilentNote: "本次运行判断没有需要通知的内容，未向聊天推送消息。",
+        tabJobs: "后台任务",
+        jobsTitle: "后台任务",
+        jobsDesc: "AI 在对话中交给网关托管的长时间命令（大文件下载、训练、全量构建等）。命令在对话之外运行，群聊不会被占住；命令结束后网关把结果发回原会话，AI 接着处理。网关重启不影响正在运行的任务。",
+        jobsMetricRunning: "运行中",
+        jobsMetricRunningSub: "命令正在执行",
+        jobsMetricQueued: "排队中",
+        jobsMetricQueuedSub: "等待空闲名额",
+        jobsMetricDone: "成功",
+        jobsMetricDoneSub: "以退出码 0 结束",
+        jobsMetricFailed: "失败 / 超时",
+        jobsMetricFailedSub: "需要关注",
+        jobsFilterActive: "进行中",
+        jobsFilterFinished: "已结束",
+        jobsFilterFailed: "失败",
+        jobsSearchPlaceholder: "按标题、命令、Chat ID 搜索...",
+        jobsEmpty: "还没有后台任务。当 AI 判断某条命令会运行很久（例如下载几十 GB 的数据），会把它交给网关在后台执行。",
+        jobsNoMatch: "没有符合筛选条件的后台任务",
+        jobStatus_queued: "排队中",
+        jobStatus_running: "运行中",
+        jobStatus_succeeded: "成功",
+        jobStatus_failed: "失败",
+        jobStatus_timeout: "超时",
+        jobStatus_cancelled: "已停止",
+        jobStatus_lost: "异常结束",
+        jobCwd: "工作目录",
+        jobThen: "完成后",
+        jobRequester: "发起人",
+        jobStarted: "开始时间",
+        jobDuration: "耗时",
+        jobExit: "退出码",
+        jobCallback: "回调",
+        jobCallback_pending: "等待回调",
+        jobCallback_done: "已回调会话",
+        jobCallback_skipped: "无需回调",
+        jobCallback_failed: "回调失败",
+        jobViewLog: "日志",
+        jobStop: "停止",
+        jobDelete: "删除",
+        jobStopConfirm: "确定停止后台任务 #{num}「{title}」吗？进程及其子进程都会被终止，不会回调会话。",
+        jobDeleteConfirm: "确定删除后台任务 #{num}「{title}」的记录和日志吗？",
+        jobStoppedToast: "已发送停止信号",
+        jobDeletedToast: "后台任务已删除",
+        jobLogTitle: "任务日志",
+        jobLogLive: "运行中 · 每 2 秒自动刷新",
+        jobLogEmpty: "（暂无输出）",
         cronRunTruncatedNote: "这条是旧记录，只保存了输出的前 500 个字符。之后的运行会保存完整输出。",
         cronRunNoOutput: "本次运行没有输出。",
         
@@ -2522,6 +2667,51 @@ export function getDashboardHtml(): string {
         cronViewRaw: "View Source",
         cronViewRendered: "View Formatted",
         cronRunSilentNote: "This run found nothing worth reporting, so nothing was posted to the chat.",
+        tabJobs: "Background Jobs",
+        jobsTitle: "Background Jobs",
+        jobsDesc: "Long-running commands the agent handed to the gateway (big downloads, training runs, full builds). They run outside the chat so it is not held up; when one exits, the gateway sends the result back to the conversation that started it and the agent continues. Jobs keep running across gateway restarts.",
+        jobsMetricRunning: "Running",
+        jobsMetricRunningSub: "Commands executing now",
+        jobsMetricQueued: "Queued",
+        jobsMetricQueuedSub: "Waiting for a free slot",
+        jobsMetricDone: "Succeeded",
+        jobsMetricDoneSub: "Finished with exit code 0",
+        jobsMetricFailed: "Failed / Timed Out",
+        jobsMetricFailedSub: "Worth a look",
+        jobsFilterActive: "In Progress",
+        jobsFilterFinished: "Finished",
+        jobsFilterFailed: "Failed",
+        jobsSearchPlaceholder: "Search by title, command, Chat ID...",
+        jobsEmpty: "No background jobs yet. When the agent expects a command to run for a long time (say, downloading tens of GB), it hands the command to the gateway to run in the background.",
+        jobsNoMatch: "No background jobs match the filters",
+        jobStatus_queued: "Queued",
+        jobStatus_running: "Running",
+        jobStatus_succeeded: "Succeeded",
+        jobStatus_failed: "Failed",
+        jobStatus_timeout: "Timed out",
+        jobStatus_cancelled: "Stopped",
+        jobStatus_lost: "Ended unexpectedly",
+        jobCwd: "Working Dir",
+        jobThen: "Then",
+        jobRequester: "Requested By",
+        jobStarted: "Started",
+        jobDuration: "Duration",
+        jobExit: "Exit Code",
+        jobCallback: "Callback",
+        jobCallback_pending: "Pending",
+        jobCallback_done: "Sent to conversation",
+        jobCallback_skipped: "Not needed",
+        jobCallback_failed: "Failed",
+        jobViewLog: "Log",
+        jobStop: "Stop",
+        jobDelete: "Delete",
+        jobStopConfirm: "Stop background job #{num} “{title}”? The process and everything it started will be terminated; the conversation is not called back.",
+        jobDeleteConfirm: "Delete the record and log of background job #{num} “{title}”?",
+        jobStoppedToast: "Stop signal sent",
+        jobDeletedToast: "Background job deleted",
+        jobLogTitle: "Job Log",
+        jobLogLive: "Running · refreshes every 2 seconds",
+        jobLogEmpty: "(no output yet)",
         cronRunTruncatedNote: "This is an older record that only kept the first 500 characters of output. New runs keep the full output.",
         cronRunNoOutput: "This run produced no output.",
       }
@@ -2636,6 +2826,8 @@ export function getDashboardHtml(): string {
         fetchSessions();
       } else if (tabId === "cron") {
         fetchCronJobs();
+      } else if (tabId === "jobs") {
+        fetchJobs();
       }
     }
 
@@ -2673,7 +2865,8 @@ export function getDashboardHtml(): string {
           fetchSkills(),
           fetchPairings(),
           fetchSessions(),
-          fetchCronJobs()
+          fetchCronJobs(),
+          fetchJobs()
         ]);
 
         // Keep run status fresh while the scheduled tasks tab is open
@@ -2682,6 +2875,13 @@ export function getDashboardHtml(): string {
             fetchCronJobs();
           }
         }, 10000);
+
+        // Background jobs change by the second (progress, elapsed time)
+        setInterval(() => {
+          if (!document.hidden && document.getElementById("tab-jobs")?.classList.contains("active")) {
+            fetchJobs();
+          }
+        }, 3000);
       } catch (err) {
         console.error("Dashboard initialization error:", err);
       }
@@ -2695,7 +2895,7 @@ export function getDashboardHtml(): string {
 
       on("btnRefresh", "click", async () => {
         showToast(t("refresh") + "...", "info");
-        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions(), fetchCronJobs()]);
+        await Promise.all([fetchStatus(), fetchConfig(), fetchModels(true), fetchSkills(), fetchPairings(), fetchSessions(), fetchCronJobs(), fetchJobs()]);
       });
 
       on("btnSaveConfig", "click", () => saveAndHotReload());
@@ -2723,6 +2923,10 @@ export function getDashboardHtml(): string {
       on("cronBotFilter", "change", () => renderCronJobs());
       on("cronStatusFilter", "change", () => renderCronJobs());
       on("cronSearchInput", "input", () => renderCronJobs());
+      on("btnRefreshJobs", "click", () => fetchJobs());
+      on("jobsBotFilter", "change", () => renderJobs());
+      on("jobsStatusFilter", "change", () => renderJobs());
+      on("jobsSearchInput", "input", () => renderJobs());
       on("cronKind", "change", () => updateCronKindFields());
       on("cronBotSelect", "change", () => updateCronChatOptions());
     }
@@ -4069,6 +4273,241 @@ export function getDashboardHtml(): string {
         toast.style.opacity = "0";
         setTimeout(() => toast.remove(), 250);
       }, duration);
+    }
+
+    // Background Jobs
+    let allJobs = [];
+    let jobLogTimer = null;
+    let jobLogId = null;
+
+    async function fetchJobs() {
+      try {
+        const res = await fetch("/api/jobs");
+        if (!res.ok) return;
+        allJobs = (await res.json()).jobs || [];
+        populateJobsBotFilter();
+        renderJobs();
+      } catch {}
+    }
+
+    function populateJobsBotFilter() {
+      const sel = document.getElementById("jobsBotFilter");
+      if (!sel) return;
+      const current = sel.value;
+      let html = \`<option value="">\${t("filterAllBots")}</option>\`;
+      for (const b of systemStatus?.bots || []) {
+        html += \`<option value="\${escapeHtml(b.botId)}">\${escapeHtml(b.name)} (\${escapeHtml(b.channel)})</option>\`;
+      }
+      sel.innerHTML = html;
+      sel.value = current;
+    }
+
+    function formatJobDuration(seconds) {
+      if (seconds === undefined || seconds === null) return "--";
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return h > 0 ? \`\${h}h \${m}m\` : m > 0 ? \`\${m}m \${s}s\` : \`\${s}s\`;
+    }
+
+    function jobIsActive(job) {
+      return job.status === "running" || job.status === "queued";
+    }
+
+    function jobIsFailed(job) {
+      return job.status === "failed" || job.status === "timeout" || job.status === "lost";
+    }
+
+    function jobStatusBadge(job) {
+      const cls = job.status === "running" || job.status === "succeeded"
+        ? "badge-active"
+        : job.status === "queued" ? "badge-paused" : jobIsFailed(job) ? "badge-failed" : "badge-inactive";
+      return \`<span class="badge-status \${cls}"><span class="status-dot"></span>\${t("jobStatus_" + job.status)}</span>\`;
+    }
+
+    function renderJobs() {
+      const container = document.getElementById("jobsListContainer");
+      if (!container) return;
+      const jobs = allJobs || [];
+      const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+      setText("mJobsRunning", jobs.filter(j => j.status === "running").length);
+      setText("mJobsQueued", jobs.filter(j => j.status === "queued").length);
+      setText("mJobsDone", jobs.filter(j => j.status === "succeeded").length);
+      setText("mJobsFailed", jobs.filter(jobIsFailed).length);
+
+      const botFilter = document.getElementById("jobsBotFilter")?.value || "";
+      const statusFilter = document.getElementById("jobsStatusFilter")?.value || "all";
+      const search = (document.getElementById("jobsSearchInput")?.value || "").trim().toLowerCase();
+      const filtered = jobs
+        .filter(j =>
+          (!botFilter || j.botId === botFilter) &&
+          (statusFilter === "all" ||
+            (statusFilter === "active" && jobIsActive(j)) ||
+            (statusFilter === "finished" && !jobIsActive(j)) ||
+            (statusFilter === "failed" && jobIsFailed(j))) &&
+          (!search || [j.title, j.command, j.chatId, j.id].some(v => (v || "").toLowerCase().includes(search)))
+        )
+        // In-progress jobs first, then newest first
+        .sort((a, b) => (jobIsActive(b) - jobIsActive(a)) || (b.createdAt - a.createdAt));
+
+      if (filtered.length === 0) {
+        container.innerHTML = \`
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <div style="font-size: 0.95rem;">\${jobs.length === 0 ? t("jobsEmpty") : t("jobsNoMatch")}</div>
+          </div>
+        \`;
+        return;
+      }
+
+      let html = "";
+      for (const job of filtered) {
+        const id = escapeHtml(job.id);
+        const channelBadgeClass = job.channelType === "telegram" ? "channel-tg" : "channel-dc";
+        const requester = job.requester?.senderName
+          ? \`\${escapeHtml(job.requester.senderName)}\${job.requester.senderId ? \` <span class="st-muted" style="font-family: var(--font-mono); font-size: 0.72rem;">\${escapeHtml(job.requester.senderId)}</span>\` : ""}\`
+          : "--";
+        const exit = job.exitCode === undefined || job.exitCode === null
+          ? "--"
+          : \`<span class="\${job.exitCode === 0 ? "st-ok" : "st-fail"}">\${job.exitCode}</span>\`;
+        const callback = job.callback ? t("jobCallback_" + job.callback) : "--";
+        const notice = job.error && !jobIsActive(job) && job.status !== "cancelled"
+          ? \`<div class="badge-status badge-failed" style="text-transform: none; align-self: flex-start;">\${escapeHtml(job.error)}</div>\`
+          : job.status === "cancelled" && job.cancelledBy
+            ? \`<div class="st-muted" style="font-size: 0.78rem;">\${escapeHtml(t("jobStatus_cancelled"))} · \${escapeHtml(job.cancelledBy)}</div>\`
+            : "";
+
+        html += \`
+          <div class="session-card \${job.status === "running" ? "is-active" : ""}">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; min-width: 0;">
+                <span class="channel-badge \${channelBadgeClass}">\${escapeHtml((job.channelType || "bot").toUpperCase())}</span>
+                \${jobStatusBadge(job)}
+                <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">#\${job.seq} \${escapeHtml(job.title)}</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">\${id}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary btn-sm" onclick="openJobLog('\${id}')">\${t("jobViewLog")}</button>
+                \${jobIsActive(job)
+                  ? \`<button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="stopBgJob('\${id}')">\${t("jobStop")}</button>\`
+                  : \`<button class="btn btn-secondary btn-sm" style="color: var(--badge-red-text);" onclick="deleteBgJob('\${id}')">\${t("jobDelete")}</button>\`}
+              </div>
+            </div>
+            <div class="cron-prompt">\${escapeHtml(job.command)}</div>
+            \${job.status === "running" && job.last_line ? \`<div class="job-latest" title="\${escapeHtml(job.last_line)}">▸ \${escapeHtml(job.last_line)}</div>\` : ""}
+            <div class="card-meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">Bot · Chat ID</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.78rem;">\${escapeHtml(job.bot_name || job.botId)} · \${escapeHtml(job.chatId)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobRequester")}</span>
+                <span class="meta-val">\${requester}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobStarted")}</span>
+                <span class="meta-val" style="font-size: 0.78rem;">\${job.startedAt ? escapeHtml(new Date(job.startedAt).toLocaleString()) : "--"}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobDuration")}</span>
+                <span class="meta-val">\${formatJobDuration(job.elapsed_seconds)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobExit")} · PID</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.78rem;">\${exit} · \${job.pid || "--"}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobCallback")}</span>
+                <span class="meta-val">\${escapeHtml(callback)}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobCwd")}</span>
+                <span class="meta-val" style="font-family: var(--font-mono); font-size: 0.74rem; word-break: break-all;">\${escapeHtml(job.cwd)}</span>
+              </div>
+              \${job.then ? \`
+              <div class="meta-item">
+                <span class="meta-label">\${t("jobThen")}</span>
+                <span class="meta-val" style="font-size: 0.78rem;">\${escapeHtml(job.then)}</span>
+              </div>\` : ""}
+            </div>
+            \${notice}
+          </div>
+        \`;
+      }
+      container.innerHTML = html;
+    }
+
+    async function jobRequest(url, options) {
+      const res = await fetch(url, options);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+      return data;
+    }
+
+    async function stopBgJob(id) {
+      const job = allJobs.find(j => j.id === id);
+      if (!confirm(t("jobStopConfirm", { num: job ? job.seq : "?", title: job ? job.title : id }))) return;
+      try {
+        await jobRequest("/api/jobs/cancel?id=" + encodeURIComponent(id), { method: "POST" });
+        showToast(t("jobStoppedToast"), "success");
+        setTimeout(fetchJobs, 600);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    async function deleteBgJob(id) {
+      const job = allJobs.find(j => j.id === id);
+      if (!confirm(t("jobDeleteConfirm", { num: job ? job.seq : "?", title: job ? job.title : id }))) return;
+      try {
+        await jobRequest("/api/jobs?id=" + encodeURIComponent(id), { method: "DELETE" });
+        showToast(t("jobDeletedToast"), "success");
+        fetchJobs();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    function openJobLog(id) {
+      const job = allJobs.find(j => j.id === id);
+      jobLogId = id;
+      document.getElementById("jobLogSubtitle").textContent = job ? \`#\${job.seq} \${job.title} · \${job.id}\` : id;
+      document.getElementById("jobLogContent").textContent = "";
+      openModal("modalJobLog");
+      refreshJobLog(true);
+      if (jobLogTimer) clearInterval(jobLogTimer);
+      jobLogTimer = setInterval(() => refreshJobLog(false), 2000);
+    }
+
+    function closeJobLog() {
+      if (jobLogTimer) clearInterval(jobLogTimer);
+      jobLogTimer = null;
+      jobLogId = null;
+      closeModal("modalJobLog");
+    }
+
+    async function refreshJobLog(scrollToEnd) {
+      const modal = document.getElementById("modalJobLog");
+      // Closed with Escape or a backdrop click
+      if (!jobLogId || !modal?.classList.contains("show")) {
+        if (jobLogTimer) clearInterval(jobLogTimer);
+        jobLogTimer = null;
+        return;
+      }
+      try {
+        const data = await jobRequest("/api/jobs/log?lines=500&id=" + encodeURIComponent(jobLogId));
+        const pre = document.getElementById("jobLogContent");
+        const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+        pre.textContent = data.log || t("jobLogEmpty");
+        if (scrollToEnd || atEnd) pre.scrollTop = pre.scrollHeight;
+        const live = data.status === "running" || data.status === "queued";
+        document.getElementById("jobLogMeta").textContent = live ? t("jobLogLive") : t("jobStatus_" + data.status);
+        if (!live && jobLogTimer) {
+          clearInterval(jobLogTimer);
+          jobLogTimer = null;
+        }
+      } catch (err) {
+        document.getElementById("jobLogMeta").textContent = err.message;
+      }
     }
 
     // Scheduled Tasks

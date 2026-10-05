@@ -29,3 +29,14 @@ bots:
 #   minIntervalMs: 300000       # reject schedules firing more often than every 5 min
 #   maxJobsPerChat: 20
 #   timezone: "Asia/Shanghai"   # defaults to the system timezone
+
+# Optional: background jobs (long commands the agent hands off; it continues when they exit)
+# jobs:
+#   enabled: true
+#   maxConcurrent: 4            # jobs running at the same time, across all chats
+#   maxPerChat: 2               # running at the same time in one chat
+#   maxQueuedPerChat: 3         # waiting for a slot in one chat
+#   maxPerTurn: 2               # jobs one agent turn may start
+#   defaultTimeoutMs: 21600000  # 6 h per job
+#   maxTimeoutMs: 86400000      # longest timeout the agent may ask for (24 h)
+#   historyLimit: 200           # finished jobs kept, with their logs

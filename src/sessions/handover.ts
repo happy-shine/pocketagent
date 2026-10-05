@@ -29,9 +29,9 @@ export function buildContextHandoverPrimer(
   lines.push("");
 
   for (const turn of recentTurns) {
-    const roleTag = turn.role === "assistant" 
-      ? `Assistant (${turn.engine ?? "agent"})` 
-      : turn.author ? `User (${turn.author})` : "User";
+    const roleTag = turn.role === "assistant"
+      ? `Assistant (${turn.engine ?? "agent"})`
+      : turn.role === "system" ? "System" : turn.author ? `User (${turn.author})` : "User";
     const textSnippet = turn.text.length > 800 ? `${turn.text.slice(0, 800)}... [truncated]` : turn.text;
     lines.push(`--- ${roleTag} ---`);
     lines.push(textSnippet);

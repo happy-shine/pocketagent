@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
-import { ApiServer, type CronApiResult } from "../api/server.js";
+import { ApiServer, type CronApiResult, type JobApiResult } from "../api/server.js";
 import { BotInstance } from "../bot/bot-instance.js";
 import { setMessageStore } from "../channels/telegram/handlers.js";
 import { loadConfig, resolveBots, resolveDataDir, saveConfig, syncPairingToConfig } from "../config/loader.js";
@@ -14,6 +14,10 @@ import { Scheduler } from "../scheduler/scheduler.js";
 import { CronStore } from "../scheduler/store.js";
 import { cronSessionId, formatTime, parseScheduleInput, scheduleTimezone } from "../scheduler/schedule.js";
 import type { CronCreator, CronJob, CronJobPatch, CronSchedule } from "../scheduler/types.js";
+import { JobManager } from "../jobs/manager.js";
+import { JobStore } from "../jobs/store.js";
+import { jobDuration } from "../jobs/format.js";
+import { isEphemeralSessionId, isJobActive, type BackgroundJob } from "../jobs/types.js";
 
 export interface SessionSummary {
   botId: string;
@@ -107,6 +111,7 @@ export class Gateway {
   private configWatcher?: FSWatcher;
   private lastReloadTime = 0;
   private scheduler: Scheduler;
+  private jobManager: JobManager;
 
   constructor(config: GatewayConfig, log: Logger, configPath?: string) {
     this.config = config;
@@ -145,6 +150,16 @@ export class Gateway {
       },
     });
 
+    this.jobManager = new JobManager({
+      store: new JobStore(join(this.dataDir, "jobs")),
+      log,
+      getSettings: () => this.config.jobs,
+      onFinish: async (job) => {
+        const bot = this.bots.get(job.botId);
+        return bot ? bot.handleJobFinished(job) : "failed";
+      },
+    });
+
     const botConfigs = resolveBots(config);
     for (const botConfig of botConfigs) {
       const bot = new BotInstance({
@@ -155,6 +170,7 @@ export class Gateway {
         dataDir: this.dataDir,
         log,
         scheduler: this.scheduler,
+        jobs: this.jobManager,
       });
       this.bots.set(bot.botId, bot);
     }
@@ -210,6 +226,23 @@ export class Gateway {
         runs: (id, limit) => (this.scheduler.get(id) ? this.scheduler.listRuns(id, limit) : null),
         timezone: () => this.scheduler.timezone(),
       },
+      jobs: {
+        list: (filter) => this.jobManager.list(filter).map((job) => this.toJobView(job)),
+        get: (id) => {
+          const job = this.jobManager.get(id);
+          return job ? { ...this.toJobView(job), log_tail: this.jobManager.readLog(job.id, 100, 20_000) } : null;
+        },
+        log: (id, lines) => {
+          const job = this.jobManager.get(id);
+          return job ? { log: this.jobManager.readLog(job.id, lines, 200_000), status: job.status } : null;
+        },
+        create: (body, callerSessionId) => this.createJob(body, callerSessionId),
+        cancel: (id, callerSessionId) => this.cancelJob(id, callerSessionId),
+        remove: (id) => {
+          const res = this.jobManager.remove(id);
+          return res.ok ? { ok: true } : { ok: false, error: res.error, status: res.error === "Job not found" ? 404 : 400 };
+        },
+      },
     });
     await this.apiServer.start();
 
@@ -222,6 +255,7 @@ export class Gateway {
     this.syncPeerBots();
 
     this.scheduler.start();
+    this.jobManager.start();
     this.startConfigWatcher();
     this.log.info("PocketAgent Gateway running successfully");
   }
@@ -295,6 +329,7 @@ export class Gateway {
             dataDir: this.dataDir,
             log: this.log,
             scheduler: this.scheduler,
+            jobs: this.jobManager,
           });
           await newBot.start();
           this.bots.set(newBot.botId, newBot);
@@ -314,6 +349,7 @@ export class Gateway {
 
       this.config = freshConfig;
       this.scheduler.refresh();
+      this.jobManager.refresh();
       this.log.info({ changes }, "Config hot-reloaded successfully");
       return { ok: true, changes };
     } catch (err) {
@@ -738,6 +774,88 @@ export class Gateway {
     });
   }
 
+  private toJobView(job: BackgroundJob) {
+    const duration = jobDuration(job);
+    return {
+      ...job,
+      number: job.seq,
+      bot_name: this.bots.get(job.botId)?.name,
+      elapsed_seconds: duration !== undefined ? Math.round(duration / 1000) : undefined,
+      last_line: job.status === "running" ? this.jobManager.lastLine(job.id) : undefined,
+      log_path: this.jobManager.logPath(job.id),
+    };
+  }
+
+  /**
+   * Jobs are started by the CLI while it handles a chat message, so a job belongs to that message's sender,
+   * and its result is sent back to that message's session. Scheduled runs and side questions are recognized
+   * by their session header and refused: their sessions are gone by the time a job finishes.
+   */
+  private createJob(body: Record<string, unknown>, callerSessionId?: string): JobApiResult {
+    if (callerSessionId && isEphemeralSessionId(callerSessionId)) {
+      return { ok: false, status: 409, error: "Scheduled runs and side questions cannot start background jobs; run the command directly" };
+    }
+    const botId = optionalString(body.bot_id);
+    const chatId = optionalString(body.chat_id);
+    if (!botId || !chatId) return { ok: false, error: "Missing bot_id or chat_id" };
+    const bot = this.bots.get(botId);
+    if (!bot) return { ok: false, error: `Unknown bot_id: ${botId}`, status: 404 };
+    const chat = bot.getChatInfo(chatId);
+    if (!chat) return { ok: false, error: `Bot "${bot.name}" has no conversation with chat_id ${chatId}`, status: 404 };
+    const turn = bot.getTurnSender(chatId);
+    if (!turn) {
+      return { ok: false, status: 409, error: "Background jobs can only be started while handling a chat message" };
+    }
+    const settings = this.jobManager.settings();
+    if (turn.jobsStarted >= settings.maxPerTurn) {
+      return {
+        ok: false,
+        status: 429,
+        error: `At most ${settings.maxPerTurn} background jobs per message. Run shorter commands directly instead.`,
+      };
+    }
+
+    const res = this.jobManager.create({
+      botId,
+      chatId,
+      channelType: chat.channelType,
+      isGroup: chat.isGroup,
+      title: optionalString(body.title) ?? "",
+      command: typeof body.command === "string" ? body.command : "",
+      cwd: optionalString(body.cwd) ?? bot.getSessionWorkspace(turn.sessionId) ?? "",
+      then: optionalString(body.then),
+      requester: { senderId: turn.senderId || undefined, senderName: turn.senderName || undefined },
+      originMessageId: turn.messageId || undefined,
+      sessionId: turn.sessionId,
+      timeoutMs: minutesToMs(body.timeout_minutes),
+    });
+    if (!res.job) return { ok: false, error: res.error };
+    turn.jobsStarted += 1;
+    return { ok: true, job: this.toJobView(res.job) };
+  }
+
+  /** CLIs (which send the session header) may stop their requester's jobs; the local dashboard may stop any. */
+  private cancelJob(id: string, callerSessionId?: string): JobApiResult {
+    if (callerSessionId && isEphemeralSessionId(callerSessionId)) {
+      return { ok: false, status: 403, error: "Scheduled runs and side questions cannot stop background jobs" };
+    }
+    const job = id ? this.jobManager.get(id) : undefined;
+    if (!job) return { ok: false, error: "Job not found", status: 404 };
+    if (!isJobActive(job)) return { ok: false, error: `Job #${job.seq} already finished (${job.status})` };
+
+    let by = "dashboard";
+    if (callerSessionId) {
+      const bot = this.bots.get(job.botId);
+      const turn = bot?.getTurnSender(job.chatId);
+      if (bot && turn && turn.senderId !== job.requester.senderId && !bot.canManageCron(turn.senderId, job.chatId, job.isGroup)) {
+        return { ok: false, error: `${turn.senderName} is not allowed to stop job #${job.seq}`, status: 403 };
+      }
+      by = turn?.senderName || "agent";
+    }
+    const res = this.jobManager.cancel(job.id, by);
+    return res.ok ? { ok: true, job: this.toJobView(job) } : { ok: false, error: res.error };
+  }
+
   private startConfigWatcher(): void {
     if (!existsSync(this.configPath)) return;
     try {
@@ -756,6 +874,8 @@ export class Gateway {
   async stop(): Promise<void> {
     this.log.info("Stopping PocketAgent Gateway...");
     this.scheduler.stop();
+    // Running jobs keep going and are picked up again on the next start
+    this.jobManager.stop();
     if (this.configWatcher) {
       this.configWatcher.close();
     }

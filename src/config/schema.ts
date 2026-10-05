@@ -97,6 +97,18 @@ const schedulerSchema = z.object({
   timezone: z.string().optional(), // IANA name; defaults to the system timezone
 });
 
+const jobsSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxConcurrent: z.number().int().positive().default(4), // background jobs running at once, across all chats
+  maxPerChat: z.number().int().positive().default(2), // running at once in one chat
+  maxQueuedPerChat: z.number().int().nonnegative().default(3), // waiting for a slot in one chat
+  maxPerTurn: z.number().int().positive().default(2), // jobs one agent turn may start
+  defaultTimeoutMs: z.number().int().positive().default(6 * 60 * 60 * 1000),
+  maxTimeoutMs: z.number().int().positive().default(24 * 60 * 60 * 1000),
+  historyLimit: z.number().int().positive().default(200), // finished jobs kept, with their logs
+  pollIntervalMs: z.number().int().positive().default(2000), // how often running jobs are checked
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -177,6 +189,7 @@ export const configSchema = z.preprocess((input) => {
   engines: enginesSchema.default(enginesSchema.parse({})),
   auth: authSchema.default(authSchema.parse({})),
   scheduler: schedulerSchema.default(schedulerSchema.parse({})),
+  jobs: jobsSchema.default(jobsSchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));

@@ -47,7 +47,7 @@ export class AgyEngineAdapter implements EngineAdapter {
     const sessionDir = join(
       this.config.workspaceDir,
       botId,
-      `${safeChatId}_${session.sessionId}`,
+      `${safeChatId}_${session.workspaceId ?? session.sessionId}`,
     );
     mkdirSync(sessionDir, { recursive: true });
 
@@ -60,6 +60,7 @@ export class AgyEngineAdapter implements EngineAdapter {
       channelType: session.channelType,
       isGroup: Boolean(session.isGroup),
       identity,
+      backgroundJobs: this.config.backgroundJobs,
     });
     if (systemParts.length > 0) {
       const content = systemParts.join("\n\n---\n\n");
@@ -104,7 +105,7 @@ export class AgyEngineAdapter implements EngineAdapter {
     const proc = spawn(this.config.binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
     });
 
     const ep: EngineProcess = {

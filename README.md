@@ -176,9 +176,23 @@ pa pairing approve 123456
 | `/btw <question>` | Ask a quick side question without interrupting active tasks |
 | `/stop` | Abort the current running CLI turn |
 | `/cron` | List scheduled tasks with Run / Pause / Resume buttons; `/cron rm <n>` deletes one |
+| `/jobs` | List background jobs with their latest output and Stop / Log buttons; `/jobs log\|stop <n>` |
 | `/help` | Display command help |
 
 ---
+
+## Background Jobs
+
+A chat runs one turn at a time, so while the agent waits on a long command (a 40 GB download, a training run) the whole group waits with it. Instead, the agent hands such a command to the gateway as a **background job** and ends its turn right away:
+
+1. The gateway runs the command itself, detached from the CLI, writing its output to a log.
+2. The chat is free for everyone in the meantime.
+3. When the command exits, the gateway sends the exit code and the end of the output back into the same conversation. The agent picks up where it left off (verify, extract, report...) and replies to the original message, @mentioning whoever asked.
+
+- **Only for genuinely long work**: the system prompt tells the agent to use it only for a single command it expects to run for more than 5 minutes, based on concrete evidence. Normal commands still run directly. The gateway also allows at most 2 jobs per message, and only from a live chat turn (not from scheduled runs or `/btw`). A job that turns out to take under a minute is pointed out to the agent in the follow-up.
+- **Manage them anywhere**: `/jobs` in chat (elapsed time, latest output line such as download progress, Stop / Log buttons), or the **Background Jobs** page of the dashboard (live log viewer, stop, delete). The requester or a trusted user can stop a job, which kills it with everything it started.
+- **Robust**: jobs survive `pa restart`. The gateway reattaches to running ones and reports those that finished while it was down. Defaults: 2 running per chat (3 more queued), 4 overall, 6 h time limit.
+- Records and logs live in `~/.pocketagent/jobs/`. Optional tuning goes in a `jobs:` block in `config.yaml` (see `config.example.yaml`).
 
 ## Scheduled Tasks
 

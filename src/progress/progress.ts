@@ -32,6 +32,10 @@ const SPINNER_VERBS = [
   "Synthesizing", "Thinking", "Tinkering", "Vibing", "Working",
 ];
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function randomVerb(): string {
   return SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)];
 }
@@ -121,20 +125,34 @@ export class ProgressTracker {
     return this.messageId;
   }
 
-  async finish(finalText: string, buttons?: string[]): Promise<void> {
+  /**
+   * Posts the final answer, replacing the progress message. With `mention`, the answer starts by mentioning
+   * that user and is sent as a new message, because mentions added by an edit do not notify anyone.
+   */
+  async finish(finalText: string, buttons?: string[], opts: { mention?: { id: string; name: string } } = {}): Promise<void> {
     this.done = true;
     this.stop();
     await this.pendingFlush;
 
     const isTelegram = this.channel.type === "telegram";
+    const { mention } = opts;
     let textToSend = finalText;
     let parseMode: "HTML" | undefined;
     let plainFallback: string | undefined;
 
     if (isTelegram) {
       textToSend = markdownToTelegramHtml(finalText);
+      if (mention) textToSend = `<a href="tg://user?id=${escapeHtml(mention.id)}">${escapeHtml(mention.name)}</a>\n${textToSend}`;
       parseMode = "HTML";
       plainFallback = stripHtml(textToSend);
+    } else if (mention) {
+      textToSend = `<@${mention.id}>\n${finalText}`;
+    }
+
+    if (mention && this.messageId) {
+      const progressId = this.messageId;
+      this.messageId = null;
+      await this.channel.deleteMessage?.(this.chatId, progressId).catch(() => {});
     }
 
     if (this.messageId) {

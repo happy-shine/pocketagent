@@ -368,7 +368,8 @@ export class DiscordAdapter implements ChannelAdapter {
 
       let matchedHandler: ((ctx: any) => Promise<void>) | undefined;
       for (const [prefix, handler] of this.callbackHandlers) {
-        if (customId.startsWith(prefix)) {
+        // Callback data is "<prefix>:<args>"; a bare prefix match would also catch AI-suggested buttons like "switch"
+        if (customId === prefix || customId.startsWith(`${prefix}:`)) {
           matchedHandler = handler;
           break;
         }
@@ -379,6 +380,7 @@ export class DiscordAdapter implements ChannelAdapter {
           data: customId,
           chatId: btnInteraction.channelId,
           senderId: btnInteraction.user.id,
+          senderName: btnInteraction.user.displayName || btnInteraction.user.username,
           editMessageText: async (newText: string) => {
             await btnInteraction.update({
               content: newText,
@@ -728,6 +730,10 @@ export class DiscordAdapter implements ChannelAdapter {
         .setName("cron")
         .setDescription("List and manage scheduled tasks")
         .addStringOption((opt) => opt.setName("args").setDescription("list | add <schedule> | <prompt> | run|pause|resume|rm <number>").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("jobs")
+        .setDescription("List background jobs (long commands the agent handed off) and stop them or view their logs")
+        .addStringOption((opt) => opt.setName("args").setDescription("stop|log <number>").setRequired(false)),
       new SlashCommandBuilder()
         .setName("help")
         .setDescription("Show command help message"),

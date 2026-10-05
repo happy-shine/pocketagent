@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -10,6 +11,7 @@ import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
 import { EngineManager } from "../engines/manager.js";
 import type { EngineType, ModelInfo, EffortInfo } from "../engines/types.js";
 import { ProgressTracker } from "../progress/progress.js";
+import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 import { SessionManager } from "../sessions/manager.js";
 import { SessionStore } from "../sessions/store.js";
 import type { MessageStore } from "../sessions/message-store.js";
@@ -25,6 +27,9 @@ import {
   scheduleTimezone,
 } from "../scheduler/schedule.js";
 import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/types.js";
+import type { JobManager } from "../jobs/manager.js";
+import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration } from "../jobs/format.js";
+import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
 
 const SESSIONS_PER_PAGE = 10;
 
@@ -34,6 +39,16 @@ interface TurnResponse {
   finalText: string;
   isError: boolean;
   errorMessage?: string;
+}
+
+/** The chat turn in progress, which API calls made by the CLI during it are attributed to. */
+export interface TurnInfo {
+  senderId: string;
+  senderName: string;
+  messageId: string;
+  sessionId: string;
+  // Background jobs started during this turn, to cap how many one message can start
+  jobsStarted: number;
 }
 
 const CRON_STATUS_LABELS: Record<string, string> = {
@@ -79,8 +94,11 @@ export class BotInstance {
   private chatQueues = new Map<string, Promise<void>>();
   private peerBots: Array<{ name: string; username: string }> = [];
   private scheduler?: Scheduler;
-  // Sender of the turn currently running per chat, used to attribute API calls the CLI makes during that turn
-  private turnSenders = new Map<string, { senderId: string; senderName: string }>();
+  private jobManager?: JobManager;
+  // Chats with a turn running right now
+  private busyChats = new Set<string>();
+  // Turn currently running per chat, used to attribute API calls the CLI makes during that turn
+  private turnSenders = new Map<string, TurnInfo>();
 
   constructor(opts: {
     botConfig: ResolvedBotConfig;
@@ -90,10 +108,12 @@ export class BotInstance {
     dataDir: string;
     log: Logger;
     scheduler?: Scheduler;
+    jobs?: JobManager;
   }) {
     this.config = opts.botConfig;
     this.engineManager = opts.engineManager;
     this.scheduler = opts.scheduler;
+    this.jobManager = opts.jobs;
     this.messageStore = opts.messageStore;
     this.dataDir = opts.dataDir;
     this.log = opts.log.child({ bot: opts.botConfig.name, botId: opts.botConfig.botId });
@@ -149,8 +169,18 @@ export class BotInstance {
     return this.pairingManager.listPending();
   }
 
-  getTurnSender(chatId: string): { senderId: string; senderName: string } | undefined {
+  getTurnSender(chatId: string): TurnInfo | undefined {
     return this.turnSenders.get(chatId);
+  }
+
+  /** Working directory of a chat session, where background jobs run unless told otherwise. */
+  getSessionWorkspace(sessionId: string): string | undefined {
+    const session = this.sessionManager.findSession(sessionId);
+    if (!session) return undefined;
+    const live = this.engineManager.getWorkspaceDir(session.sessionId, session.activeEngine);
+    if (live) return live;
+    const safeChatId = session.chatId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    return join(this.dataDir, "workspaces", this.botId, `${safeChatId}_${session.workspaceId ?? session.sessionId}`);
   }
 
   /** Chat details as recorded on its sessions; undefined if the bot has never talked in that chat. */
@@ -278,6 +308,7 @@ export class BotInstance {
     channel.onCommand("btw", (msg) => this.handleBtw(msg, channel));
     channel.onCommand("stop", (msg) => this.handleStop(msg, channel));
     channel.onCommand("cron", (msg) => this.handleCron(msg, channel));
+    channel.onCommand("jobs", (msg) => this.handleJobs(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
   }
 
@@ -407,6 +438,26 @@ export class BotInstance {
       try {
         await ctx.editMessageText(reply, { reply_markup: { inline_keyboard: [] } });
       } catch {}
+    });
+
+    // Background job buttons: job:<stop|log>:<jobId>
+    channel.onCallback("job", async (ctx) => {
+      const data: string = ctx.data ?? ctx.callbackQuery?.data ?? "";
+      const [, action, jobId] = data.split(":");
+      const chatId = String(ctx.chatId ?? ctx.callbackQuery?.message?.chat?.id ?? "");
+      const senderId = String(ctx.from?.id ?? ctx.senderId ?? "");
+      const senderName = String(ctx.from?.first_name ?? ctx.from?.username ?? ctx.senderName ?? senderId);
+      const job = jobId ? this.jobManager?.get(jobId) : undefined;
+      if (!job || job.botId !== this.botId || job.chatId !== chatId) return;
+
+      if (action === "log") {
+        await this.postJobLog(job, channel);
+      } else if (action === "stop") {
+        const reply = this.stopJob(job, senderId, senderName);
+        try {
+          await ctx.editMessageText(reply, { reply_markup: { inline_keyboard: [] } });
+        } catch {}
+      }
     });
   }
 
@@ -660,7 +711,7 @@ export class BotInstance {
       defaultEngine: this.config.engine,
     });
 
-    const statusText = [
+    const statusText: string[] = [
       `*PocketAgent Status*`,
       `• Bot: *${this.name}*`,
       `• Active Engine: *${session.activeEngine.toUpperCase()}*`,
@@ -669,9 +720,11 @@ export class BotInstance {
       `• Session: #${session.sessionNum} (${session.title || "Untitled"})`,
       `• Context Turns: ${session.turns?.length ?? 0}`,
       `• Workspace: \`${this.engineManager.getWorkspaceDir(session.sessionId, session.activeEngine) || "Shared"}\``,
-    ].join("\n");
+    ];
+    const jobs = this.jobManager?.counts(this.botId, msg.chatId);
+    if (jobs && jobs.running + jobs.queued > 0) statusText.push(`• Background jobs: ${jobs.running} running, ${jobs.queued} queued (see /jobs)`);
 
-    await channel.send({ chatId: msg.chatId, text: statusText });
+    await channel.send({ chatId: msg.chatId, text: statusText.join("\n") });
   }
 
   private async handleNew(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
@@ -801,9 +854,11 @@ export class BotInstance {
     });
 
     const sent = this.engineManager.sendControl(session.sessionId, session.activeEngine, { subtype: "interrupt" });
+    const jobs = this.jobManager?.counts(this.botId, msg.chatId);
+    const hint = jobs && jobs.running + jobs.queued > 0 ? "\nBackground jobs keep running; stop them from /jobs." : "";
     await channel.send({
       chatId: msg.chatId,
-      text: sent ? "Task interrupted." : "No active running task to stop.",
+      text: (sent ? "Task interrupted." : "No active running task to stop.") + hint,
     });
   }
 
@@ -817,11 +872,15 @@ export class BotInstance {
       return;
     }
 
-    const session = this.sessionManager.resolve({
+    const chatSession = this.sessionManager.resolve({
       chatId: msg.chatId,
       channelType: msg.channelType,
       defaultEngine: this.config.engine,
     });
+    // A session's engine process handles one turn at a time; while a turn runs, answer from a side process
+    // that gets the recent conversation as context instead of interleaving with the running turn
+    const busy = this.busyChats.has(msg.chatId) || this.engineManager.isBusy(chatSession.sessionId, chatSession.activeEngine);
+    const session = busy ? this.forkSession(chatSession, `btw-${randomBytes(4).toString("hex")}`) : chatSession;
 
     const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();
@@ -843,7 +902,34 @@ export class BotInstance {
     } catch (err) {
       tracker.stop();
       await channel.send({ chatId: msg.chatId, text: `Error: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      if (session !== chatSession) this.engineManager.release(session.sessionId, session.activeEngine);
     }
+  }
+
+  /** A one-off copy of a chat session to work beside it: same engine settings and workspace, recent turns as context. */
+  private forkSession(parent: Session, sessionId: string): Session {
+    const engine = parent.activeEngine;
+    const model = parent.engineModels?.[engine] ?? parent.model;
+    const effort = parent.engineEfforts?.[engine] ?? parent.effort;
+    return {
+      sessionId,
+      chatId: parent.chatId,
+      channelType: parent.channelType,
+      activeEngine: engine,
+      model,
+      effort,
+      engineModels: model ? { [engine]: model } : {},
+      engineEfforts: effort ? { [engine]: effort } : {},
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      title: parent.title,
+      isActive: false,
+      sessionNum: 0,
+      isGroup: parent.isGroup,
+      turns: parent.turns.map((t) => ({ ...t })),
+      workspaceId: parent.workspaceId ?? parent.sessionId,
+    };
   }
 
   private async handleCron(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
@@ -1077,6 +1163,187 @@ export class BotInstance {
     await channel?.send({ chatId, text });
   }
 
+  private async handleJobs(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+    const access = this.checkAccess(msg);
+    if (!access.allowed) return;
+    const manager = this.jobManager;
+    if (!manager) {
+      await channel.send({ chatId: msg.chatId, text: "Background jobs are not available." });
+      return;
+    }
+
+    const input = msg.text.trim();
+    const sub = input.split(/\s+/)[0]?.toLowerCase() ?? "";
+    const arg = input.slice(sub.length).trim().replace(/^#/, "");
+    if (sub === "" || sub === "list") {
+      await this.sendJobList(msg.chatId, channel);
+      return;
+    }
+
+    const actions: Record<string, "stop" | "log"> = { stop: "stop", cancel: "stop", kill: "stop", log: "log", logs: "log" };
+    const action = actions[sub];
+    if (!action || !arg) {
+      await channel.send({
+        chatId: msg.chatId,
+        text: [
+          "Usage:",
+          "• `/jobs` — background jobs in this chat",
+          "• `/jobs log <number>` — latest output of a job",
+          "• `/jobs stop <number>` — stop a running or queued job",
+          "",
+          "_Background jobs are long commands (big downloads, training runs, ...) the agent hands off so the chat stays free; it continues when they finish._",
+        ].join("\n"),
+      });
+      return;
+    }
+    const seq = Number(arg);
+    const job = Number.isInteger(seq) ? manager.findBySeq(this.botId, msg.chatId, seq) : undefined;
+    if (!job) {
+      await channel.send({ chatId: msg.chatId, text: `No background job #${arg} in this chat. Use /jobs to list them.` });
+      return;
+    }
+    if (action === "log") await this.postJobLog(job, channel);
+    else await channel.send({ chatId: msg.chatId, text: this.stopJob(job, msg.senderId, msg.senderName) });
+  }
+
+  private async sendJobList(chatId: string, channel: ChannelAdapter): Promise<void> {
+    const manager = this.jobManager!;
+    const jobs = manager.list({ botId: this.botId, chatId });
+    if (jobs.length === 0) {
+      await channel.send({
+        chatId,
+        text: "No background jobs in this chat.\nWhen a command will run for a long time (a big download, a training run), the agent hands it off as a background job so the chat stays free, and continues once it finishes.",
+      });
+      return;
+    }
+
+    const active = jobs.filter(isJobActive);
+    const recent = jobs.filter((j) => !isJobActive(j)).slice(-5).reverse();
+    const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+    const lines: string[] = ["*Background jobs*", ""];
+    for (const job of active) {
+      const who = job.requester.senderName ? ` · ${job.requester.senderName}` : "";
+      const state = job.status === "running" ? `running ${formatDuration(jobDuration(job) ?? 0)}` : "queued";
+      lines.push(`*#${job.seq} ${job.title}* [${state}]${who}`);
+      lines.push(`\`${clip(job.command.replace(/\s+/g, " "), 80)}\``);
+      const last = job.status === "running" ? manager.lastLine(job.id) : undefined;
+      if (last) lines.push(`Now: ${clip(last, 120)}`);
+    }
+    if (active.length === 0) lines.push("Nothing running right now.");
+    if (recent.length > 0) {
+      lines.push("", "*Recent*");
+      for (const job of recent) {
+        const took = jobDuration(job);
+        lines.push(`#${job.seq} ${job.title} — ${describeJobOutcome(job)}${took !== undefined ? ` in ${formatDuration(took)}` : ""}`);
+      }
+    }
+
+    // At most five rows, which is all Discord allows
+    const buttons: InlineButton[][] = [];
+    const stops = active.map((j) => ({ text: `Stop #${j.seq}`, data: `job:stop:${j.id}` }));
+    const logs = [...active, ...recent].slice(0, 9).map((j) => ({ text: `Log #${j.seq}`, data: `job:log:${j.id}` }));
+    for (const row of [stops, logs]) {
+      for (let i = 0; i < row.length; i += 3) buttons.push(row.slice(i, i + 3));
+    }
+
+    const text = lines.join("\n");
+    if (channel.sendWithButtons) {
+      await channel.sendWithButtons(chatId, text, buttons.slice(0, 5));
+    } else {
+      await channel.send({ chatId, text: `${text}\n\nUse \`/jobs log|stop <number>\`.` });
+    }
+  }
+
+  /** The requester may stop their own job; in groups, trusted users may stop anyone's. */
+  private stopJob(job: BackgroundJob, senderId: string, senderName: string): string {
+    const isRequester = Boolean(job.requester.senderId) && senderId === job.requester.senderId;
+    if (!isRequester && !this.canManageCron(senderId, job.chatId, job.isGroup)) {
+      return `Only ${job.requester.senderName ?? "the requester"} or an authorized user can stop job #${job.seq}.`;
+    }
+    const res = this.jobManager!.cancel(job.id, senderName);
+    if (!res.ok) return `Could not stop job #${job.seq}: ${res.error}`;
+    return job.status === "running" ? `Stopping job #${job.seq}: ${job.title}` : `Stopped job #${job.seq}: ${job.title}`;
+  }
+
+  private async postJobLog(job: BackgroundJob, channel: ChannelAdapter): Promise<void> {
+    const tail = this.jobManager!.readLog(job.id, 30, 3000).replace(/```/g, "'''") || "(no output yet)";
+    const state = isJobActive(job) ? job.status : describeJobOutcome(job);
+    const md = `**Job #${job.seq} ${job.title}** (${state})\n\`\`\`\n${tail}\n\`\`\``;
+    if (channel.type === "telegram") {
+      const html = markdownToTelegramHtml(md);
+      await channel.send({ chatId: job.chatId, text: html, parseMode: "HTML", plainFallback: stripHtml(html) });
+    } else {
+      await channel.send({ chatId: job.chatId, text: md });
+    }
+  }
+
+  /**
+   * The callback for a finished job: queues a turn in the conversation that started it, telling the agent how
+   * the command ended so it can continue. The reply answers the original message and mentions the requester.
+   */
+  async handleJobFinished(job: BackgroundJob): Promise<JobCallbackState> {
+    // Whoever stopped it already saw the confirmation
+    if (job.status === "cancelled") return "skipped";
+    const channel = job.channelType === "discord" ? this.discord : this.telegram;
+    if (!channel) return "failed";
+
+    let state: JobCallbackState = "done";
+    await this.enqueueTurn(job.chatId, async () => {
+      try {
+        await this.runJobCallback(job, channel);
+      } catch (err) {
+        state = "failed";
+        this.log.error({ error: err, jobId: job.id }, "Background job follow-up failed");
+      }
+    });
+    return state;
+  }
+
+  private async runJobCallback(job: BackgroundJob, channel: ChannelAdapter): Promise<void> {
+    const manager = this.jobManager!;
+    // Continue the session that started the job, even if the chat has switched to another one since
+    const session =
+      (job.sessionId ? this.sessionManager.findSession(job.sessionId) : undefined) ??
+      this.sessionManager.resolve({
+        chatId: job.chatId,
+        channelType: job.channelType,
+        isGroup: job.isGroup,
+        defaultEngine: this.config.engine,
+        defaultModel: this.config.model,
+        defaultEffort: this.config.effort,
+      });
+    const prompt = buildJobCallbackPrompt(job, manager.readLog(job.id, 40, 4000), manager.logPath(job.id));
+    const outcome = `Background job #${job.seq} "${job.title}" ${describeJobOutcome(job)}`;
+    this.sessionManager.addTurn(session.sessionId, { role: "system", text: `[${outcome}]` });
+
+    // The follow-up acts for the requester, e.g. if it starts the next job of a pipeline
+    this.turnSenders.set(job.chatId, {
+      senderId: job.requester.senderId ?? "",
+      senderName: job.requester.senderName ?? "",
+      messageId: job.originMessageId ?? "",
+      sessionId: session.sessionId,
+      jobsStarted: 0,
+    });
+    const tracker = new ProgressTracker(channel, job.chatId, job.originMessageId);
+    tracker.start();
+    try {
+      const response = await this.collectResponse(session, prompt, tracker);
+      const { text, buttons } = extractButtons(response.text);
+      const reply = text || `${outcome}.${response.errorMessage ? `\n(Follow-up failed: ${response.errorMessage})` : ""}`;
+      this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: reply, engine: session.activeEngine });
+      session.lastEngine = session.activeEngine;
+      await this.sessionManager.flush(job.chatId);
+      const mention =
+        job.isGroup && job.requester.senderId ? { id: job.requester.senderId, name: job.requester.senderName || "requester" } : undefined;
+      await tracker.finish(reply, buttons, { mention });
+    } catch (err) {
+      tracker.stop();
+      throw err;
+    } finally {
+      this.turnSenders.delete(job.chatId);
+    }
+  }
+
   private buildCronSession(job: CronJob): Session {
     const engine = job.engine ?? this.config.engine;
     // The bot's model/effort defaults belong to its default engine
@@ -1160,6 +1427,7 @@ export class BotInstance {
       `• \`/btw <question>\` — Ask side question in parallel`,
       `• \`/stop\` — Interrupt current task`,
       `• \`/cron\` — List and manage scheduled tasks (or just ask: "every day at 8am ...")`,
+      `• \`/jobs\` — Background jobs (long commands running outside the chat): progress, logs, stop`,
       `• \`/help\` — Show this help message`,
       ``,
       `_Tip: Simply send any message, photo, or file to start coding!_`,
@@ -1205,14 +1473,24 @@ export class BotInstance {
       }
     }
 
-    const prevQueue = this.chatQueues.get(msg.chatId) ?? Promise.resolve();
+    await this.enqueueTurn(msg.chatId, () => this.processTurn(msg, channel));
+  }
+
+  /** Runs turns of a chat one at a time: its session has a single engine process. */
+  private enqueueTurn(chatId: string, run: () => Promise<void>): Promise<void> {
+    const prevQueue = this.chatQueues.get(chatId) ?? Promise.resolve();
     const nextQueue = prevQueue.then(async () => {
-      await this.processTurn(msg, channel);
+      this.busyChats.add(chatId);
+      try {
+        await run();
+      } finally {
+        this.busyChats.delete(chatId);
+      }
     }).catch((err) => {
       this.log.error({ error: err }, "Chat queue error");
     });
-    this.chatQueues.set(msg.chatId, nextQueue);
-    await nextQueue;
+    this.chatQueues.set(chatId, nextQueue);
+    return nextQueue;
   }
 
   private async processTurn(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
@@ -1263,7 +1541,13 @@ export class BotInstance {
       author: msg.senderName,
     });
 
-    this.turnSenders.set(msg.chatId, { senderId: msg.senderId, senderName: msg.senderName });
+    this.turnSenders.set(msg.chatId, {
+      senderId: msg.senderId,
+      senderName: msg.senderName,
+      messageId: msg.messageId,
+      sessionId: session.sessionId,
+      jobsStarted: 0,
+    });
 
     const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();

@@ -58,6 +58,22 @@ export interface ApiServerConfig {
     runs: (id: string, limit?: number) => unknown[] | null;
     timezone: () => string;
   };
+  jobs?: {
+    list: (filter: { botId?: string; chatId?: string; activeOnly?: boolean }) => unknown[];
+    get: (id: string) => unknown | null;
+    log: (id: string, lines: number) => { log: string; status: string } | null;
+    // callerSessionId comes from the X-PocketAgent-Session header that the CLIs' curl calls carry
+    create: (body: Record<string, unknown>, callerSessionId?: string) => JobApiResult;
+    cancel: (id: string, callerSessionId?: string) => JobApiResult;
+    remove: (id: string) => JobApiResult;
+  };
+}
+
+export interface JobApiResult {
+  ok: boolean;
+  error?: string;
+  status?: number;
+  job?: unknown;
 }
 
 export interface CronApiResult {
@@ -173,6 +189,8 @@ export class ApiServer {
         await this.handleDeleteWorkspace(req, res, url);
       } else if (url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/")) {
         await this.handleCron(req, res, url);
+      } else if (url.pathname === "/api/jobs" || url.pathname.startsWith("/api/jobs/")) {
+        await this.handleJobs(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -182,6 +200,11 @@ export class ApiServer {
       }
     } catch (err) {
       this.log.error({ error: err instanceof Error ? err.message : String(err) }, "API error");
+      // A handler may fail after it started responding; writing headers again would throw and crash the gateway
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Internal server error" }));
     }
@@ -528,6 +551,65 @@ export class ApiServer {
       }
     } else {
       send(404, { ok: false, error: `No such cron endpoint: ${route}` });
+    }
+  }
+
+  private async handleJobs(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const jobs = this.config.jobs;
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    };
+    const sendResult = (result: JobApiResult) => {
+      const { status, ...payload } = result;
+      send(result.ok ? 200 : (status ?? 400), payload);
+    };
+    if (!jobs) {
+      send(503, { ok: false, error: "Background jobs not available" });
+      return;
+    }
+
+    let body: Record<string, unknown> = {};
+    if (req.method === "POST") {
+      const raw = await readBody(req);
+      if (raw.trim()) {
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          send(400, { ok: false, error: "Invalid JSON body" });
+          return;
+        }
+      }
+    }
+    const id = url.searchParams.get("id") ?? (typeof body.id === "string" ? body.id : "");
+    const route = `${req.method} ${url.pathname}`;
+    const header = req.headers["x-pocketagent-session"];
+    const callerSessionId = (Array.isArray(header) ? header[0] : header)?.trim() || undefined;
+
+    if (route === "GET /api/jobs" && id) {
+      const job = jobs.get(id);
+      if (job) send(200, { ok: true, job });
+      else send(404, { ok: false, error: "Job not found" });
+    } else if (route === "GET /api/jobs") {
+      const list = jobs.list({
+        botId: url.searchParams.get("bot_id") ?? undefined,
+        chatId: url.searchParams.get("chat_id") ?? undefined,
+        activeOnly: url.searchParams.get("active") === "1" || url.searchParams.get("active") === "true",
+      });
+      send(200, { ok: true, jobs: list });
+    } else if (route === "GET /api/jobs/log") {
+      const lines = Math.min(Math.max(Number(url.searchParams.get("lines")) || 200, 1), 2000);
+      const log = jobs.log(id, lines);
+      if (log) send(200, { ok: true, ...log });
+      else send(404, { ok: false, error: "Job not found" });
+    } else if (route === "POST /api/jobs") {
+      sendResult(jobs.create(body, callerSessionId));
+    } else if (route === "POST /api/jobs/cancel") {
+      sendResult(jobs.cancel(id, callerSessionId));
+    } else if (route === "DELETE /api/jobs") {
+      sendResult(jobs.remove(id));
+    } else {
+      send(404, { ok: false, error: `No such jobs endpoint: ${route}` });
     }
   }
 

@@ -43,6 +43,8 @@ export interface EngineRuntimeConfig {
   apiPort: number;
   agentsDir: string;
   customModels?: ModelInfo[];
+  // Offer the background job skill to chat sessions
+  backgroundJobs?: boolean;
   codex?: {
     sandbox: "read-only" | "workspace-write" | "danger-full-access";
     approvalPolicy: "untrusted" | "on-request" | "never";

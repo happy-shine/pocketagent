@@ -56,7 +56,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     const sessionDir = join(
       this.config.workspaceDir,
       botId,
-      `${safeChatId}_${session.sessionId}`,
+      `${safeChatId}_${session.workspaceId ?? session.sessionId}`,
     );
     mkdirSync(sessionDir, { recursive: true });
 
@@ -129,6 +129,7 @@ export class GrokEngineAdapter implements EngineAdapter {
         channelType: session.channelType,
         isGroup: Boolean(session.isGroup),
         identity,
+        backgroundJobs: this.config.backgroundJobs,
       });
       if (systemParts.length > 0) rules = systemParts.join("\n\n---\n\n");
 
@@ -185,7 +186,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     const proc = spawn(spawnCmd.cmd, spawnCmd.args, {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: ep.workspaceDir,
-      env: { ...process.env },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
     });
     ep.process = proc;
 

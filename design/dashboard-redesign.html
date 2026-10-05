@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PocketAgent 控制台改版 · 设计稿 v1</title>
+<style>
+:root{--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Segoe UI","Microsoft YaHei",sans-serif;--mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#E6E3DD;font-family:var(--sans);color:#24221E;-webkit-font-smoothing:antialiased}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+a{color:inherit;text-decoration:none}
+
+/* ---------- canvas chrome ---------- */
+.cv-top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:20px;padding:10px 24px;background:rgba(230,227,221,.9);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid #D3CFC7}
+.cv-t{display:flex;flex-direction:column;line-height:1.3;flex:none}
+.cv-t b{font-size:14px;letter-spacing:-.01em}
+.cv-t span{font-size:11.5px;color:#7A756C}
+.cv-idx{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+.cv-idx a{font-size:12px;color:#4A4640;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.55);border:1px solid rgba(0,0,0,.06)}
+.cv-idx a:hover{background:#fff}
+.cv-z{display:flex;background:rgba(255,255,255,.6);border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:2px;flex:none}
+.cv-z button{border:0;background:transparent;font:500 12px var(--sans);padding:4px 10px;border-radius:6px;color:#57534B;cursor:pointer}
+.cv-z button.on{background:#fff;color:#1B1A17;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.canvas{padding:36px 32px 120px;zoom:var(--z,1);width:max-content}
+.bw{display:flex;gap:28px;align-items:flex-start;margin-bottom:64px;scroll-margin-top:80px}
+.bw-label{display:flex;align-items:baseline;gap:10px;margin:0 0 12px 4px}
+.bw-label b{font-size:15px;letter-spacing:-.01em;color:#24221E}
+.bw-label span{font:12px var(--mono);color:#8A857B}
+.board{width:1440px;height:900px;border-radius:14px;overflow:hidden;position:relative;box-shadow:0 0 0 1px rgba(0,0,0,.07),0 24px 60px -12px rgba(40,30,20,.22)}
+.board.auto{height:auto}
+.anno{width:340px;flex:none;padding-top:34px;font-size:13px;line-height:1.65;color:#3B3833}
+.anno h4{font-size:11.5px;letter-spacing:.06em;color:#8A857B;margin:20px 0 6px;font-weight:600}
+.anno h4:first-child{margin-top:0}
+.anno ul{margin:0;padding-left:18px}
+.anno li{margin:3px 0}
+.anno li::marker{color:#B5AFA4}
+.anno code{font:11.5px var(--mono);background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;color:#3B3833;white-space:nowrap}
+.anno p{margin:0}
+
+/* ---------- tokens ---------- */
+.app{--bg:#F4F3EF;--surface:#FFFFFF;--surface-2:#FAF9F6;--sunken:#F1EFEA;--hover:rgba(27,26,23,.04);--line:#E7E4DD;--line-2:#D7D3CA;--ink:#1B1A17;--ink-2:#55524B;--ink-3:#8E897F;--ink-4:#BAB5AB;
+  --brand:#E8641B;--brand-ink:#B5480C;--brand-soft:#FDEEE3;
+  --ok:#17834A;--ok-soft:#E4F3EA;--warn:#946000;--warn-soft:#FBF0D3;--warn-dot:#E0A01A;--err:#C93434;--err-soft:#FBE8E6;--run:#2160D8;--run-soft:#E6EEFC;--mute-soft:#EFEDE8;
+  --e-claude:#D97757;--e-codex:#0F9D76;--e-agy:#3F7FEA;--e-grok:#57534B;
+  --term:#17160F;--term-ink:#D9D6CC;--term-dim:#8C887C;
+  --sh-1:0 1px 2px rgba(27,26,23,.05);--sh-2:0 1px 2px rgba(27,26,23,.04),0 8px 24px -6px rgba(27,26,23,.10);--sh-3:0 24px 60px -12px rgba(27,26,23,.30),0 0 0 1px rgba(27,26,23,.06);
+  display:grid;grid-template-columns:224px minmax(0,1fr);height:100%;background:var(--bg);color:var(--ink);font:13px/1.5 var(--sans);position:relative}
+.app[data-theme=dark]{--bg:#111110;--surface:#191918;--surface-2:#1E1E1C;--sunken:#141413;--hover:rgba(255,255,255,.045);--line:#2A2927;--line-2:#3A3835;--ink:#EDECE7;--ink-2:#B4B1A9;--ink-3:#7F7C75;--ink-4:#5C5A55;
+  --brand:#F0782F;--brand-ink:#FF9D60;--brand-soft:rgba(240,120,47,.15);
+  --ok:#47C584;--ok-soft:rgba(71,197,132,.13);--warn:#E8AE45;--warn-soft:rgba(232,174,69,.13);--warn-dot:#E8AE45;--err:#F26B6B;--err-soft:rgba(242,107,107,.13);--run:#6E9DF3;--run-soft:rgba(110,157,243,.14);--mute-soft:rgba(255,255,255,.06);
+  --e-grok:#B4B1A9;--term:#0B0B0A;
+  --sh-1:0 1px 2px rgba(0,0,0,.35);--sh-2:0 1px 2px rgba(0,0,0,.3),0 8px 24px -6px rgba(0,0,0,.5);--sh-3:0 30px 70px -10px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.07)}
+.app.doc{display:block}
+
+/* ---------- shell ---------- */
+.side{display:flex;flex-direction:column;padding:12px 10px 10px;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 12px}
+.logo{width:28px;height:28px;border-radius:8px;background:var(--brand);display:grid;place-items:center;color:#fff;box-shadow:inset 0 -2px 0 rgba(0,0,0,.14)}
+.logo .i{width:17px;height:17px;stroke-width:2}
+.bn{font-weight:650;font-size:13.5px;letter-spacing:-.01em;line-height:1.2}
+.bs{font:11px var(--mono);color:var(--ink-3)}
+.sbtn{display:flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 9px;border:1px solid var(--line);background:var(--surface);border-radius:7px;color:var(--ink-3);font:12.5px var(--sans);margin:0 2px 6px;box-shadow:var(--sh-1)}
+.sbtn .i{width:14px;height:14px}
+.sbtn .kbd{margin-left:auto}
+.ng{margin-top:10px}
+.ng-t{font-size:11px;font-weight:600;color:var(--ink-3);padding:4px 10px;letter-spacing:.04em}
+.ni{display:flex;align-items:center;gap:9px;height:30px;padding:0 8px 0 10px;border-radius:7px;color:var(--ink-2);font-weight:500;margin:1px 0}
+.ni .i{width:16px;height:16px;color:var(--ink-3)}
+.ni.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1),0 0 0 1px var(--line)}
+.ni.on .i{color:var(--brand)}
+.nb{margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:18px;min-width:18px;justify-content:center;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.nb.err{background:var(--err-soft);color:var(--err)}
+.nb.warn{background:var(--warn-soft);color:var(--warn)}
+.nb.run{background:var(--run-soft);color:var(--run)}
+.nb.run::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.side-foot{margin-top:auto;padding:10px 6px 0;border-top:1px solid var(--line)}
+.hl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:550;padding:0 4px}
+.hl .muted{font-weight:400}
+.hs{font:11px var(--mono);color:var(--ink-3);padding:2px 4px 10px 18px}
+.fr{display:flex;gap:6px}
+.fr .seg{flex:1}
+.fr .seg button{flex:1;justify-content:center;padding:0 6px}
+.fr .seg .i{width:14px;height:14px}
+
+.main{margin:8px 8px 8px 0;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;position:relative;box-shadow:var(--sh-1)}
+.top{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px 0 22px;border-bottom:1px solid var(--line)}
+.crumb{display:flex;gap:7px;align-items:center;color:var(--ink-3);font-size:13px}
+.crumb b{color:var(--ink);font-weight:600}
+.crumb i{font-style:normal;color:var(--ink-4)}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:6px}
+.sync{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:7px;padding:0 6px}
+.body{flex:1;min-height:0;overflow:hidden;position:relative}
+.page{padding:22px 28px 28px;height:100%;overflow:hidden}
+.ph{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px}
+.ph h1{font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0;line-height:1.3}
+.ph p{margin:3px 0 0;color:var(--ink-3);font-size:13px}
+.ph .act{margin-left:auto;display:flex;gap:8px}
+
+/* ---------- components ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 12px;border-radius:7px;border:1px solid transparent;font:500 12.5px/1 var(--sans);color:var(--ink);background:transparent;cursor:pointer;white-space:nowrap;flex:none}
+.btn .i{width:15px;height:15px}
+.btn.primary{background:var(--ink);color:var(--surface);box-shadow:var(--sh-1)}
+.btn.outline{background:var(--surface);border-color:var(--line-2);box-shadow:var(--sh-1)}
+.btn.ghost{color:var(--ink-2)}
+.btn.brand{background:var(--brand);color:#fff;box-shadow:inset 0 -1px 0 rgba(0,0,0,.15)}
+.btn.danger{color:var(--err)}
+.btn.outline.danger{border-color:color-mix(in srgb,var(--err) 30%,var(--line-2))}
+.btn.sm{height:26px;padding:0 9px;font-size:12px;border-radius:6px}
+.btn.sm .i{width:14px;height:14px}
+.btn.xs{height:22px;padding:0 6px;font-size:11.5px;border-radius:5px}
+.btn.xs .i{width:13px;height:13px}
+.btn.icon{width:30px;padding:0}.btn.icon.sm{width:26px}.btn.icon.xs{width:22px}
+.btn[disabled]{opacity:.42}
+.kbd{display:inline-flex;align-items:center;height:18px;padding:0 5px;border-radius:4px;border:1px solid var(--line-2);border-bottom-width:2px;font:500 10.5px/1 var(--mono);color:var(--ink-3);background:var(--surface)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink-4);display:inline-block;flex:none}
+.dot.ok{background:var(--ok)}.dot.err{background:var(--err)}.dot.warn{background:var(--warn-dot)}.dot.run{background:var(--run)}
+.dot.pulse{box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px 0 6px;border-radius:999px;font-size:11.5px;font-weight:560;background:var(--mute-soft);color:var(--ink-2);white-space:nowrap;flex:none}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.err{background:var(--err-soft);color:var(--err)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.run{background:var(--run-soft);color:var(--run)}.pill.brand{background:var(--brand-soft);color:var(--brand-ink)}
+.pill.silent::before{background:transparent;box-shadow:inset 0 0 0 1.5px currentColor}
+.pill.nodot::before{display:none}
+.pill.nodot{padding:0 7px}
+.chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:5px;background:var(--sunken);border:1px solid var(--line);font-size:11.5px;color:var(--ink-2);white-space:nowrap;flex:none}
+.chip .i{width:12px;height:12px}
+.eng{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:560;color:var(--ink-2);white-space:nowrap;flex:none}
+.eng::before{content:"";width:8px;height:8px;border-radius:2.5px;background:var(--ec)}
+.eng.claude{--ec:var(--e-claude)}.eng.codex{--ec:var(--e-codex)}.eng.agy{--ec:var(--e-agy)}.eng.grok{--ec:var(--e-grok)}
+.chn{width:16px;height:16px;flex:none}
+.mono{font-family:var(--mono);font-size:11.5px}
+.muted{color:var(--ink-3)}
+.tnum{font-variant-numeric:tabular-nums}
+.input{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink-3);font-size:12.5px;min-width:0;box-shadow:var(--sh-1)}
+.input .i{width:14px;height:14px}
+.input.v{color:var(--ink)}
+.input.sm{height:28px}
+.select{justify-content:space-between}
+.select::after{content:"";width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(45deg) translate(-2px,-2px);flex:none}
+.seg{display:inline-flex;padding:2px;gap:2px;background:var(--sunken);border:1px solid var(--line);border-radius:8px;flex:none}
+.seg button{border:0;background:transparent;height:24px;padding:0 10px;border-radius:6px;font:500 12px var(--sans);color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.seg button i{font-style:normal;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1),0 0 0 1px var(--line)}
+.seg button.err i{color:var(--err);font-weight:600}
+.seg.sm button{height:22px;padding:0 8px;font-size:11.5px}
+.sw{width:28px;height:16px;border-radius:999px;background:var(--line-2);position:relative;flex:none;display:inline-block}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw.on{background:var(--brand)}.sw.on::after{left:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
+.card-h{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.card-h h3{margin:0;font-size:13px;font-weight:600}
+.card-h .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.sec-h{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.sec-h h3{margin:0;font-size:13px;font-weight:600}
+.sec-h .r{margin-left:auto}
+.cnt{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--sunken);border:1px solid var(--line);font-size:11px;color:var(--ink-2);font-weight:600}
+.lbl{font-size:12px;font-weight:550;color:var(--ink-2);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.hint{font-size:11.5px;color:var(--ink-3);margin-top:5px}
+.fld{margin-bottom:14px}
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--line)}
+.tabs a{padding:8px 0 9px;font-size:12.5px;font-weight:550;color:var(--ink-3);display:flex;gap:6px;align-items:center;margin-bottom:-1px}
+.tabs a i{font-style:normal;font-size:11px;color:var(--ink-3);font-weight:500}
+.tabs a.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--run-soft);border-top-color:var(--run);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:650;color:#fff;flex:none;background:hsl(var(--h,200) 45% 52%)}
+.av.bot{border-radius:8px;background:var(--brand)}
+.av.bot .i{width:16px;height:16px;stroke-width:2}
+
+/* markdown */
+.md{font-size:13px;line-height:1.65;color:var(--ink)}
+.md h3{font-size:13.5px;margin:2px 0 4px;font-weight:650}
+.md p{margin:4px 0}
+.md ul{margin:4px 0;padding-left:18px}
+.md li{margin:2px 0}
+.md li::marker{color:var(--ink-4)}
+.md strong{font-weight:620}
+.md code{font:12px var(--mono);background:var(--sunken);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.md blockquote{margin:6px 0;padding:2px 10px;border-left:3px solid var(--line-2);color:var(--ink-2)}
+.md .small{font-size:11.5px;color:var(--ink-3)}
+
+/* ---------- 00 notes ---------- */
+.notes{padding:44px 52px 52px;background:var(--surface);min-height:900px}
+.notes h1{font-size:28px;letter-spacing:-.02em;margin:0 0 6px;font-weight:680;line-height:1.25}
+.notes .lede{font-size:14.5px;color:var(--ink-2);margin:0 0 30px;max-width:860px;line-height:1.6}
+.ncols{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:28px}
+.ncol h2{font-size:12px;letter-spacing:.06em;color:var(--ink-3);margin:0 0 12px;font-weight:650}
+.prob{display:grid;grid-template-columns:22px 1fr;gap:4px 10px;padding:11px 0;border-top:1px solid var(--line)}
+.prob .n{font:600 11px var(--mono);color:var(--brand);padding-top:2px}
+.prob b{font-size:13.5px;font-weight:600}
+.prob p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.55;grid-column:2}
+.prob .tag{font:11px var(--mono);color:var(--ink-3)}
+.prin{padding:11px 0;border-top:1px solid var(--line)}
+.prin b{font-size:13.5px;display:block;margin-bottom:2px}
+.prin p{margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+.ia{display:grid;grid-template-columns:1fr 24px 1fr;gap:10px;align-items:start;margin-bottom:22px}
+.ia-col{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface-2)}
+.ia-col h5{margin:0 0 8px;font-size:11.5px;color:var(--ink-3);font-weight:600}
+.ia-it{font-size:12px;padding:3px 6px;border-radius:5px;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+.ia-it.old{color:var(--ink-3)}
+.ia-g{font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.06em;margin:6px 6px 2px}
+.ia-g:first-of-type{margin-top:0}
+.ia-it.new{background:var(--surface);border:1px solid var(--line);margin-bottom:3px}
+.ia-it .i{width:13px;height:13px;color:var(--ink-3)}
+.ia-arrow{align-self:center;color:var(--ink-4);text-align:center;font-size:18px}
+.cons{border:1px dashed var(--line-2);border-radius:10px;padding:14px 16px;background:var(--surface-2)}
+.cons b{font-size:13px}
+.cons p{font-size:12.5px;color:var(--ink-2);margin:4px 0 10px;line-height:1.55}
+.eps{display:flex;flex-wrap:wrap;gap:4px}
+.eps span{font:10.5px var(--mono);padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
+
+/* ---------- 01 overview ---------- */
+.attn{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.ac{display:flex;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);position:relative;overflow:hidden;align-items:flex-start}
+.ac::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+.ac.warn{--c:var(--warn-dot);--cs:var(--warn-soft);--ci:var(--warn)}.ac.err{--c:var(--err);--cs:var(--err-soft);--ci:var(--err)}
+.ac-ic{width:30px;height:30px;border-radius:8px;background:var(--cs);color:var(--ci);display:grid;place-items:center;flex:none}
+.ac-b{flex:1;min-width:0}
+.ac-k{font-size:11.5px;color:var(--ci);font-weight:600}
+.ac-t{font-size:13px;font-weight:600;margin:1px 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-d{font-size:12px;color:var(--ink-2)}
+.ac-a{display:flex;gap:6px;margin-top:10px;align-items:center}
+.code6{font:600 13px var(--mono);letter-spacing:.12em;background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:10px;margin-bottom:22px}
+.st{padding:13px 16px}
+.st+.st{border-left:1px solid var(--line)}
+.st-l{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.st-v{font-size:24px;font-weight:650;letter-spacing:-.02em;margin:3px 0 1px;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px}
+.st-v small{font-size:13px;font-weight:500;color:var(--ink-3);letter-spacing:0}
+.st-s{font-size:12px;color:var(--ink-3)}
+.ovg{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:16px}
+.cr{display:flex;align-items:center;gap:11px;padding:10px 14px;border-top:1px solid var(--line)}
+.cr:first-child{border-top:0}
+.cr-b{flex:1;min-width:0}
+.cr-t{display:flex;align-items:center;gap:8px;font-size:13px}
+.cr-t b{font-weight:600}
+.cr-p{font-size:12.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.cr-p .who{color:var(--ink-3)}
+.cr-time{font-size:12px;color:var(--ink-3);flex:none;align-self:flex-start;padding-top:1px}
+.up{display:grid;grid-template-columns:62px 10px 1fr;gap:0 10px;padding:8px 14px;align-items:start}
+.up-t{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:right;padding-top:1px}
+.up-t small{display:block;font-size:11px;color:var(--ink-3)}
+.up-l{position:relative;height:100%;display:flex;justify-content:center;padding-top:6px}
+.up-l::after{content:"";position:absolute;top:16px;bottom:-12px;width:1px;background:var(--line)}
+.up:last-child .up-l::after{display:none}
+.up-n{font-size:12.5px;font-weight:550}
+.up-n span{display:block;font-size:11.5px;color:var(--ink-3);font-weight:400}
+.br{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line)}
+.br:first-child{border-top:0}
+.br b{font-weight:600;font-size:12.5px}
+.br .r{margin-left:auto;display:flex;align-items:center;gap:8px}
+.egrid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.et{padding:10px 14px;border-top:1px solid var(--line)}
+.et:nth-child(odd){border-right:1px solid var(--line)}
+.et:nth-child(-n+2){border-top:0}
+.et .eng{font-size:12.5px;color:var(--ink)}
+.et div{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+
+/* ---------- 02 sessions ---------- */
+.ses{display:grid;grid-template-columns:316px minmax(0,1fr) 296px;height:100%}
+.sl{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--surface-2)}
+.sl-h{padding:14px 14px 10px;display:flex;align-items:center;gap:8px}
+.sl-h h2{margin:0;font-size:15px;font-weight:650}
+.sl-f{padding:0 14px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.sl-f .row{display:flex;gap:6px;align-items:center}
+.sl-items{flex:1;overflow:hidden;padding:4px 8px}
+.sl-g{font-size:11px;font-weight:600;color:var(--ink-3);padding:10px 8px 4px;letter-spacing:.04em}
+.si{display:grid;grid-template-columns:18px 1fr auto;gap:2px 9px;padding:9px 10px;border-radius:8px;align-items:start;margin-bottom:1px}
+.si .chn{margin-top:1px}
+.si-t{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;min-width:0}
+.si-t .id{font:500 12px var(--mono);color:var(--ink-2)}
+.si-time{font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+.si-m{grid-column:2/4;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden}
+.si-m .eng{font-size:11.5px}
+.si.on{background:var(--surface);box-shadow:var(--sh-1),0 0 0 1px var(--line)}
+.si .ns{margin-left:auto;font-size:11px}
+.sl-foot{border-top:1px solid var(--line);padding:9px 16px;font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.conv{display:flex;flex-direction:column;min-width:0;min-height:0}
+.cvh{padding:14px 22px 0;border-bottom:1px solid var(--line)}
+.cvh-1{display:flex;align-items:center;gap:9px}
+.cvh-1 h2{margin:0;font-size:16px;font-weight:650;letter-spacing:-.01em}
+.cvh-1 .chn{width:20px;height:20px}
+.cvh-2{font-size:12px;color:var(--ink-3);margin:3px 0 12px 29px;display:flex;align-items:center;gap:6px}
+.cvh-2 .i{width:13px;height:13px}
+.sess{display:flex;gap:6px;align-items:center;padding-bottom:12px}
+.sb{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--line);background:var(--surface);font-size:12px;font-weight:550;color:var(--ink-2);white-space:nowrap}
+.sb .muted{font-weight:400}
+.sb.on{border-color:var(--ink);color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.sb .i{width:13px;height:13px}
+.sess .r{margin-left:auto;display:flex;gap:6px}
+.msgs{flex:1;overflow:hidden;padding:6px 22px 16px;display:flex;flex-direction:column;gap:16px;background:linear-gradient(var(--surface),var(--surface))}
+.day{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-3);margin-top:8px}
+.day::before,.day::after{content:"";flex:1;height:1px;background:var(--line)}
+.sys{display:flex;justify-content:center}
+.sys span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);background:var(--sunken);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.sys .i{width:13px;height:13px;color:var(--ink-3)}
+.msg{display:flex;gap:11px;max-width:760px}
+.mb{flex:1;min-width:0}
+.mh{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);margin-bottom:3px}
+.mh b{color:var(--ink);font-size:12.5px;font-weight:600}
+.reply{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-3);border-left:2px solid var(--line-2);padding:1px 0 1px 8px;margin:2px 0 5px}
+.reply .i{width:12px;height:12px}
+.mt{font-size:13px;line-height:1.6}
+.msg.a .mbody{background:var(--surface-2);border:1px solid var(--line);border-radius:4px 10px 10px 10px;padding:9px 13px}
+.comp{border-top:1px solid var(--line);padding:10px 22px 12px;display:flex;gap:8px;align-items:center}
+.comp .input{flex:1;height:34px}
+.rail{border-left:1px solid var(--line);padding:4px 0;overflow:hidden;background:var(--surface)}
+.rs{padding:12px 18px;border-bottom:1px solid var(--line)}
+.rs-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:9px}
+.rs-h .r{margin-left:auto;display:flex;gap:4px;align-items:center}
+.rs-h .muted{font-weight:400}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:6px 10px;margin:0;font-size:12.5px}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0;display:flex;align-items:center;gap:6px;min-width:0}
+.kv .i{width:13px;height:13px;color:var(--ink-3)}
+.fl{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:12.5px;margin:0 -8px}
+.fl .i{width:14px;height:14px;color:var(--ink-3)}
+.fl span{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
+.rel{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px}
+.rel .i{width:14px;height:14px;color:var(--ink-3)}
+.rel b{font-weight:600}
+.rel .r{margin-left:auto}
+.empty-s{font-size:12px;color:var(--ink-3)}
+
+/* ---------- 03 cron ---------- */
+.tb{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.tb .input{width:240px}
+.tb .tz{margin-left:auto;font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.tb .tz .i{width:14px;height:14px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 452px;gap:16px;height:calc(100% - 112px)}
+.tbl{overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:46px minmax(0,1.7fr) minmax(0,1fr) 112px minmax(0,1.15fr) 30px;gap:12px;align-items:center;padding:0 12px 0 14px}
+.th{height:36px;font-size:11.5px;color:var(--ink-3);font-weight:550;border-bottom:1px solid var(--line)}
+.tr{min-height:58px;border-bottom:1px solid var(--line);position:relative}
+.tr:last-child{border-bottom:0}
+.tr.sel{background:var(--brand-soft)}
+.tr.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}
+.tr.off{color:var(--ink-3)}
+.c2{display:flex;flex-direction:column;min-width:0;gap:1px}
+.c2 b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c2>span{font-size:11.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.c2 .chn{width:13px;height:13px}
+.tr.off .c2 b{color:var(--ink-2)}
+.c2 .pause{color:var(--warn)}
+.det{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.det-h{padding:14px 16px 0}
+.det-t{display:flex;align-items:center;gap:8px}
+.det-t h2{margin:0;font-size:15px;font-weight:650}
+.det-m{font-size:12px;color:var(--ink-3);margin:4px 0 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.det-m .chn{width:13px;height:13px}
+.det-a{display:flex;gap:6px;margin-bottom:12px}
+.det-b{padding:14px 16px;overflow:hidden;flex:1}
+.strip-row{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-3);margin-bottom:12px}
+.strip{display:flex;gap:3px}
+.strip i{width:13px;height:18px;border-radius:3px;background:var(--line)}
+.strip i.ok{background:var(--ok)}.strip i.err{background:var(--err)}.strip i.silent{background:var(--ink-4)}.strip i.e{background:transparent;box-shadow:inset 0 0 0 1px var(--line)}
+.strip i.cur{outline:2px solid var(--ink);outline-offset:1px}
+.run{border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.run-h{display:flex;align-items:center;gap:9px;padding:8px 10px;font-size:12.5px}
+.run-h b{font:600 12px var(--mono);color:var(--ink-2)}
+.run-h .r{margin-left:auto;font:12px var(--mono);color:var(--ink-3)}
+.run.sel{border-color:var(--line-2);box-shadow:var(--sh-2)}
+.run-x{border-top:1px solid var(--line);padding:10px 12px}
+.errbox{background:var(--err-soft);color:var(--err);border-radius:6px;padding:8px 10px;font-size:12px;display:flex;gap:8px;margin-bottom:10px}
+.errbox .i{width:14px;height:14px;margin-top:2px}
+.out-l{font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.04em;margin-bottom:4px;display:flex;align-items:center}
+.out-l .btn{margin-left:auto}
+
+/* ---------- 04 jobs ---------- */
+.job{border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.jh{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.jt{flex:1;min-width:0}
+.jt b{font-size:14px;font-weight:620}
+.jt b .n{font:600 12.5px var(--mono);color:var(--ink-3);margin-right:4px}
+.jt div{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px;margin-top:2px}
+.jt .chn{width:13px;height:13px}
+.jclock{text-align:right;margin-right:6px}
+.jclock div{font:600 20px var(--mono);letter-spacing:-.01em;color:var(--run)}
+.jclock span{font-size:11.5px;color:var(--ink-3)}
+.jcmd{font:12px var(--mono);color:var(--ink-2);background:var(--sunken);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:8px 16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jcmd .p{color:var(--ink-4);margin-right:6px}
+.term{background:var(--term);color:var(--term-ink);font:11.5px/1.65 var(--mono);padding:10px 16px;height:206px;overflow:hidden;position:relative}
+.term .d{color:var(--term-dim)}
+.term .g{color:#7FD49B}
+.term .y{color:#E9C46A}
+.term-bar{position:absolute;right:10px;top:8px;display:flex;gap:6px}
+.term-bar span{font:500 10.5px var(--sans);color:#B9B5A8;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:2px 7px;display:flex;align-items:center;gap:5px}
+.term-bar span i{width:6px;height:6px;border-radius:50%;background:#7FD49B;animation:blink 1.4s infinite}
+.jthen{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:12.5px;color:var(--ink-2)}
+.jthen .i{width:14px;height:14px;color:var(--brand)}
+.jthen b{font-weight:600;color:var(--ink)}
+.jthen .r{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.jl .th,.jl .tr{grid-template-columns:22px minmax(0,2fr) minmax(0,1.2fr) 86px 92px 104px 96px 26px}
+.jl .tr{min-height:52px}
+.st-ic{width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.st-ic .i{width:11px;height:11px;stroke-width:2.6}
+.st-ic.ok{background:var(--ok-soft);color:var(--ok)}.st-ic.err{background:var(--err-soft);color:var(--err)}.st-ic.warn{background:var(--warn-soft);color:var(--warn)}.st-ic.mute{background:var(--mute-soft);color:var(--ink-3)}.st-ic.q{box-shadow:inset 0 0 0 1.5px var(--ink-4);border:0}
+.cb{font-size:12px;display:flex;align-items:center;gap:5px;color:var(--ink-2)}
+.cb .i{width:13px;height:13px}
+.cb.ok .i{color:var(--ok)}.cb.err{color:var(--err)}.cb.mute{color:var(--ink-3)}
+
+/* ---------- 05 bots ---------- */
+.bots{display:grid;grid-template-columns:minmax(0,1fr) 452px;gap:16px;height:calc(100% - 70px)}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-content:start}
+.bc{padding:0}
+.bc-h{display:flex;align-items:center;gap:11px;padding:14px 16px 12px}
+.bc-h .chn{width:30px;height:30px}
+.bc-h b{font-size:14px;font-weight:620;display:block;line-height:1.3}
+.bc-h span{font-size:12px;color:var(--ink-3)}
+.bc-h .pill{margin-left:auto;align-self:flex-start}
+.bc-b{padding:0 16px 12px;display:grid;grid-template-columns:64px 1fr;gap:7px 10px;font-size:12.5px}
+.bc-b dt{color:var(--ink-3)}
+.bc-b dd{margin:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bc-f{border-top:1px solid var(--line);padding:8px 10px;display:flex;gap:4px}
+.bc-f .r{margin-left:auto}
+.bc.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.drawer{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.dr-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.dr-h h2{margin:0;font-size:15px;font-weight:650}
+.dr-h .r{margin-left:auto}
+.dr-b{padding:16px 18px;overflow:hidden;flex:1}
+.dr-s{font-size:11px;font-weight:650;color:var(--ink-3);letter-spacing:.06em;margin:4px 0 10px}
+.dr-s~.dr-s{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.rc{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rco{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:flex-start}
+.rco i{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--line-2);flex:none;margin-top:2px}
+.rco b{font-size:12.5px;font-weight:600;display:block}
+.rco span{font-size:11.5px;color:var(--ink-3);line-height:1.4;display:block}
+.rco.on{border-color:var(--brand);background:var(--brand-soft)}
+.rco.on i{border:4px solid var(--brand)}
+.tags{display:flex;flex-wrap:wrap;gap:5px;padding:5px;border:1px solid var(--line-2);border-radius:7px;min-height:32px;align-items:center}
+.tags .chip{background:var(--surface-2);font-family:var(--mono);font-size:11px}
+.tags .chip .x{color:var(--ink-4)}
+.tags .add{font-size:12px;color:var(--ink-3);padding:0 4px}
+.gl{border:1px solid var(--line);border-radius:8px}
+.gl-r{display:flex;align-items:center;gap:9px;padding:7px 10px;font-size:12.5px;border-top:1px solid var(--line)}
+.gl-r:first-child{border-top:0}
+.gl-r .mono{color:var(--ink-2)}
+.gl-r .sw{margin-left:auto}
+.dr-f{border-top:1px solid var(--line);padding:10px 18px;display:flex;gap:8px;align-items:center}
+.dr-f .muted{font-size:12px}
+.dr-f .r{margin-left:auto;display:flex;gap:8px}
+
+/* ---------- 06 engines ---------- */
+.etiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px}
+.etile{border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:relative}
+.etile .eng{font-size:13.5px;color:var(--ink);font-weight:620}
+.etile .eng::before{width:10px;height:10px;border-radius:3px}
+.etile p{margin:4px 0 8px;font-size:11.5px;color:var(--ink-3);line-height:1.45}
+.etile .meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2)}
+.etile .rad{position:absolute;right:12px;top:12px;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-2)}
+.etile.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);background:var(--brand-soft)}
+.etile.on .rad{border:5px solid var(--brand)}
+.mod .lbl::after{content:"已修改";font-size:10.5px;font-weight:600;color:var(--brand-ink);background:var(--brand-soft);padding:0 5px;border-radius:4px;line-height:16px}
+.mod .input{border-color:color-mix(in srgb,var(--brand) 55%,var(--line-2))}
+.unit{display:flex;gap:0}
+.unit .input{border-radius:7px 0 0 7px;flex:1}
+.unit .input+.input{border-radius:0 7px 7px 0;border-left:0;flex:none;width:86px}
+.acc{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.acc-r{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line)}
+.acc-r:first-child{border-top:0}
+.acc-r .eng{font-size:13px;color:var(--ink);width:150px}
+.acc-r .sum{font-size:12px;color:var(--ink-3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.acc-r .sum .mono{color:var(--ink-2)}
+.acc-r .chev{margin-left:auto;color:var(--ink-3)}
+.acc-r .chev .i{width:15px;height:15px}
+.acc-x{padding:4px 16px 16px 28px;background:var(--surface)}
+.acc-r.open{background:var(--surface-2)}
+.dirty{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:#1B1A17;color:#EDECE7;border-radius:12px;padding:8px 8px 8px 16px;box-shadow:var(--sh-3);font-size:12.5px;white-space:nowrap;z-index:5}
+.dirty .dot{background:var(--brand)}
+.dirty .muted{color:#9A968C}
+.dirty .btn.ghost{color:#D6D3CA}
+.dirty .btn.brand .kbd{background:rgba(0,0,0,.18);border-color:rgba(0,0,0,.2);color:#fff}
+.diffpop{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);width:520px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh-3);z-index:5;overflow:hidden}
+.diffpop h4{margin:0;padding:10px 14px;font-size:12px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+.diffpop h4 span{margin-left:auto;font-weight:400;color:var(--ink-3)}
+.df{display:grid;grid-template-columns:190px 1fr;gap:10px;padding:7px 14px;font-size:12px;border-top:1px solid var(--line)}
+.df:first-of-type{border-top:0}
+.df .k{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.df del{color:var(--err);background:var(--err-soft);text-decoration:none;border-radius:3px;padding:0 4px;font-family:var(--mono);font-size:11.5px}
+.df ins{color:var(--ok);background:var(--ok-soft);text-decoration:none;border-radius:3px;padding:0 4px;font-family:var(--mono);font-size:11.5px}
+
+/* ---------- 07 security ---------- */
+.prs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+.pr{border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:12px;background:var(--surface)}
+.pr-who{display:flex;align-items:center;gap:10px}
+.pr-who b{font-size:14px;font-weight:620;display:block}
+.pr-who span{font-size:12px;color:var(--ink-3)}
+.pr-code{font:600 26px var(--mono);letter-spacing:.2em;margin:12px 0 4px}
+.pr-meta{font-size:12px;color:var(--ink-3);display:flex;gap:6px;align-items:center}
+.pr-meta .chn{width:13px;height:13px}
+.exp{grid-column:1/3;display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-3)}
+.exp .bar{flex:1;height:4px;border-radius:2px;background:var(--sunken);overflow:hidden}
+.exp .bar i{display:block;height:100%;background:var(--warn-dot);border-radius:2px}
+.pol .th,.pol .tr{grid-template-columns:minmax(0,1.5fr) 1fr 1fr 1fr 110px 70px}
+.pol .tr{min-height:50px}
+.legend{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.legend div{font-size:12px;color:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;line-height:1.45}
+.legend b{display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:2px;color:var(--ink)}
+
+/* ---------- 08 skills ---------- */
+.sk{display:grid;grid-template-columns:300px minmax(0,1fr);height:100%}
+.sk-l{border-right:1px solid var(--line);background:var(--surface-2);padding:14px 10px}
+.sk-i{padding:10px 10px;border-radius:8px;margin-bottom:2px}
+.sk-i b{font:600 13px var(--mono);display:flex;align-items:center;gap:6px}
+.sk-i p{margin:3px 0 6px;font-size:12px;color:var(--ink-3);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sk-i.on{background:var(--surface);box-shadow:var(--sh-1),0 0 0 1px var(--line)}
+.sync4{display:flex;gap:4px}
+.sync4 span{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-2);height:20px;padding:0 6px;border-radius:5px;border:1px solid var(--line);background:var(--surface)}
+.sync4 span::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.sync4 span.no{color:var(--warn);border-color:color-mix(in srgb,var(--warn-dot) 40%,var(--line));background:var(--warn-soft)}
+.sync4 span.no::before{background:var(--warn-dot)}
+.sk-r{display:flex;flex-direction:column;min-width:0}
+.sk-h{padding:16px 24px 14px;border-bottom:1px solid var(--line)}
+.sk-h .t{display:flex;align-items:center;gap:10px}
+.sk-h h2{margin:0;font:650 16px var(--mono)}
+.sk-h .t .r{margin-left:auto;display:flex;gap:8px}
+.sk-meta{display:flex;gap:18px;margin-top:10px;font-size:12px;color:var(--ink-3);align-items:center}
+.sk-meta>div{display:flex;align-items:center;gap:6px}
+.ed{flex:1;display:grid;grid-template-columns:minmax(0,1fr);min-height:0}
+.fm{padding:14px 24px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.code{font:12px/1.75 var(--mono);padding:12px 0;overflow:hidden;color:var(--ink-2);counter-reset:ln}
+.code div{padding-left:58px;position:relative;white-space:pre;min-height:21px}
+.code div::before{counter-increment:ln;content:counter(ln);position:absolute;left:0;width:40px;text-align:right;color:var(--ink-4)}
+.code .h{color:var(--ink);font-weight:650}
+.code .c{color:var(--e-codex)}
+.code .k{color:var(--brand-ink)}
+
+/* ---------- 09 palette ---------- */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:20}
+.pal{position:absolute;left:50%;top:110px;transform:translateX(-50%);width:640px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-3);z-index:21;overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);font-size:15px}
+.pal-in .i{width:18px;height:18px;color:var(--ink-3)}
+.caret{width:1.5px;height:18px;background:var(--brand);margin-left:-8px;animation:blink 1s steps(1) infinite}
+.pal-in .kbd{margin-left:auto}
+.pal-g{font-size:11px;font-weight:650;letter-spacing:.05em;color:var(--ink-3);padding:10px 16px 4px}
+.pal-i{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:0 6px;border-radius:8px;font-size:13px}
+.pal-i .i{width:15px;height:15px;color:var(--ink-3)}
+.pal-i .chn{width:15px;height:15px}
+.pal-i .muted{font-size:12px}
+.pal-i .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.pal-i.on{background:var(--hover);box-shadow:inset 0 0 0 1px var(--line)}
+.pal-i mark{background:none;color:var(--brand-ink);font-weight:650}
+.pal-f{display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3);margin-top:8px;align-items:center}
+.pal-f .r{margin-left:auto}
+
+/* ---------- 10 tokens ---------- */
+.tk{padding:40px 48px;background:var(--surface);height:100%}
+.tk h2{font-size:12px;letter-spacing:.06em;color:var(--ink-3);margin:0 0 12px;font-weight:650}
+.tk-g{display:grid;grid-template-columns:1fr 1fr;gap:36px 48px}
+.sws{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.swc{border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:11px}
+.swc i{display:block;height:40px}
+.swc div{padding:5px 7px;line-height:1.35}
+.swc div span{display:block;font-family:var(--mono);color:var(--ink-3);font-size:10.5px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tyrow{display:grid;grid-template-columns:120px 1fr;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)}
+.tyrow span{font:11px var(--mono);color:var(--ink-3)}
+.stbl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center;font-size:12px;color:var(--ink-2)}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-pocket" viewBox="0 0 24 24"><path d="M5 6h14v6a7 7 0 0 1-14 0z"/><path d="M5 6l7 4 7-4"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="m7 10 3 2.5L7 15M13 15h4"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v1.5M15 13v1.5"/><circle cx="12" cy="3.5" r=".8"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M19 9h3M19 15h3M2 9h3M2 15h3"/></symbol>
+    <symbol id="i-blocks" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 14v6.5M14 17.25h6.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 21.5s7.5-3.5 7.5-9.5V5.5L12 3 4.5 5.5V12c0 6 7.5 9.5 7.5 9.5z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M14 3H6.5A2.5 2.5 0 0 0 4 5.5v13A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V9z"/><path d="M14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 3.5v5h-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18.5" cy="12" r="1"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6.5A2.5 2.5 0 0 0 4 5.5v13A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V9z"/><path d="M14 3v6h6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5h6V7"/></symbol>
+    <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M20 20v-5a6 6 0 0 0-6-6H4"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+    <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/></symbol>
+    <symbol id="i-q" viewBox="0 0 24 24"><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17h.01"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-cmd" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+    <symbol id="c-tg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#2AABEE"/><path d="M5.3 11.7 16.7 7.3c.55-.2 1 .13.83.95l-1.94 9.13c-.14.65-.53.8-1.07.5l-2.96-2.18-1.43 1.38c-.16.16-.29.29-.6.29l.21-3.02 5.5-4.97c.24-.21-.05-.33-.37-.12l-6.8 4.28-2.93-.91c-.64-.2-.65-.64.14-.95z" fill="#fff"/></symbol>
+    <symbol id="c-dc" viewBox="0 0 24 24"><rect width="24" height="24" rx="7" fill="#5865F2"/><path d="M17.2 7.4a13 13 0 0 0-3.2-1l-.4.8a12 12 0 0 0-3.3 0l-.4-.8a13 13 0 0 0-3.2 1C4.9 10.4 4.4 13.3 4.6 16.1a13 13 0 0 0 3.9 2l.8-1.3a8 8 0 0 1-1.3-.6l.3-.2a9.3 9.3 0 0 0 7.9 0l.3.2a8 8 0 0 1-1.3.6l.8 1.3a13 13 0 0 0 3.9-2c.3-3.3-.5-6.1-2.4-8.7z" fill="#fff"/><ellipse cx="9.6" cy="12.9" rx="1.35" ry="1.5" fill="#5865F2"/><ellipse cx="14.4" cy="12.9" rx="1.35" ry="1.5" fill="#5865F2"/></symbol>
+  </defs>
+</svg>
+
+<div class="cv-top">
+  <div class="cv-t"><b>PocketAgent 控制台改版</b><span>设计稿 v1 · 2026-10-05 · 只用现有接口</span></div>
+  <nav class="cv-idx">
+    <a href="#b00">00 问题与方向</a><a href="#b01">01 概览</a><a href="#b02">02 会话</a><a href="#b03">03 定时任务</a><a href="#b04">04 后台作业</a><a href="#b05">05 Bots</a><a href="#b06">06 引擎</a><a href="#b07">07 安全与配对</a><a href="#b08">08 技能</a><a href="#b09">09 深色 + ⌘K</a><a href="#b10">10 组件</a>
+  </nav>
+  <div class="cv-z"><button data-z="fit" class="on">适应宽度</button><button data-z="1">100%</button></div>
+</div>
+
+<div class="canvas">
+
+<!-- ======================================================= 00 -->
+<section class="bw" id="b00">
+  <div>
+    <div class="bw-label"><b>问题与方向</b><span>00</span></div>
+    <div class="board auto"><div class="app doc" data-theme="light"><div class="notes">
+      <h1>先看运行状态，再改配置</h1>
+      <p class="lede">现在的控制台是十个平级的配置表单页，真正需要处理的事（待批准的配对、跑失败的定时任务、挂掉的后台作业）要逐页去翻。改版把「正在发生什么」放到前面，把配置收到侧栏下半部，并修掉一批显示逻辑问题。后端接口一个不加、一个不改。</p>
+      <div class="ncols">
+        <div class="ncol">
+          <h2>现在的问题</h2>
+          <div class="prob"><span class="n">01</span><div><b>十个 Tab 平铺，运行和配置混在一起</b> <span class="tag">全局</span></div><p>会话、定时任务、作业这类每天看的页面，和网关端口、原始 YAML 这种一年改一次的页面挤在一排。</p></div>
+          <div class="prob"><span class="n">02</span><div><b>「保存并热重载」常驻顶栏</b> <span class="tag">全局</span></div><p>在会话、作业页上也显示；改了什么、有没有没保存的改动，都看不出来。</p></div>
+          <div class="prob"><span class="n">03</span><div><b>73 个会话铺成 73 张大卡片</b> <span class="tag">会话</span></div><p>每张都直接展示 Chat ID、Session UUID 和完整工作区路径；同一个聊天的多个会话被打散到列表各处。</p></div>
+          <div class="prob"><span class="n">04</span><div><b>弹窗套弹窗</b> <span class="tag">会话 / 定时 / 作业 / 技能</span></div><p>对话记录、工作区文件、运行记录、作业日志、技能编辑全是模态框，看完一个才能看下一个，没法对照。</p></div>
+          <div class="prob"><span class="n">05</span><div><b>对话记录不渲染 Markdown</b> <span class="tag">会话</span></div><p>助手回复按纯文本显示，<code>[In reply to …]</code> 前缀原样露出；运行记录那边却又会渲染，两处不一致。</p></div>
+          <div class="prob"><span class="n">06</span><div><b>原始值直出</b> <span class="tag">定时任务 / 引擎</span></div><p><code>0 20 * * * America/New_York</code>、绝对时间戳、以毫秒为单位的输入框（600000）。每行定时任务挂 6 个按钮。</p></div>
+          <div class="prob"><span class="n">07</span><div><b>每页顶部 4 张指标卡</b> <span class="tag">会话 / 定时 / 作业</span></div><p>和下方筛选器重复（「启用 7」和筛选「启用」），占掉首屏三分之一。</p></div>
+          <div class="prob"><span class="n">08</span><div><b>状态不刷新</b> <span class="tag">安全 / 会话</span></div><p>配对请求只在页面加载时取一次，会话列表不轮询；新的配对请求要手动刷新才看得到，可能已经过期。</p></div>
+          <div class="prob"><span class="n">09</span><div><b>部分配置只能改 YAML</b> <span class="tag">网关</span></div><p>调度器（scheduler）和后台作业（jobs）的并发、超时、时区等设置在表单里没有入口。</p></div>
+        </div>
+        <div class="ncol">
+          <h2>改版方向</h2>
+          <div class="prin"><b>运行优先</b><p>侧栏分「运行」「配置」两组。概览只放需要处理的事和正在发生的事；导航上的角标只提示异常（失败、待批准、运行中），不显示总数。</p></div>
+          <div class="prin"><b>一个聊天一个入口</b><p>会话按聊天分组。聊天 → 会话 → 对话记录 → 工作区文件在同一屏完成，跨页关联同一聊天的定时任务和后台作业。</p></div>
+          <div class="prin"><b>说人话</b><p>cron 显示为「工作日 08:30」，时间显示为「9 小时后」，时长用「6分12秒」。ID 和路径收进复制按钮，需要时再看。</p></div>
+          <div class="prin"><b>编辑有状态</b><p>配置修改先暂存。底部浮条显示「3 处未保存」，可以先看差异再保存；⌘S 保存并热重载，离开页面前提醒。</p></div>
+          <div class="prin"><b>状态一套颜色</b><p>成功、静默、运行中、警告、失败五种状态全站统一配色和形状，深浅色主题各调一套。</p></div>
+          <div class="prin"><b>自动刷新，按需轮询</b><p>运行类页面在可见时轮询并显示「x 秒前更新」，去掉散落在各页的刷新按钮；标签页隐藏时暂停。</p></div>
+        </div>
+        <div class="ncol">
+          <h2>信息架构</h2>
+          <div class="ia">
+            <div class="ia-col"><h5>现在 · 10 个 Tab</h5>
+              <div class="ia-it old">Overview</div><div class="ia-it old">Bots</div><div class="ia-it old">Engines</div><div class="ia-it old">Sessions &amp; Workspaces</div><div class="ia-it old">Scheduled Tasks</div><div class="ia-it old">Background Jobs</div><div class="ia-it old">Gateway</div><div class="ia-it old">Security &amp; Auth</div><div class="ia-it old">Skills (4-CLI)</div><div class="ia-it old">Raw YAML</div>
+            </div>
+            <div class="ia-arrow">→</div>
+            <div class="ia-col"><h5>改版 · 侧栏两组</h5>
+              <div class="ia-g">运行</div>
+              <div class="ia-it new"><svg class="i"><use href="#i-dash"/></svg>概览</div><div class="ia-it new"><svg class="i"><use href="#i-chat"/></svg>会话</div><div class="ia-it new"><svg class="i"><use href="#i-clock"/></svg>定时任务</div><div class="ia-it new"><svg class="i"><use href="#i-term"/></svg>后台作业</div>
+              <div class="ia-g">配置</div>
+              <div class="ia-it new"><svg class="i"><use href="#i-bot"/></svg>Bots</div><div class="ia-it new"><svg class="i"><use href="#i-cpu"/></svg>引擎</div><div class="ia-it new"><svg class="i"><use href="#i-blocks"/></svg>技能</div><div class="ia-it new"><svg class="i"><use href="#i-shield"/></svg>安全与配对</div><div class="ia-it new"><svg class="i"><use href="#i-server"/></svg>网关与运行时</div><div class="ia-it new"><svg class="i"><use href="#i-code"/></svg>config.yaml</div>
+            </div>
+          </div>
+          <div class="cons">
+            <b>约束：后端零改动</b>
+            <p>会话按聊天分组、cron 转人话、相对时间、跨页关联（聊天 ↔ 定时任务 ↔ 作业）、配置差异、聊天本地备注名、⌘K 搜索，全部在浏览器里用已有数据算。</p>
+            <div class="eps">
+              <span>GET /api/status</span><span>GET·POST /api/config</span><span>GET /api/models</span><span>GET /api/sessions</span><span>GET /api/sessions/turns</span><span>POST /api/sessions/switch</span><span>POST /api/sessions/new</span><span>DELETE /api/sessions</span><span>GET /api/workspaces</span><span>GET /api/workspaces/files</span><span>GET /api/workspaces/file-content</span><span>POST /api/workspaces/delete</span><span>/api/cron (+runs, run, update)</span><span>/api/jobs (+log, cancel)</span><span>/api/skills (+detail, sync, new, update)</span><span>GET /api/pairings</span><span>POST /api/pairings/approve</span><span>/api/soul</span><span>POST /api/send-message</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+  </div>
+  <aside class="anno">
+    <h4>怎么看这份稿子</h4>
+    <p>每张画板是一个页面，1440×900，右侧写这一页改了什么、数据从哪个现有接口来、哪些是纯前端逻辑。数据大多取自你本机网关的真实返回（bot、定时任务、技能），对话内容做了改写。</p>
+    <h4>这一版没画的</h4>
+    <ul>
+      <li>网关与运行时、config.yaml 两页（结构简单，沿用 06 引擎的表单 + 保存条）</li>
+      <li>新建 / 编辑定时任务表单</li>
+      <li>窄屏与手机布局</li>
+      <li>空状态与加载骨架</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 01 OVERVIEW -->
+<section class="bw" id="b01">
+  <div>
+    <div class="bw-label"><b>概览</b><span>01</span></div>
+    <div class="board"><div class="app" data-theme="light" id="ov-app">
+      <aside class="side" data-active="overview"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>运行</span><i>/</i><b>概览</b></div><div class="top-r"><span class="sync"><span class="dot ok"></span>自动刷新 · 3 秒前</span></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>概览</h1><p>4 个 Bot 在线 · 默认引擎 <span class="eng agy" style="font-size:13px">AGY</span> · 网关已运行 11 小时 02 分</p></div></div>
+
+          <div class="sec-h"><h3>需要处理</h3><span class="cnt">3</span></div>
+          <div class="attn">
+            <div class="ac warn">
+              <div class="ac-ic"><svg class="i"><use href="#i-shield"/></svg></div>
+              <div class="ac-b">
+                <div class="ac-k">配对请求</div>
+                <div class="ac-t">Bob 想通过 atri65535-bot 私聊</div>
+                <div class="ac-d">配对码 <span class="code6">482913</span> · 8 分钟后过期</div>
+                <div class="ac-a"><button class="btn sm primary"><svg class="i"><use href="#i-check"/></svg>批准</button><button class="btn sm ghost">查看</button></div>
+              </div>
+            </div>
+            <div class="ac err">
+              <div class="ac-ic"><svg class="i"><use href="#i-clock"/></svg></div>
+              <div class="ac-b">
+                <div class="ac-k">定时任务连续失败 2 次</div>
+                <div class="ac-t">每日共同信号</div>
+                <div class="ac-d">今天 08:30 运行超时（上限 30 分钟）</div>
+                <div class="ac-a"><button class="btn sm outline">查看运行记录</button><button class="btn sm ghost"><svg class="i"><use href="#i-play"/></svg>重跑</button></div>
+              </div>
+            </div>
+            <div class="ac err">
+              <div class="ac-ic"><svg class="i"><use href="#i-term"/></svg></div>
+              <div class="ac-b">
+                <div class="ac-k">后台作业失败</div>
+                <div class="ac-t">#4 运行全量测试</div>
+                <div class="ac-d">退出码 1 · 12 分钟前 · 结果已回传到聊天</div>
+                <div class="ac-a"><button class="btn sm outline">查看日志</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="st"><div class="st-l">24 小时内活跃</div><div class="st-v">12<small>个会话</small></div><div class="st-s">共 73 个会话 · 19 个聊天</div></div>
+            <div class="st"><div class="st-l">后台作业</div><div class="st-v" style="color:var(--run)">1<small>运行中</small></div><div class="st-s">排队 1 · 今天结束 3 个</div></div>
+            <div class="st"><div class="st-l">定时任务</div><div class="st-v">6<small>/ 8 启用</small></div><div class="st-s">下一个 今天 20:00</div></div>
+            <div class="st"><div class="st-l">工作区占用</div><div class="st-v">51.5<small>MB</small></div><div class="st-s">73 个目录 · 无孤立目录</div></div>
+          </div>
+
+          <div class="ovg">
+            <div class="card">
+              <div class="card-h"><h3>最近对话</h3><div class="r"><a class="btn xs ghost">全部会话<svg class="i"><use href="#i-right"/></svg></a></div></div>
+              <div>
+                <a class="cr"><svg class="chn"><use href="#c-dc"/></svg><div class="cr-b"><div class="cr-t"><b>交易信号讨论</b><span class="eng agy">AGY</span><span class="muted">atri-discord · #6</span></div><div class="cr-p"><span class="who">Atri：</span>已创建定时任务「每日共同信号」，工作日 08:30 运行，至少 2 个来源同时提到才入选…</div></div><span class="cr-time">2 分钟前</span></a>
+                <a class="cr"><svg class="chn"><use href="#c-tg"/></svg><div class="cr-b"><div class="cr-t"><b>shinee</b><span class="chip">私聊</span><span class="eng claude">Claude</span><span class="muted">atri65535-bot · #12</span></div><div class="cr-p"><span class="who">shinee：</span>把 auth.ts 里的 token 过期时间改成 7 天，然后跑一下 vitest</div></div><span class="cr-time">18 分钟前</span></a>
+                <a class="cr"><svg class="chn"><use href="#c-dc"/></svg><div class="cr-b"><div class="cr-t"><b>每日 AI 早报</b><span class="eng agy">AGY</span><span class="muted">atri-discord · #2</span></div><div class="cr-p"><span class="who">Atri：</span>今天的早报整理好了，共 6 条，重点是 OpenAI 和 Google 的两次发布…</div></div><span class="cr-time">1 小时前</span></a>
+                <a class="cr"><svg class="chn"><use href="#c-tg"/></svg><div class="cr-b"><div class="cr-t"><b>量化小组</b><span class="eng codex">Codex</span><span class="muted">Diana · #3</span></div><div class="cr-p"><span class="who">Diana：</span>回测结果已保存到 backtest/2026-10-05.csv，夏普 1.42，最大回撤 8.7%</div></div><span class="cr-time">3 小时前</span></a>
+                <a class="cr"><svg class="chn"><use href="#c-tg"/></svg><div class="cr-b"><div class="cr-t"><b><span class="mono" style="font-size:12.5px">群组 ·923249</span></b><span class="eng grok">Grok</span><span class="muted">atri65535-bot · #4</span></div><div class="cr-p"><span class="who">Mia：</span>帮我把这张账单截图里的费用按类别汇总一下</div></div><span class="cr-time">昨天</span></a>
+                <a class="cr"><svg class="chn"><use href="#c-dc"/></svg><div class="cr-b"><div class="cr-t"><b><span class="mono" style="font-size:12.5px">频道 ·472945</span></b><span class="eng agy">AGY</span><span class="muted">atri-discord · #1</span></div><div class="cr-p"><span class="who">Atri：</span>下载已经交给后台作业 #3，完成后我会在这里继续</div></div><span class="cr-time">昨天</span></a>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+              <div class="card">
+                <div class="card-h"><h3>接下来</h3><div class="r"><span class="muted" style="font-size:11.5px">America/New_York</span></div></div>
+                <div style="padding:4px 0">
+                  <div class="up"><div class="up-t">20:00<small>今天</small></div><div class="up-l"><span class="dot ok"></span></div><div class="up-n">L老师每日交易总结与回测<span>交易复盘 · atri-discord</span></div></div>
+                  <div class="up"><div class="up-t">20:05<small>今天</small></div><div class="up-l"><span class="dot ok"></span></div><div class="up-n">F老师每日交易总结<span>交易复盘 · atri-discord</span></div></div>
+                  <div class="up"><div class="up-t">08:30<small>明天</small></div><div class="up-l"><span class="dot err"></span></div><div class="up-n">每日共同信号<span>交易信号讨论 · 上次超时</span></div></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-h"><h3>Bots</h3><div class="r"><span class="pill ok">4 在线</span></div></div>
+                <div class="br"><svg class="chn"><use href="#c-tg"/></svg><b>atri65535-bot</b><div class="r"><span class="eng agy">AGY</span></div></div>
+                <div class="br"><svg class="chn"><use href="#c-dc"/></svg><b>atri-discord</b><div class="r"><span class="eng agy">AGY</span></div></div>
+                <div class="br"><svg class="chn"><use href="#c-tg"/></svg><b>Diana</b><div class="r"><span class="eng codex">Codex</span></div></div>
+                <div class="br"><svg class="chn"><use href="#c-tg"/></svg><b>shine_fin_bot</b><div class="r"><span class="eng claude">Claude</span></div></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>顶部「需要处理」汇总三类事：待批准的配对、异常的定时任务（失败、超时、被暂停）、失败的后台作业。每张卡带一个能直接解决问题的按钮。没有待处理的事时整块收成一行「一切正常」。</li>
+      <li>指标换成运行状态：24 小时活跃会话、运行中作业、启用的任务、工作区占用。「默认引擎」「技能数」这类配置项移到副标题或各自页面。</li>
+      <li>最近对话显示最后一条消息预览，点进去落到会话页对应的聊天。</li>
+      <li>「接下来」按 <code>nextRunAt</code> 排列即将运行的定时任务，上次失败的标红点。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>/api/status</code> <code>/api/pairings</code> <code>/api/cron</code> <code>/api/jobs</code> <code>/api/sessions</code> <code>/api/workspaces</code></li>
+      <li>消息预览只给前 6 个会话懒加载 <code>/api/sessions/turns</code>，取最后一条。</li>
+    </ul>
+    <h4>刷新</h4>
+    <ul>
+      <li>status / pairings / jobs 每 5 秒，cron / sessions 每 15 秒；标签页隐藏时暂停。右上角显示上次更新时间，点一下立即刷新。</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 02 SESSIONS -->
+<section class="bw" id="b02">
+  <div>
+    <div class="bw-label"><b>会话</b><span>02</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="sessions"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>运行</span><i>/</i><span>会话</span><i>/</i><b>交易信号讨论</b></div><div class="top-r"><span class="sync"><span class="dot ok"></span>自动刷新 · 6 秒前</span></div></header>
+        <div class="body"><div class="ses">
+          <section class="sl">
+            <div class="sl-h"><h2>会话</h2><span class="muted" style="font-size:12px">19 个聊天 · 73 个会话</span><button class="btn icon sm outline" style="margin-left:auto" title="新建会话"><svg class="i"><use href="#i-plus"/></svg></button></div>
+            <div class="sl-f">
+              <div class="input sm"><svg class="i"><use href="#i-search"/></svg>搜索聊天、备注、会话 ID…</div>
+              <div class="row"><div class="seg sm" style="flex:1;display:flex"><button class="on" style="flex:1;justify-content:center">全部 <i>19</i></button><button style="flex:1;justify-content:center">Telegram <i>6</i></button><button style="flex:1;justify-content:center">Discord <i>13</i></button></div><button class="btn icon sm outline" title="按 Bot 筛选"><svg class="i"><use href="#i-bot"/></svg></button></div>
+            </div>
+            <div class="sl-items">
+              <div class="sl-g">今天</div>
+              <a class="si on"><svg class="chn"><use href="#c-dc"/></svg><div class="si-t">交易信号讨论</div><span class="si-time">2 分钟前</span><div class="si-m">atri-discord<span class="eng agy">AGY</span>#6 · 16 轮<span class="ns">6 个会话</span></div></a>
+              <a class="si"><svg class="chn"><use href="#c-tg"/></svg><div class="si-t">shinee <span class="chip" style="height:17px;font-size:10.5px">私聊</span></div><span class="si-time">18 分钟前</span><div class="si-m">atri65535-bot<span class="eng claude">Claude</span>#12 · 48 轮<span class="ns">12 个会话</span></div></a>
+              <a class="si"><svg class="chn"><use href="#c-dc"/></svg><div class="si-t">每日 AI 早报</div><span class="si-time">1 小时前</span><div class="si-m">atri-discord<span class="eng agy">AGY</span>#2 · 9 轮</div></a>
+              <a class="si"><svg class="chn"><use href="#c-tg"/></svg><div class="si-t">量化小组</div><span class="si-time">3 小时前</span><div class="si-m">Diana<span class="eng codex">Codex</span>#3 · 22 轮<span class="ns">3 个会话</span></div></a>
+              <a class="si"><svg class="chn"><use href="#c-dc"/></svg><div class="si-t"><span class="id">频道 ·515429</span></div><span class="si-time">5 小时前</span><div class="si-m">atri-discord<span class="eng agy">AGY</span>#1 · 2 轮</div></a>
+              <div class="sl-g">昨天</div>
+              <a class="si"><svg class="chn"><use href="#c-tg"/></svg><div class="si-t"><span class="id">群组 ·923249</span></div><span class="si-time">21:40</span><div class="si-m">atri65535-bot<span class="eng grok">Grok</span>#4 · 31 轮<span class="ns">4 个会话</span></div></a>
+              <a class="si"><svg class="chn"><use href="#c-dc"/></svg><div class="si-t"><span class="id">频道 ·472945</span></div><span class="si-time">16:02</span><div class="si-m">atri-discord<span class="eng agy">AGY</span>#1 · 4 轮</div></a>
+              <div class="sl-g">本周早些时候</div>
+              <a class="si"><svg class="chn"><use href="#c-dc"/></svg><div class="si-t">交易复盘</div><span class="si-time">周六</span><div class="si-m">atri-discord<span class="eng agy">AGY</span>#9 · 50 轮<span class="ns">9 个会话</span></div></a>
+              <a class="si"><svg class="chn"><use href="#c-tg"/></svg><div class="si-t">Diana <span class="chip" style="height:17px;font-size:10.5px">私聊</span></div><span class="si-time">周五</span><div class="si-m">Diana<span class="eng codex">Codex</span>#5 · 14 轮</div></a>
+            </div>
+            <div class="sl-foot"><svg class="i" style="width:13px;height:13px"><use href="#i-folder"/></svg>孤立工作区 0 个</div>
+          </section>
+
+          <section class="conv">
+            <div class="cvh">
+              <div class="cvh-1"><svg class="chn"><use href="#c-dc"/></svg><h2>交易信号讨论</h2><button class="btn icon xs ghost" title="修改本地备注名"><svg class="i"><use href="#i-pencil"/></svg></button><span class="chip">本地备注</span><div style="margin-left:auto;display:flex;gap:6px"><button class="btn sm outline" disabled>设为当前</button><button class="btn icon sm ghost"><svg class="i"><use href="#i-more"/></svg></button></div></div>
+              <div class="cvh-2">atri-discord · 频道 <span class="mono">1547985083691044936</span><svg class="i"><use href="#i-copy"/></svg></div>
+              <div class="sess">
+                <span class="sb on"><span class="dot ok"></span>#6 当前<span class="eng agy">AGY</span><span class="muted">16 轮</span></span>
+                <span class="sb">#5<span class="eng claude">Claude</span><span class="muted">50 轮</span></span>
+                <span class="sb">#4<span class="eng agy">AGY</span><span class="muted">8 轮</span></span>
+                <span class="sb">更早 3 个<svg class="i"><use href="#i-down"/></svg></span>
+              </div>
+            </div>
+            <div class="msgs">
+              <div class="day">今天 · 10 月 5 日 周一</div>
+              <div class="sys"><span><svg class="i"><use href="#i-sparkle"/></svg>会话 #6 开始 · Claude · 08:43</span></div>
+              <div class="msg u">
+                <div class="av" style="--h:205">B</div>
+                <div class="mb">
+                  <div class="mh"><b>Bob</b><span>08:44</span></div>
+                  <div class="reply"><svg class="i"><use href="#i-reply"/></svg>回复 Atri：New session started: Session #6</div>
+                  <div class="mt">巴西这个卢拉还有那个啥，谁是好的谁是坏的</div>
+                </div>
+              </div>
+              <div class="msg a">
+                <div class="av bot"><svg class="i"><use href="#i-pocket"/></svg></div>
+                <div class="mb">
+                  <div class="mh"><b>Atri</b><span class="eng claude">Claude</span><span>08:45 · 用时 23 秒</span></div>
+                  <div class="mbody md">
+                    <h3>核心结论</h3>
+                    <p>你说的「那个啥」应该是<strong>博索纳罗</strong>（Jair Bolsonaro，巴西前总统）。两个人很难用好人坏人一刀切，关键看你更在意什么：</p>
+                    <ul><li><strong>卢拉</strong>：左翼，重视社会福利和再分配，外交上偏向金砖国家</li><li><strong>博索纳罗</strong>：右翼，主张市场化和减税，外交上亲美</li></ul>
+                  </div>
+                </div>
+              </div>
+              <div class="sys"><span><svg class="i"><use href="#i-swap"/></svg>引擎切换 Claude → AGY · 上下文已移交</span></div>
+              <div class="msg u">
+                <div class="av" style="--h:28">S</div>
+                <div class="mb">
+                  <div class="mh"><b>shinee9216</b><span>10:21</span></div>
+                  <div class="mt">像每日 AI 总结一样，新开一个频道「每日共同信号」，找 L、F、M、企鹅、美股 VIP 网期权异动的交集，每天推荐几个交集最大的，不要求所有人都有信号</div>
+                </div>
+              </div>
+              <div class="msg a">
+                <div class="av bot"><svg class="i"><use href="#i-pocket"/></svg></div>
+                <div class="mb">
+                  <div class="mh"><b>Atri</b><span class="eng agy">AGY</span><span>10:23 · 用时 1分48秒</span></div>
+                  <div class="mbody md">
+                    <h3>已创建</h3>
+                    <ul><li>定时任务 <strong>每日共同信号</strong>：工作日 08:30（纽约时间）</li><li>数据源：L老师、F老师、M、企鹅、美股会员网期权异动</li><li>规则：至少 <strong>2 个来源</strong>同时提到才入选，按重合度排序取前 5</li></ul>
+                    <p class="small">第一次运行在明天 08:30，想先试跑可以说「立即运行」。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="comp"><div class="input"><svg class="i"><use href="#i-send"/></svg>以 atri-discord 的身份发一条消息到这个频道（Agent 不会回复）</div><button class="btn outline">发送</button></div>
+          </section>
+
+          <aside class="rail">
+            <div class="rs">
+              <div class="rs-h">会话 #6<div class="r"><span class="pill ok">当前</span></div></div>
+              <dl class="kv">
+                <dt>引擎</dt><dd><span class="eng agy">AGY</span></dd>
+                <dt>模型</dt><dd style="flex-direction:column;align-items:flex-start;gap:0"><span class="mono">gemini-3.8-flash-high</span><span class="muted" style="font-size:11px">跟随引擎默认</span></dd>
+                <dt>推理强度</dt><dd>high</dd>
+                <dt>轮次</dt><dd>16</dd>
+                <dt>开始</dt><dd>今天 08:43</dd>
+                <dt>最近活动</dt><dd>2 分钟前</dd>
+                <dt>会话 ID</dt><dd><span class="mono">44e03b3d…6b66</span><svg class="i"><use href="#i-copy"/></svg></dd>
+              </dl>
+            </div>
+            <div class="rs">
+              <div class="rs-h">工作区<span class="muted">2 个文件 · 25.4 KB</span><div class="r"><button class="btn icon xs ghost" title="复制路径"><svg class="i"><use href="#i-copy"/></svg></button></div></div>
+              <a class="fl"><svg class="i"><use href="#i-file"/></svg>AGENTS.md<span>12.9 KB</span></a>
+              <a class="fl"><svg class="i"><use href="#i-file"/></svg>GEMINI.md<span>12.9 KB</span></a>
+            </div>
+            <div class="rs">
+              <div class="rs-h">此聊天的定时任务<span class="cnt">1</span></div>
+              <a class="rel"><svg class="i"><use href="#i-clock"/></svg><div><b>每日共同信号</b><div class="muted" style="font-size:11.5px">工作日 08:30 · 明天</div></div><span class="pill err r">超时</span></a>
+            </div>
+            <div class="rs">
+              <div class="rs-h">此聊天的后台作业</div>
+              <div class="empty-s">没有</div>
+            </div>
+            <div class="rs" style="border-bottom:0">
+              <button class="btn sm ghost danger" style="margin-left:-8px"><svg class="i"><use href="#i-trash"/></svg>删除这个会话…</button>
+            </div>
+          </aside>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>三栏：聊天列表、对话记录、会话与工作区信息。替代原来的 73 张大卡片和两层弹窗。</li>
+      <li>按 <code>botId + chatId</code> 分组，一个聊天一行，显示当前会话的引擎、编号、轮次；历史会话在对话区顶部切换。按最近活跃分「今天 / 昨天 / 本周早些时候」。</li>
+      <li>接口不返回聊天名称，所以加「本地备注名」，存在 <code>localStorage</code>。没有备注时依次用会话标题、「频道 ·515429」（取 ID 后 6 位）兜底。私聊和群组按 Telegram ID 正负、cron/作业里的 <code>isGroup</code> 推断。</li>
+      <li>对话记录渲染 Markdown（复用运行记录那边的渲染器）；<code>[In reply to …]</code> 前缀拆成引用条；相邻两轮引擎不同时插入「引擎切换」分隔线；助手消息显示用时（两轮 <code>ts</code> 相减）。</li>
+      <li>右栏按 <code>chatId</code> 过滤已加载的定时任务和后台作业，关联显示。</li>
+      <li>工作区文件点开在右栏下方展开预览，不再弹窗。</li>
+      <li>底部输入框用现有的 <code>/api/send-message</code>：以 Bot 身份发到聊天，占位符写明 Agent 不会回复。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>/api/sessions</code> <code>/api/sessions/turns</code> <code>/api/workspaces/files</code> <code>/api/workspaces/file-content</code></li>
+      <li><code>POST /api/sessions/switch</code> <code>POST /api/sessions/new</code> <code>DELETE /api/sessions</code>（删除时询问是否连同工作区）</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 03 CRON -->
+<section class="bw" id="b03">
+  <div>
+    <div class="bw-label"><b>定时任务</b><span>03</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="cron"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>运行</span><i>/</i><b>定时任务</b></div><div class="top-r"><span class="sync"><span class="dot ok"></span>自动刷新 · 4 秒前</span></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>定时任务</h1><p>按计划运行提示词，把结果发到对应聊天。每次都是新会话，工作目录按任务保留。</p></div><div class="act"><button class="btn primary"><svg class="i"><use href="#i-plus"/></svg>新建任务</button></div></div>
+          <div class="tb">
+            <div class="seg"><button class="on">全部 <i>8</i></button><button>启用 <i>6</i></button><button>已暂停 <i>2</i></button><button class="err">异常 <i>1</i></button></div>
+            <div class="input select" style="width:150px">全部 Bot</div>
+            <div class="input"><svg class="i"><use href="#i-search"/></svg>搜索名称、提示词、聊天…</div>
+            <span class="tz"><svg class="i"><use href="#i-globe"/></svg>时间按 America/New_York 显示</span>
+          </div>
+          <div class="split">
+            <div class="card tbl">
+              <div class="th"><span></span><span>任务</span><span>计划</span><span>下次运行</span><span>上次运行</span><span></span></div>
+              <div class="tr"><span class="sw on"></span><div class="c2"><b>L老师每日交易总结与回测</b><span><svg class="chn"><use href="#c-dc"/></svg>交易复盘 · atri-discord</span></div><div class="c2"><b>每天 20:00</b><span class="mono">0 20 * * *</span></div><div class="c2"><b>9 小时后</b><span>今天 20:00</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill ok">成功</span>昨天</span><span>4分12秒 · 共 7 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr"><span class="sw on"></span><div class="c2"><b>F老师每日交易总结</b><span><svg class="chn"><use href="#c-dc"/></svg>交易复盘 · atri-discord</span></div><div class="c2"><b>每天 20:05</b><span class="mono">5 20 * * *</span></div><div class="c2"><b>9 小时后</b><span>今天 20:05</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill ok">成功</span>昨天</span><span>3分40秒 · 共 7 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr sel"><span class="sw on"></span><div class="c2"><b>每日共同信号</b><span><svg class="chn"><use href="#c-dc"/></svg>交易信号讨论 · atri-discord</span></div><div class="c2"><b>工作日 08:30</b><span class="mono">30 8 * * 1-5</span></div><div class="c2"><b>明天 08:30</b><span>22 小时后</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill err">超时</span>今天</span><span style="color:var(--err)">连续失败 2 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr"><span class="sw on"></span><div class="c2"><b>美股会员网 KOL 研报汇总</b><span><svg class="chn"><use href="#c-dc"/></svg>研报 · atri-discord</span></div><div class="c2"><b>每天 07:00</b><span class="mono">0 7 * * *</span></div><div class="c2"><b>明天 07:00</b><span>20 小时后</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill silent">静默</span>今天</span><span>无新内容，未发消息</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr"><span class="sw on"></span><div class="c2"><b>每日 AI 新闻摘要</b><span><svg class="chn"><use href="#c-dc"/></svg>每日 AI 早报 · atri-discord</span></div><div class="c2"><b>每天 09:00</b><span class="mono">0 9 * * * · 上海</span></div><div class="c2"><b>今天 21:00</b><span>10 小时后</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill ok">成功</span>今天</span><span>5分31秒 · 共 21 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr"><span class="sw on"></span><div class="c2"><b>本周交易回顾</b><span><svg class="chn"><use href="#c-tg"/></svg>量化小组 · Diana</span></div><div class="c2"><b>每周五 17:00</b><span class="mono">0 17 * * 5</span></div><div class="c2"><b>周五 17:00</b><span>4 天后</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill ok">成功</span>上周五</span><span>7分02秒 · 共 3 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr off"><span class="sw"></span><div class="c2"><b>检查证书续期</b><span><svg class="chn"><use href="#c-tg"/></svg>shinee 私聊 · atri65535-bot</span></div><div class="c2"><b>仅一次</b><span>10/12 周一 10:00</span></div><div class="c2"><b style="font-weight:500">—</b><span>手动暂停</span></div><div class="c2"><span style="gap:7px"><span class="pill nodot">未运行</span></span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+              <div class="tr off"><span class="sw"></span><div class="c2"><b>美股矩阵扫单异动</b><span class="pause"><svg class="i" style="width:12px;height:12px"><use href="#i-alert"/></svg>自动暂停：Bot 已被移除</span></div><div class="c2"><b>每 30 分钟</b><span class="mono">*/30 * * * *</span></div><div class="c2"><b style="font-weight:500">—</b><span>已暂停</span></div><div class="c2"><span style="gap:7px;color:var(--ink-2)"><span class="pill err">失败</span>10/2</span><span>共 112 次</span></div><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+            </div>
+
+            <aside class="card det">
+              <div class="det-h">
+                <div class="det-t"><h2>每日共同信号</h2><span class="pill err">超时</span><span style="margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2)">启用<span class="sw on"></span></span></div>
+                <div class="det-m"><svg class="chn"><use href="#c-dc"/></svg>交易信号讨论 · atri-discord · <span class="eng agy">AGY</span> · 超时上限 30 分钟 · 由 shinee9216 通过对话创建</div>
+                <div class="det-a"><button class="btn sm primary"><svg class="i"><use href="#i-play"/></svg>立即运行</button><button class="btn sm outline"><svg class="i"><use href="#i-pencil"/></svg>编辑</button><button class="btn sm outline"><svg class="i"><use href="#i-folder"/></svg>工作区</button><button class="btn icon sm ghost" style="margin-left:auto"><svg class="i"><use href="#i-more"/></svg></button></div>
+                <div class="tabs"><a class="on">运行记录 <i>9</i></a><a>提示词</a><a>设置</a></div>
+              </div>
+              <div class="det-b">
+                <div class="strip-row">最近 14 次<div class="strip"><i class="e"></i><i class="e"></i><i class="e"></i><i class="e"></i><i class="e"></i><i class="ok"></i><i class="ok"></i><i class="silent"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="err"></i><i class="err cur"></i></div><span style="margin-left:auto">成功率 78%</span></div>
+                <div class="run sel">
+                  <div class="run-h"><span class="pill err">超时</span><b>#9</b><span>今天 08:30 · 计划</span><span class="r">30:00</span></div>
+                  <div class="run-x">
+                    <div class="errbox"><svg class="i"><use href="#i-alert"/></svg><div>运行超过 30 分钟被终止。最近两次都卡在同一步，可以在「设置」里把超时上限调高，或者在提示词里减少数据源。</div></div>
+                    <div class="out-l">终止前的输出<button class="btn xs ghost"><svg class="i"><use href="#i-copy"/></svg>复制</button></div>
+                    <div class="md" style="font-size:12.5px;color:var(--ink-2)">
+                      <p>已取到 L老师（42 条）、F老师（18 条）、企鹅（9 条）的发言。</p>
+                      <p>正在查询 <code>美股会员网</code> 期权异动，第 3 次重试…</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="run"><div class="run-h"><span class="pill err">超时</span><b>#8</b><span>10/2 周五 08:30 · 计划</span><span class="r">30:00</span></div></div>
+                <div class="run"><div class="run-h"><span class="pill ok">成功</span><b>#7</b><span>10/1 周四 08:30 · 计划</span><span class="r">6:12</span></div></div>
+                <div class="run"><div class="run-h"><span class="pill ok">成功</span><b>#6</b><span>9/30 周三 08:30 · 计划</span><span class="r">5:48</span></div></div>
+                <div class="run"><div class="run-h"><span class="pill ok">成功</span><b>#5</b><span>9/29 周二 15:12 · 手动</span><span class="r">6:30</span></div></div>
+              </div>
+            </aside>
+          </div>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>4 张指标卡并进筛选标签，数量直接写在标签上。</li>
+      <li>cron 表达式翻成人话（每天、工作日、每周五、每 30 分钟），原表达式留在下一行等宽小字；翻不了的照原样显示。时区和全局时区不同的任务在表达式后面标出城市。</li>
+      <li>下次运行用相对时间加具体时刻，两者主次随远近切换（9 小时后 / 明天 08:30）。</li>
+      <li>每行只留启用开关和 ⋯ 菜单。立即运行、编辑、工作区、删除放到右侧详情里。</li>
+      <li>详情：最近 14 次运行色块，加运行列表；选中一次直接在下面展开渲染后的输出或错误，不用再开弹窗。</li>
+      <li>自动暂停的任务把 <code>pausedReason</code> 写在名称下面。上次「静默」（回复了 <code>[SILENT]</code>）用空心点，跟失败区分开。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/cron</code>（含 <code>timezone</code>、<code>state</code>）· <code>GET /api/cron/runs</code></li>
+      <li><code>POST /api/cron/run</code> · <code>POST /api/cron/update</code>（启停、编辑）· <code>DELETE /api/cron</code></li>
+      <li>工作区：<code>/api/workspaces/files</code>，路径用 <code>cron-&lt;id&gt;</code> 会话目录</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 04 JOBS -->
+<section class="bw" id="b04">
+  <div>
+    <div class="bw-label"><b>后台作业</b><span>04</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="jobs"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>运行</span><i>/</i><b>后台作业</b></div><div class="top-r"><span class="sync"><span class="dot ok"></span>自动刷新 · 1 秒前</span></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>后台作业</h1><p>Agent 交给网关在后台跑的长命令。结束后网关把结果发回原来的聊天，Agent 接着处理。网关重启不影响正在运行的作业。</p></div></div>
+          <div class="tb">
+            <div class="seg"><button class="on">全部 <i>7</i></button><button>进行中 <i>2</i></button><button>已结束 <i>5</i></button><button class="err">失败 <i>2</i></button></div>
+            <div class="input select" style="width:150px">全部 Bot</div>
+            <div class="input"><svg class="i"><use href="#i-search"/></svg>搜索标题、命令、聊天…</div>
+          </div>
+
+          <div class="job">
+            <div class="jh">
+              <span class="spin"></span>
+              <div class="jt"><b><span class="n">#3</span>下载 SDXL 模型权重</b><div><svg class="chn"><use href="#c-dc"/></svg>频道 ·472945 · atri-discord · shinee9216 发起 · 09:58 开始</div></div>
+              <div class="jclock"><div>05:42</div><span>上限 6 小时</span></div>
+              <button class="btn sm outline danger">取消作业</button>
+            </div>
+            <div class="jcmd"><span class="p">$</span>huggingface-cli download stabilityai/stable-diffusion-xl-base-1.0 --local-dir ./models/sdxl <span class="muted">· cwd ~/.pocketagent/workspaces/…/1556456100046569472_66f4dd5e</span></div>
+            <div class="term">
+              <div class="term-bar"><span><i></i>跟随输出</span><span>最近 200 行</span></div>
+              <div class="d">Fetching 19 files:   0%|          | 0/19 [00:00&lt;?, ?it/s]</div>
+              <div>Downloading 'text_encoder/model.safetensors' → ./models/sdxl/text_encoder/model.safetensors</div>
+              <div><span class="g">✓</span> text_encoder/model.safetensors <span class="d">492M/492M 11.2MB/s</span></div>
+              <div>Downloading 'text_encoder_2/model.safetensors'</div>
+              <div><span class="g">✓</span> text_encoder_2/model.safetensors <span class="d">2.78G/2.78G 10.9MB/s</span></div>
+              <div>Downloading 'unet/diffusion_pytorch_model.safetensors'</div>
+              <div>unet/diffusion_pytorch_model.safetensors:  61%|<span class="y">██████▏   </span>| 3.12G/5.14G [04:48&lt;03:12, 10.5MB/s]</div>
+              <div class="d">Fetching 19 files:  42%|████▏     | 8/19 [05:12&lt;06:31, 35.6s/it]</div>
+            </div>
+            <div class="jthen"><svg class="i"><use href="#i-send"/></svg>结束后回传给 Agent：<b>把模型保存路径告诉用户，并用它生成一张测试图</b><span class="r">会话 66f4dd5e</span></div>
+          </div>
+
+          <div class="card jl">
+            <div class="th"><span></span><span>作业</span><span>聊天</span><span>耗时</span><span>结果</span><span>回传</span><span>时间</span><span></span></div>
+            <div class="tr"><span class="st-ic q"></span><div class="c2"><b><span class="mono muted" style="font-size:12px">#5</span> 编译 whisper.cpp</b><span class="mono">make -j8 WHISPER_METAL=1</span></div><div class="c2"><span style="color:var(--ink-2)"><svg class="chn"><use href="#c-tg"/></svg>shinee 私聊</span><span>atri65535-bot</span></div><span class="muted">—</span><span class="pill nodot">排队中</span><span class="cb mute">—</span><span class="muted" style="font-size:12px">10:30</span><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+            <div class="tr"><span class="st-ic err"><svg class="i"><use href="#i-x"/></svg></span><div class="c2"><b><span class="mono muted" style="font-size:12px">#4</span> 运行全量测试</b><span class="mono">npm test -- --run</span></div><div class="c2"><span style="color:var(--ink-2)"><svg class="chn"><use href="#c-tg"/></svg>shinee 私聊</span><span>atri65535-bot</span></div><span class="tnum">2分13秒</span><span class="pill err">退出码 1</span><span class="cb ok"><svg class="i"><use href="#i-check"/></svg>已回传</span><span class="muted" style="font-size:12px">10:20</span><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+            <div class="tr"><span class="st-ic ok"><svg class="i"><use href="#i-check"/></svg></span><div class="c2"><b><span class="mono muted" style="font-size:12px">#1</span> 36 步计时任务（约 6 分钟）</b><span class="mono">for i in $(seq 1 36); do echo "step $i/36"; sleep 10; done</span></div><div class="c2"><span style="color:var(--ink-2)"><svg class="chn"><use href="#c-dc"/></svg>频道 ·069472</span><span>atri-discord</span></div><span class="tnum">6分00秒</span><span class="pill ok">退出码 0</span><span class="cb ok"><svg class="i"><use href="#i-check"/></svg>已回传</span><span class="muted" style="font-size:12px">06:43</span><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+            <div class="tr"><span class="st-ic err"><svg class="i"><use href="#i-hourglass"/></svg></span><div class="c2"><b><span class="mono muted" style="font-size:12px">#2</span> 抓取 10 年日线数据</b><span class="mono">python3 fetch_kline.py --years 10 --symbols sp500.txt</span></div><div class="c2"><span style="color:var(--ink-2)"><svg class="chn"><use href="#c-tg"/></svg>量化小组</span><span>Diana</span></div><span class="tnum">6 小时</span><span class="pill err">超时</span><span class="cb err"><svg class="i"><use href="#i-alert"/></svg>回传失败</span><span class="muted" style="font-size:12px">昨天</span><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+            <div class="tr"><span class="st-ic mute"><svg class="i"><use href="#i-ban"/></svg></span><div class="c2"><b><span class="mono muted" style="font-size:12px">#3</span> 重新训练分类器</b><span class="mono">python3 train.py --epochs 50</span></div><div class="c2"><span style="color:var(--ink-2)"><svg class="chn"><use href="#c-tg"/></svg>量化小组</span><span>Diana</span></div><span class="tnum">14分05秒</span><span class="pill nodot">已取消 · shinee</span><span class="cb ok"><svg class="i"><use href="#i-check"/></svg>已回传</span><span class="muted" style="font-size:12px">昨天</span><button class="btn icon xs ghost"><svg class="i"><use href="#i-more"/></svg></button></div>
+          </div>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>运行中的作业置顶展开：实时日志、本地每秒走的计时、超时上限、取消按钮。日志在底部时自动跟随，向上滚动就暂停跟随。</li>
+      <li>把 <code>then</code>（结束后 Agent 要做的事）和回传状态 <code>callback</code> 放到明面上：已回传 / 等待回传 / 回传失败 / 跳过。现在这两项要点进去才看得到。</li>
+      <li>七种状态（排队、运行、成功、失败、超时、已取消、丢失）各有图标，不只靠颜色区分。</li>
+      <li>已结束的作业收成一行；点一行在原地展开日志，同一时间只展开一个。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/jobs</code>（每 3 秒，有运行中作业时）</li>
+      <li><code>GET /api/jobs/log?lines=200</code>（展开时每 2 秒）</li>
+      <li><code>POST /api/jobs/cancel</code> · <code>DELETE /api/jobs</code></li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 05 BOTS -->
+<section class="bw" id="b05">
+  <div>
+    <div class="bw-label"><b>Bots</b><span>05</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="bots"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>配置</span><i>/</i><b>Bots</b></div><div class="top-r"><button class="btn sm outline"><svg class="i"><use href="#i-plus"/></svg>添加 Bot</button></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>Bots</h1><p>每个 Bot 是一个 Telegram 或 Discord 机器人，可以单独设置默认引擎、访问策略和人设。</p></div></div>
+          <div class="bots">
+            <div class="bgrid">
+              <div class="card bc">
+                <div class="bc-h"><svg class="chn"><use href="#c-tg"/></svg><div><b>atri65535-bot</b><span>@atri65535_bot</span></div><span class="pill ok">在线</span></div>
+                <dl class="bc-b"><dt>默认执行</dt><dd><span class="eng agy">AGY</span><span class="muted">· 默认模型</span></dd><dt>访问</dt><dd>私聊 配对 · 群组 配对</dd><dt>已授权</dt><dd>2 位用户 · 4 个群组</dd><dt>人设</dt><dd><span class="pill ok nodot">SOUL.md 已设置</span></dd></dl>
+                <div class="bc-f"><button class="btn sm ghost"><svg class="i"><use href="#i-pencil"/></svg>编辑</button><button class="btn sm ghost"><svg class="i"><use href="#i-user"/></svg>人设</button><button class="btn icon sm ghost r"><svg class="i"><use href="#i-more"/></svg></button></div>
+              </div>
+              <div class="card bc sel">
+                <div class="bc-h"><svg class="chn"><use href="#c-dc"/></svg><div><b>atri-discord</b><span>Atri#7731</span></div><span class="pill ok">在线</span></div>
+                <dl class="bc-b"><dt>默认执行</dt><dd><span class="eng agy">AGY</span><span class="muted">· high</span></dd><dt>访问</dt><dd>私聊 配对 · 服务器 配对</dd><dt>已授权</dt><dd>2 位用户 · 17 个频道</dd><dt>人设</dt><dd><span class="pill ok nodot">SOUL.md 已设置</span></dd></dl>
+                <div class="bc-f"><button class="btn sm ghost"><svg class="i"><use href="#i-pencil"/></svg>编辑</button><button class="btn sm ghost"><svg class="i"><use href="#i-user"/></svg>人设</button><button class="btn icon sm ghost r"><svg class="i"><use href="#i-more"/></svg></button></div>
+              </div>
+              <div class="card bc">
+                <div class="bc-h"><svg class="chn"><use href="#c-tg"/></svg><div><b>Diana</b><span>@diana_shine_bot</span></div><span class="pill ok">在线</span></div>
+                <dl class="bc-b"><dt>默认执行</dt><dd><span class="eng codex">Codex</span><span class="muted">· gpt-5.5</span></dd><dt>访问</dt><dd>私聊 白名单 · 群组 关闭</dd><dt>已授权</dt><dd>1 位用户</dd><dt>人设</dt><dd><span class="pill nodot">未设置</span></dd></dl>
+                <div class="bc-f"><button class="btn sm ghost"><svg class="i"><use href="#i-pencil"/></svg>编辑</button><button class="btn sm ghost"><svg class="i"><use href="#i-user"/></svg>人设</button><button class="btn icon sm ghost r"><svg class="i"><use href="#i-more"/></svg></button></div>
+              </div>
+              <div class="card bc">
+                <div class="bc-h"><svg class="chn"><use href="#c-tg"/></svg><div><b>shine_fin_bot</b><span>@shine_fin_bot</span></div><span class="pill ok">在线</span></div>
+                <dl class="bc-b"><dt>默认执行</dt><dd><span class="eng claude">Claude</span><span class="muted">· opus · medium</span></dd><dt>访问</dt><dd>私聊 配对 · 群组 关闭</dd><dt>已授权</dt><dd>1 位用户</dd><dt>人设</dt><dd><span class="pill ok nodot">SOUL.md 已设置</span></dd></dl>
+                <div class="bc-f"><button class="btn sm ghost"><svg class="i"><use href="#i-pencil"/></svg>编辑</button><button class="btn sm ghost"><svg class="i"><use href="#i-user"/></svg>人设</button><button class="btn icon sm ghost r"><svg class="i"><use href="#i-more"/></svg></button></div>
+              </div>
+            </div>
+
+            <aside class="card drawer">
+              <div class="dr-h"><svg class="chn" style="width:20px;height:20px"><use href="#c-dc"/></svg><h2>编辑 atri-discord</h2><button class="btn icon sm ghost r"><svg class="i"><use href="#i-x"/></svg></button></div>
+              <div class="dr-b">
+                <div class="dr-s">基本</div>
+                <div class="g2">
+                  <div class="fld"><div class="lbl">名称</div><div class="input v">atri-discord</div></div>
+                  <div class="fld"><div class="lbl">Bot Token</div><div class="input v" style="justify-content:space-between"><span class="mono">••••••••••••3kQ</span><svg class="i"><use href="#i-eye"/></svg></div></div>
+                </div>
+                <div class="dr-s">默认执行</div>
+                <div class="g3">
+                  <div class="fld"><div class="lbl">引擎</div><div class="input v select"><span class="eng agy">AGY</span></div></div>
+                  <div class="fld"><div class="lbl">模型</div><div class="input v select">跟随引擎默认</div></div>
+                  <div class="fld"><div class="lbl">推理强度</div><div class="input v select">high</div></div>
+                </div>
+                <div class="hint" style="margin:-8px 0 0">模型和推理强度来自本机检测结果，只列所选模型支持的档位。</div>
+                <div class="dr-s">访问 · 私聊</div>
+                <div class="rc">
+                  <div class="rco on"><i></i><div><b>配对</b><span>陌生人会收到 6 位码，需在「安全与配对」批准</span></div></div>
+                  <div class="rco"><i></i><div><b>白名单</b><span>只回复下面列出的用户</span></div></div>
+                  <div class="rco"><i></i><div><b>开放</b><span>任何人都能使用</span></div></div>
+                  <div class="rco"><i></i><div><b>关闭</b><span>不响应私聊</span></div></div>
+                </div>
+                <div class="fld" style="margin-top:12px"><div class="lbl">已授权用户 <span class="muted" style="font-weight:400">2</span></div><div class="tags"><span class="chip">1049519481929596979 <span class="x">×</span></span><span class="chip">1402460769429487759 <span class="x">×</span></span><span class="add">+ 添加用户 ID</span></div></div>
+                <div class="dr-s">访问 · 服务器与频道</div>
+                <div class="gl">
+                  <div class="gl-r"><svg class="i" style="width:14px;height:14px;color:var(--ink-3)"><use href="#i-users"/></svg><span class="mono">1547985083691044936</span><span class="muted" style="font-size:11.5px">交易信号讨论</span><span class="sw on"></span></div>
+                  <div class="gl-r"><svg class="i" style="width:14px;height:14px;color:var(--ink-3)"><use href="#i-users"/></svg><span class="mono">1555928549687300136</span><span class="muted" style="font-size:11.5px">交易复盘</span><span class="sw on"></span></div>
+                  <div class="gl-r" style="color:var(--ink-3);font-size:12px">还有 15 个频道 · 展开</div>
+                </div>
+              </div>
+              <div class="dr-f"><span class="muted">改动会先暂存，统一保存</span><div class="r"><button class="btn sm ghost">取消</button><button class="btn sm primary">完成</button></div></div>
+            </aside>
+          </div>
+        </div></div>
+        <div class="dirty" style="left:calc((100% - 452px) / 2)"><span class="dot"></span><span>1 处未保存的更改</span><span class="muted">atri-discord · 推理强度</span><button class="btn sm ghost">查看差异</button><button class="btn sm ghost">放弃</button><button class="btn sm brand">保存并热重载 <span class="kbd">⌘S</span></button></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>卡片只放判断状态要用的信息：渠道、用户名、在线状态、默认执行、访问策略、授权数量、人设是否设置。</li>
+      <li>编辑从居中弹窗改成右侧抽屉，分「基本 / 默认执行 / 访问 / 技能 / 人设」几段。现在的弹窗没有模型、推理强度、授权列表和群组开关，这些只能去 YAML 改。</li>
+      <li>模型和推理强度下拉跟着所选引擎联动，选项来自 <code>/api/models</code> 的检测结果，推理强度只列该模型 <code>supportedEfforts</code> 里有的档位。</li>
+      <li>策略用带说明的单选卡片，不再只写 pairing / allowlist。Telegram 显示「群组」，Discord 显示「服务器与频道」，字段跟着渠道切换。</li>
+      <li>频道 ID 旁边的名称来自聊天本地备注名（见 02），没有备注就不显示。</li>
+      <li>抽屉里点「完成」只暂存，底部保存条统一「保存并热重载」。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/config</code> → 改 <code>bots[]</code> → <code>POST /api/config</code></li>
+      <li><code>/api/status</code>（用户名、在线）· <code>/api/models</code> · <code>/api/soul</code> · <code>/api/skills</code></li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 06 ENGINES -->
+<section class="bw" id="b06">
+  <div>
+    <div class="bw-label"><b>引擎</b><span>06</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="engines"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>配置</span><i>/</i><b>引擎</b></div><div class="top-r"><button class="btn sm outline"><svg class="i"><use href="#i-refresh"/></svg>重新扫描模型</button></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>引擎</h1><p>本机的四个 CLI。Bot 没有单独指定时，所有会话都用默认引擎。</p></div></div>
+
+          <div class="sec-h"><h3>默认引擎</h3></div>
+          <div class="etiles">
+            <div class="etile"><span class="rad"></span><span class="eng claude">Claude Code</span><p>Anthropic · 支持 CLAUDE.md 和工具调用</p><div class="meta"><span class="dot ok"></span>已检测 · 3 个模型</div></div>
+            <div class="etile"><span class="rad"></span><span class="eng codex">OpenAI Codex</span><p>OpenAI · AGENTS.md，带沙箱</p><div class="meta"><span class="dot ok"></span>已检测 · 6 个模型</div></div>
+            <div class="etile on"><span class="rad"></span><span class="eng agy">Antigravity</span><p>Google · 原生技能与子代理</p><div class="meta"><span class="dot ok"></span>已检测 · 14 个模型</div></div>
+            <div class="etile"><span class="rad"></span><span class="eng grok">xAI Grok</span><p>xAI · 无头会话与子代理</p><div class="meta"><span class="dot ok"></span>已检测 · 1 个模型</div></div>
+          </div>
+
+          <div class="sec-h"><h3>进程</h3></div>
+          <div class="g3" style="max-width:720px;margin-bottom:22px">
+            <div class="fld" style="margin:0"><div class="lbl">最多同时运行</div><div class="unit"><div class="input v">10</div><div class="input">个进程</div></div></div>
+            <div class="fld mod" style="margin:0"><div class="lbl">空闲多久后回收</div><div class="unit"><div class="input v">15</div><div class="input v select">分钟</div></div></div>
+          </div>
+
+          <div class="sec-h"><h3>各引擎设置</h3></div>
+          <div class="acc">
+            <div class="acc-r open"><span class="eng claude">Claude Code</span><span class="sum"><span class="mono">claude</span>· opus · 推理默认 · 1 个额外参数</span><span class="chev"><svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="acc-x">
+              <div class="g3">
+                <div class="fld"><div class="lbl">可执行文件</div><div class="input v mono" style="font-size:12px">claude</div></div>
+                <div class="fld mod"><div class="lbl">默认模型</div><div class="input v select">Claude Opus（Opus 5）</div></div>
+                <div class="fld"><div class="lbl">推理强度</div><div class="seg" style="display:flex"><button class="on">默认</button><button>low</button><button>medium</button><button>high</button><button>xhigh</button><button>max</button></div></div>
+              </div>
+              <div class="fld" style="margin:0"><div class="lbl">额外参数</div><div class="tags"><span class="chip">--dangerously-skip-permissions <span class="x">×</span></span><span class="add">+ 添加参数</span></div></div>
+            </div>
+            <div class="acc-r"><span class="eng codex">OpenAI Codex</span><span class="sum"><span class="mono">codex</span>· gpt-5.5 · 沙箱 <span class="pill warn nodot" style="height:18px;font-size:11px">完全访问</span> · 审批 never</span><span class="chev"><svg class="i"><use href="#i-right"/></svg></span></div>
+            <div class="acc-r"><span class="eng agy">Antigravity</span><span class="sum"><span class="mono">agy</span>· gemini-3.8-flash-high · 推理 medium</span><span class="chev"><svg class="i"><use href="#i-right"/></svg></span></div>
+            <div class="acc-r"><span class="eng grok">xAI Grok</span><span class="sum"><span class="mono">grok</span>· grok-5 · 推理默认 · <span class="mono">--disable-web-search</span></span><span class="chev"><svg class="i"><use href="#i-right"/></svg></span></div>
+          </div>
+        </div></div>
+        <div class="diffpop">
+          <h4>未保存的更改<span>与上次加载的 config 比较</span></h4>
+          <div class="df"><span class="k">engines.default</span><span><del>claude</del> → <ins>agy</ins></span></div>
+          <div class="df"><span class="k">engines.idleTimeoutMs</span><span><del>600000</del> → <ins>900000</ins> <span class="muted">（10 → 15 分钟）</span></span></div>
+          <div class="df"><span class="k">engines.claude.model</span><span><del>sonnet</del> → <ins>opus</ins></span></div>
+        </div>
+        <div class="dirty"><span class="dot"></span><span>3 处未保存的更改</span><button class="btn sm ghost" style="background:rgba(255,255,255,.08)">收起差异</button><button class="btn sm ghost">放弃</button><button class="btn sm brand">保存并热重载 <span class="kbd">⌘S</span></button></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>默认引擎用 4 张卡片选，同时显示检测状态和模型数量，不用再去概览页对照。</li>
+      <li>毫秒输入改成「数值 + 单位」（秒 / 分钟 / 小时），提交前换算回毫秒。</li>
+      <li>每个引擎默认折叠成一行摘要，展开才是表单。Codex 沙箱为「完全访问」时摘要里用黄色标出。</li>
+      <li>额外参数从一整行字符串改成标签输入，对应 config 里的数组。</li>
+      <li>改过的字段标签旁出现「已修改」，输入框描边变橙。底部保存条显示改动数量，「查看差异」按 <code>字段：旧值 → 新值</code> 列出（前端和加载时的 config 比较），⌘S 保存。</li>
+      <li>保存成功后把接口返回的 <code>changes</code> 显示在提示里；校验失败时把 <code>error</code> 定位到对应字段。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/config</code> · <code>POST /api/config</code></li>
+      <li><code>GET /api/models?refresh=true</code>（重新扫描）</li>
+    </ul>
+    <h4>同样的模式用在</h4>
+    <ul>
+      <li>网关与运行时：端口、数据目录、日志，再加上现在只能在 YAML 里改的 <code>scheduler</code> 和 <code>jobs</code> 设置。走同一个 <code>/api/config</code>，不需要新接口。</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 07 SECURITY -->
+<section class="bw" id="b07">
+  <div>
+    <div class="bw-label"><b>安全与配对</b><span>07</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="security"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>配置</span><i>/</i><b>安全与配对</b></div><div class="top-r"><span class="sync"><span class="dot ok"></span>自动刷新 · 2 秒前</span></div></header>
+        <div class="body"><div class="page">
+          <div class="ph"><div><h1>安全与配对</h1><p>谁能和 Bot 说话。新用户第一次发消息时会拿到 6 位配对码，在这里批准后才能使用。</p></div></div>
+
+          <div class="sec-h"><h3>待批准</h3><span class="cnt">2</span></div>
+          <div class="prs">
+            <div class="pr">
+              <div>
+                <div class="pr-who"><div class="av" style="--h:205;width:34px;height:34px">B</div><div><b>Bob</b><span>用户 ID <span class="mono">7712093345</span></span></div></div>
+                <div class="pr-code">482 913</div>
+                <div class="pr-meta"><svg class="chn"><use href="#c-tg"/></svg>私聊 · atri65535-bot · 2 分钟前</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary"><svg class="i"><use href="#i-check"/></svg>批准</button></div>
+              <div class="exp"><span>8:12 后过期</span><div class="bar"><i style="width:82%"></i></div></div>
+            </div>
+            <div class="pr">
+              <div>
+                <div class="pr-who"><div class="av" style="--h:28;width:34px;height:34px">S</div><div><b>shinee9216</b><span>想把 Bot 加进一个新群组</span></div></div>
+                <div class="pr-code">305 774</div>
+                <div class="pr-meta"><svg class="chn"><use href="#c-tg"/></svg>群组 <span class="mono">-1004434539263</span> · atri65535-bot · 6 分钟前</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary"><svg class="i"><use href="#i-check"/></svg>批准</button></div>
+              <div class="exp"><span>4:05 后过期</span><div class="bar"><i style="width:41%"></i></div></div>
+            </div>
+          </div>
+
+          <div class="sec-h"><h3>各 Bot 的访问策略</h3><div class="r" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)">未单独设置时使用<div class="input v select" style="height:26px;width:110px;font-size:12px">配对</div></div></div>
+          <div class="card pol">
+            <div class="th"><span>Bot</span><span>私聊</span><span>群组 / 服务器</span><span>已授权用户</span><span>已授权群组</span><span></span></div>
+            <div class="tr"><div class="c2"><b style="display:flex;align-items:center;gap:8px"><svg class="chn"><use href="#c-tg"/></svg>atri65535-bot</b></div><span class="pill brand nodot">配对</span><span class="pill brand nodot">配对</span><span>2</span><span>4</span><button class="btn xs ghost">编辑</button></div>
+            <div class="tr"><div class="c2"><b style="display:flex;align-items:center;gap:8px"><svg class="chn"><use href="#c-dc"/></svg>atri-discord</b></div><span class="pill brand nodot">配对</span><span class="pill brand nodot">配对</span><span>2</span><span>17</span><button class="btn xs ghost">编辑</button></div>
+            <div class="tr"><div class="c2"><b style="display:flex;align-items:center;gap:8px"><svg class="chn"><use href="#c-tg"/></svg>Diana</b></div><span class="pill nodot">白名单</span><span class="pill nodot" style="color:var(--ink-3)">关闭</span><span>1</span><span>0</span><button class="btn xs ghost">编辑</button></div>
+            <div class="tr"><div class="c2"><b style="display:flex;align-items:center;gap:8px"><svg class="chn"><use href="#c-tg"/></svg>shine_fin_bot</b></div><span class="pill brand nodot">配对</span><span class="pill nodot" style="color:var(--ink-3)">关闭</span><span>1</span><span>0</span><button class="btn xs ghost">编辑</button></div>
+          </div>
+          <div class="legend">
+            <div><b><span class="pill brand nodot">配对</span></b>陌生人拿到 6 位码，批准后加入授权列表</div>
+            <div><b><span class="pill nodot">白名单</span></b>只回复授权列表里的用户和群组</div>
+            <div><b><span class="pill warn nodot">开放</span></b>任何人都能用，会消耗你的 CLI 额度</div>
+            <div><b><span class="pill nodot" style="color:var(--ink-3)">关闭</span></b>完全不响应</div>
+          </div>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>待批准的配对放最上面，大号显示 6 位码，方便和用户在聊天里看到的核对；按 <code>expiresAt</code> 显示倒计时，过期后卡片自动消失。</li>
+      <li>现在配对请求只在页面加载时取一次。改成每 5 秒轮询，侧栏角标和概览同步提醒。</li>
+      <li>访问策略按 Bot 汇成一张表，「开放」用黄色标出，一眼能看出哪个 Bot 对所有人开放。全局默认策略放在表头右边。</li>
+      <li>「编辑」跳到 05 的 Bot 抽屉并定位到访问那一段。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/pairings</code> · <code>POST /api/pairings/approve</code></li>
+      <li>策略和授权数量来自 <code>/api/config</code> 与 <code>/api/status</code> 里的 <code>allowFrom</code>、<code>groups</code></li>
+    </ul>
+    <h4>做不到的</h4>
+    <ul>
+      <li>没有「拒绝」接口，所以只有批准；不处理的请求会自己过期。</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 08 SKILLS -->
+<section class="bw" id="b08">
+  <div>
+    <div class="bw-label"><b>技能</b><span>08</span></div>
+    <div class="board"><div class="app" data-theme="light">
+      <aside class="side" data-active="skills"></aside>
+      <main class="main">
+        <header class="top"><div class="crumb"><span>配置</span><i>/</i><span>技能</span><i>/</i><b class="mono" style="font-size:12.5px">dc-chat</b></div><div class="top-r"><button class="btn sm outline"><svg class="i"><use href="#i-refresh"/></svg>全部同步</button><button class="btn sm primary"><svg class="i"><use href="#i-plus"/></svg>新建技能</button></div></header>
+        <div class="body"><div class="sk">
+          <section class="sk-l">
+            <div style="padding:2px 8px 12px;display:flex;align-items:center;gap:8px"><b style="font-size:15px">技能</b><span class="chip mono" style="font-size:10.5px">~/.pocketagent/skills</span></div>
+            <div class="sk-i on"><b>dc-chat</b><p>通过 Discord 接口查群聊历史消息，支持按日期、发言人、重要发言人、关键词筛选。</p><div class="sync4"><span>Claude</span><span>Codex</span><span>AGY</span><span>Grok</span></div></div>
+            <div class="sk-i"><b>yibi-ledger</b><p>在本地记账软件「一笔」里记账、查账、改账、删账。</p><div class="sync4"><span>Claude</span><span>Codex</span><span>AGY</span><span class="no">Grok</span></div></div>
+            <div class="sk-i"><b>news-digest</b><p>抓取当天 AI 领域的重要新闻，交叉验证后写成早报。</p><div class="sync4"><span>Claude</span><span>Codex</span><span>AGY</span><span>Grok</span></div></div>
+          </section>
+          <section class="sk-r">
+            <div class="sk-h">
+              <div class="t"><h2>dc-chat</h2><span class="pill ok">已同步到 4 个 CLI</span><div class="r"><button class="btn sm ghost danger"><svg class="i"><use href="#i-trash"/></svg>删除</button><button class="btn sm primary">保存并同步</button></div></div>
+              <div class="sk-meta">
+                <div><svg class="i" style="width:14px;height:14px"><use href="#i-file"/></svg>SKILL.md</div>
+                <div><svg class="i" style="width:14px;height:14px"><use href="#i-code"/></svg><span class="mono">scripts/query.py</span></div>
+                <div><svg class="i" style="width:14px;height:14px"><use href="#i-bot"/></svg>启用的 Bot：全部 4 个（未限制）</div>
+              </div>
+            </div>
+            <div class="fm">
+              <div class="g2" style="grid-template-columns:220px 1fr">
+                <div class="fld" style="margin:0"><div class="lbl">name</div><div class="input v mono" style="font-size:12px">dc-chat</div></div>
+                <div class="fld" style="margin:0"><div class="lbl">description <span class="muted" style="font-weight:400">引擎靠这段决定什么时候调用</span></div><div class="input v" style="height:auto;padding:7px 10px;line-height:1.5;font-size:12.5px">通过 Discord 接口查群聊历史消息，支持按日期、按发言人、按重要发言人、按关键词筛选。当用户问「群里今天说了啥」「F老师最近讲了什么」等要翻 Discord 群聊历史发言的场景，就用这个 skill。</div></div>
+              </div>
+            </div>
+            <div class="code">
+              <div class="h"># Discord 群聊历史查询</div>
+              <div></div>
+              <div>用 <span class="k">scripts/query.py</span> 读取本地缓存的群聊记录。</div>
+              <div></div>
+              <div class="h">## 群组代号</div>
+              <div>- <span class="k">frank</span>   Frank 的群（F老师 / Franktradingroom）</div>
+              <div>- <span class="k">liver</span>   Liver 的群（老大 / L老师 / Liver会员俱乐部）</div>
+              <div>- <span class="k">heima</span>   美股会员网（各大美股 VIP 研报 / KOL 汇总）</div>
+              <div>- <span class="k">matrix</span>  美股矩阵网（扫单异动与宏观新闻）</div>
+              <div></div>
+              <div class="h">## 用法</div>
+              <div class="c">```bash</div>
+              <div>python3 scripts/query.py -g liver --important --last 24h --format text</div>
+              <div>python3 scripts/query.py -g heima -c liver-spx --since 2026-10-01</div>
+              <div class="c">```</div>
+              <div></div>
+              <div>- <span class="k">--important</span> 只看重要发言人</div>
+              <div>- <span class="k">--last</span> 支持 24h / 3d / 1w</div>
+            </div>
+          </section>
+        </div></div>
+      </main>
+    </div></div>
+  </div>
+  <aside class="anno">
+    <h4>改了什么</h4>
+    <ul>
+      <li>左边列表、右边编辑器，不再用弹窗；切换技能前如果有未保存的修改会提示。</li>
+      <li>每个技能显示四个 CLI 的同步状态，没同步上的单独用黄色标出。</li>
+      <li>frontmatter 的 <code>name</code> / <code>description</code> 拆成表单字段，正文用带行号的等宽编辑器；保存时再拼回 SKILL.md。</li>
+      <li>显示哪些 Bot 启用了这个技能，来自 config 里的 <code>bots[].skills</code>（布尔值或名单）。</li>
+    </ul>
+    <h4>数据来源</h4>
+    <ul>
+      <li><code>GET /api/skills</code> · <code>GET /api/skills/detail</code></li>
+      <li><code>POST /api/skills/update</code> · <code>/sync</code> · <code>/new</code> · <code>DELETE /api/skills</code></li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 09 DARK + CMDK -->
+<section class="bw" id="b09">
+  <div>
+    <div class="bw-label"><b>深色主题 + ⌘K</b><span>09</span></div>
+    <div class="board"><div class="app" data-theme="dark" id="dark-app"></div></div>
+  </div>
+  <aside class="anno">
+    <h4>深色主题</h4>
+    <ul>
+      <li>单独调的一套色值，不是简单反色：背景偏暖黑，状态色提高亮度、降低饱和，保证小字号下仍能区分。</li>
+      <li>跟随系统 / 浅色 / 深色三档，放在侧栏底部，和语言切换一起。</li>
+    </ul>
+    <h4>⌘K 搜索与跳转</h4>
+    <ul>
+      <li>在已经加载的数据里搜：聊天（含本地备注名和 ID 后几位）、会话 ID、定时任务、后台作业、技能、页面，再加几个常用操作（新建会话、立即运行某任务、切换主题、保存配置）。</li>
+      <li>不发额外请求。列表数据不全时（比如还没打开过会话页），先拉一次 <code>/api/sessions</code>。</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ======================================================= 10 TOKENS -->
+<section class="bw" id="b10">
+  <div>
+    <div class="bw-label"><b>组件与样式</b><span>10</span></div>
+    <div class="board"><div class="app doc" data-theme="light"><div class="tk">
+      <div class="tk-g">
+        <div>
+          <h2>颜色 · 浅色</h2>
+          <div class="sws">
+            <div class="swc"><i style="background:#F4F3EF"></i><div>背景<span>#F4F3EF</span></div></div>
+            <div class="swc"><i style="background:#FFFFFF"></i><div>面板<span>#FFFFFF</span></div></div>
+            <div class="swc"><i style="background:#E7E4DD"></i><div>分隔线<span>#E7E4DD</span></div></div>
+            <div class="swc"><i style="background:#1B1A17"></i><div>正文<span>#1B1A17</span></div></div>
+            <div class="swc"><i style="background:#8E897F"></i><div>次要文字<span>#8E897F</span></div></div>
+            <div class="swc"><i style="background:#E8641B"></i><div>品牌橙<span>#E8641B</span></div></div>
+          </div>
+          <h2 style="margin-top:20px">颜色 · 深色</h2>
+          <div class="sws">
+            <div class="swc"><i style="background:#111110"></i><div>背景<span>#111110</span></div></div>
+            <div class="swc"><i style="background:#191918"></i><div>面板<span>#191918</span></div></div>
+            <div class="swc"><i style="background:#2A2927"></i><div>分隔线<span>#2A2927</span></div></div>
+            <div class="swc"><i style="background:#EDECE7"></i><div>正文<span>#EDECE7</span></div></div>
+            <div class="swc"><i style="background:#7F7C75"></i><div>次要文字<span>#7F7C75</span></div></div>
+            <div class="swc"><i style="background:#F0782F"></i><div>品牌橙<span>#F0782F</span></div></div>
+          </div>
+          <h2 style="margin-top:20px">字体</h2>
+          <div class="tyrow"><span>页面标题 20/650</span><b style="font-size:20px;letter-spacing:-.015em">定时任务</b></div>
+          <div class="tyrow"><span>区块标题 13/600</span><b style="font-size:13px">需要处理</b></div>
+          <div class="tyrow"><span>正文 13/400</span><span style="font:13px var(--sans);color:var(--ink)">按计划运行提示词，把结果发到对应聊天。</span></div>
+          <div class="tyrow"><span>辅助 12/400</span><span style="font:12px var(--sans);color:var(--ink-3)">今天 20:00 · 共 7 次</span></div>
+          <div class="tyrow"><span>等宽 11.5</span><span style="font:11.5px var(--mono);color:var(--ink-2)">0 20 * * * · 44e03b3d…6b66</span></div>
+          <p style="font-size:12px;color:var(--ink-3);margin:10px 0 0;line-height:1.6">系统字体栈（SF / 苹方 / 微软雅黑），不引外部字体，离线也一样。数字统一用等宽数字（tabular-nums）。</p>
+        </div>
+        <div>
+          <h2>状态</h2>
+          <div class="stbl">
+            <span class="pill ok">成功</span><span>定时任务成功、作业退出码 0、Bot 在线</span>
+            <span class="pill silent">静默</span><span>定时任务回复 [SILENT]，没有发消息</span>
+            <span class="pill run">运行中</span><span>正在跑的定时任务和作业（配合转圈图标）</span>
+            <span class="pill warn">已暂停</span><span>手动或自动暂停、即将过期的配对、有风险的配置</span>
+            <span class="pill err">失败</span><span>失败、超时、回传失败</span>
+            <span class="pill nodot">排队中</span><span>中性：排队、已取消、未运行</span>
+          </div>
+          <h2 style="margin-top:22px">引擎与渠道</h2>
+          <div class="row"><span class="eng claude">Claude</span><span class="eng codex">Codex</span><span class="eng agy">AGY</span><span class="eng grok">Grok</span><span style="width:16px"></span><svg class="chn"><use href="#c-tg"/></svg><span style="font-size:12px;color:var(--ink-2)">Telegram</span><svg class="chn"><use href="#c-dc"/></svg><span style="font-size:12px;color:var(--ink-2)">Discord</span></div>
+          <p style="font-size:12px;color:var(--ink-3);margin:8px 0 0">引擎只用小色块标识，不做大面积着色，避免和状态色抢。</p>
+          <h2 style="margin-top:22px">按钮</h2>
+          <div class="row"><button class="btn primary">主要操作</button><button class="btn outline">次要操作</button><button class="btn ghost">文字按钮</button><button class="btn brand">保存并热重载</button><button class="btn outline danger">取消作业</button><button class="btn icon outline"><svg class="i"><use href="#i-more"/></svg></button></div>
+          <div class="row" style="margin-top:8px"><button class="btn sm primary">小号</button><button class="btn sm outline">小号</button><button class="btn xs outline">超小</button><span class="kbd">⌘K</span><span class="kbd">⌘S</span></div>
+          <h2 style="margin-top:22px">输入</h2>
+          <div class="row"><div class="input" style="width:220px"><svg class="i"><use href="#i-search"/></svg>搜索…</div><div class="input v select" style="width:140px">全部 Bot</div><div class="seg"><button class="on">全部 <i>8</i></button><button>启用 <i>6</i></button><button class="err">异常 <i>1</i></button></div></div>
+          <div class="row" style="margin-top:10px"><span class="sw on"></span><span class="sw"></span><span class="chip">本地备注</span><span class="chip mono">--resume ×</span><span class="cnt">3</span><span class="dot ok pulse"></span><span class="spin"></span></div>
+          <h2 style="margin-top:22px">圆角与间距</h2>
+          <p style="font-size:12px;color:var(--ink-2);margin:0;line-height:1.7">圆角 5（标签）/ 7（按钮、输入框）/ 10（卡片）/ 12（主面板、浮层）。间距以 4 为单位，页面内边距 28，卡片内边距 14–16。</p>
+        </div>
+      </div>
+    </div></div></div>
+  </div>
+  <aside class="anno">
+    <h4>落地方式</h4>
+    <ul>
+      <li>仍然是 <code>dashboard-html.ts</code> 输出的单个 HTML，不引框架和构建步骤。这页的 CSS 变量可以直接搬过去替换现在的 <code>:root</code>。</li>
+      <li>建议顺序：外壳与侧栏 → 会话页 → 定时任务 / 作业 → 配置页统一保存条 → 概览 → 深色与 ⌘K。每一步都能单独上线。</li>
+    </ul>
+  </aside>
+</section>
+
+</div>
+
+<script>
+const I = id => `<svg class="i"><use href="#${id}"/></svg>`;
+function sideHTML(active){
+  const item = (k, label, ic, extra='') => `<a class="ni${k===active?' on':''}">${I(ic)}<span>${label}</span>${extra}</a>`;
+  return `
+  <div class="brand"><div class="logo">${I('i-pocket')}</div><div><div class="bn">PocketAgent</div><div class="bs">127.0.0.1:18790</div></div></div>
+  <button class="sbtn">${I('i-search')}<span>搜索或跳转</span><span class="kbd">⌘K</span></button>
+  <div class="ng"><div class="ng-t">运行</div>
+    ${item('overview','概览','i-dash')}
+    ${item('sessions','会话','i-chat')}
+    ${item('cron','定时任务','i-clock','<span class="nb err">1</span>')}
+    ${item('jobs','后台作业','i-term','<span class="nb run">1</span>')}
+  </div>
+  <div class="ng"><div class="ng-t">配置</div>
+    ${item('bots','Bots','i-bot')}
+    ${item('engines','引擎','i-cpu')}
+    ${item('skills','技能','i-blocks')}
+    ${item('security','安全与配对','i-shield','<span class="nb warn">2</span>')}
+    ${item('gateway','网关与运行时','i-server')}
+    ${item('yaml','config.yaml','i-code')}
+  </div>
+  <div class="side-foot">
+    <div class="hl"><span class="dot ok pulse"></span>网关在线<span class="muted">· 11h 02m</span></div>
+    <div class="hs">PID 89719 · 内存 91 MB</div>
+    <div class="fr"><div class="seg sm"><button title="跟随系统">${I('i-monitor')}</button><button class="on" title="浅色">${I('i-sun')}</button><button title="深色">${I('i-moon')}</button></div><div class="seg sm"><button class="on">中</button><button>EN</button></div></div>
+  </div>`;
+}
+document.querySelectorAll('.side[data-active]').forEach(el => el.innerHTML = sideHTML(el.dataset.active));
+
+// 09: dark clone of the overview + command palette
+const dark = document.getElementById('dark-app');
+dark.innerHTML = document.getElementById('ov-app').innerHTML + `
+  <div class="scrim"></div>
+  <div class="pal">
+    <div class="pal-in">${I('i-search')}<span>信号</span><span class="caret"></span><span class="kbd">esc</span></div>
+    <div class="pal-g">聊天</div>
+    <div class="pal-i on"><svg class="chn"><use href="#c-dc"/></svg><span>交易<mark>信号</mark>讨论</span><span class="muted">atri-discord · 6 个会话</span><span class="r"><span class="eng agy">AGY</span><span class="kbd">↵</span></span></div>
+    <div class="pal-g">定时任务</div>
+    <div class="pal-i">${I('i-clock')}<span>每日共同<mark>信号</mark></span><span class="muted">工作日 08:30</span><span class="r"><span class="pill err">超时</span></span></div>
+    <div class="pal-i">${I('i-play')}<span>立即运行「每日共同<mark>信号</mark>」</span><span class="r muted">操作</span></div>
+    <div class="pal-g">技能</div>
+    <div class="pal-i">${I('i-blocks')}<span class="mono" style="font-size:12.5px">dc-chat</span><span class="muted">…期权异动、扫单<mark>信号</mark>…</span></div>
+    <div class="pal-g">操作</div>
+    <div class="pal-i">${I('i-plus')}<span>新建会话</span><span class="r"></span></div>
+    <div class="pal-i">${I('i-sun')}<span>切换到浅色主题</span><span class="r"></span></div>
+    <div class="pal-f"><span><span class="kbd">↑</span> <span class="kbd">↓</span> 选择</span><span><span class="kbd">↵</span> 打开</span><span class="r">只搜索已加载的数据</span></div>
+  </div>`;
+dark.querySelector('.side .seg.sm button.on')?.classList.remove('on');
+dark.querySelectorAll('.side .fr .seg.sm')[0].children[2].classList.add('on');
+
+// zoom
+const zbtns = document.querySelectorAll('.cv-z button');
+let mode = 'fit';
+function applyZoom(){
+  const z = mode === 'fit' ? Math.min(1, (window.innerWidth - 8) / 1880) : 1;
+  document.querySelector('.canvas').style.setProperty('--z', z);
+}
+zbtns.forEach(b => b.onclick = () => { mode = b.dataset.z; zbtns.forEach(x => x.classList.toggle('on', x === b)); applyZoom(); });
+window.addEventListener('resize', applyZoom);
+applyZoom();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import pino from "pino";
 import { saveConfig, parseConfig } from "../config/loader.js";
 import { getDashboardHtml } from "../api/dashboard-html.js";
+import { describeCron, renderMarkdown, renderRich, splitReply } from "../api/dashboard/lib.js";
 import { ApiServer } from "../api/server.js";
 
 describe("PocketAgent Dashboard & Hot-Update System", () => {
@@ -22,44 +23,35 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     } catch {}
   });
 
-  it("exports a rich and complete dashboard HTML template", () => {
+  const pageScript = () => {
+    const scripts = [...getDashboardHtml().matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    expect(scripts).toHaveLength(1);
+    return scripts[0];
+  };
+
+  it("exports a complete dashboard page", () => {
     const html = getDashboardHtml();
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("PocketAgent Dashboard");
-    expect(html).toContain("Save & Hot Reload");
-    expect(html).toContain("Overview");
-    expect(html).toContain("Bots");
-    expect(html).toContain("Engines");
-    expect(html).toContain("Sessions");
-    expect(html).toContain("Workspaces");
-    expect(html).toContain("Gateway");
-    expect(html).toContain("Security & Auth");
-    expect(html).toContain("Skills (4-CLI)");
-    expect(html).toContain("Raw YAML");
-  });
-
-  it("ships a scheduled tasks tab and a script that parses", () => {
-    const html = getDashboardHtml();
-    expect(html).toContain('data-tab="cron"');
-    expect(html).toContain('id="tab-cron"');
-    expect(html).toContain('id="modalCron"');
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-    expect(scripts.length).toBeGreaterThan(0);
-    for (const src of scripts) {
-      expect(() => new Function(src)).not.toThrow();
+    expect(html).toContain("<title>PocketAgent Dashboard</title>");
+    expect(html).toContain('<div id="root"></div>');
+    // Every icon the app asks for is in the sprite
+    const src = pageScript();
+    for (const [, name] of src.matchAll(/ic\("([a-z]+)"/g)) expect(html).toContain(`id="i-${name}"`);
+    for (const label of ["Overview", "Sessions", "Scheduled tasks", "Background jobs", "Bots", "Engines", "Skills", "Security", "Gateway & runtime", "config.yaml", "Save & hot reload"]) {
+      expect(src).toContain(label);
     }
   });
 
-  it("renders run output Markdown safely", () => {
-    const [src] = [...getDashboardHtml().matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-    const slice = (from: string, to: string) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
-    const code = [
-      slice("function renderMarkdown", "function escapeHtml"),
-      slice("function escapeHtml", "\n    }\n") + "\n    }",
-      "return renderMarkdown;",
-    ].join("\n");
-    const renderMarkdown = new Function(code)() as (md: string) => string;
+  it("ships a script that parses and only uses the public API", () => {
+    const src = pageScript();
+    expect(() => new Function(src)).not.toThrow();
+    for (const endpoint of ["/api/status", "/api/config", "/api/sessions/turns", "/api/cron/runs", "/api/jobs/log", "/api/pairings/approve", "/api/skills/update", "/api/soul", "/api/send-message"]) {
+      expect(src).toContain(endpoint);
+    }
+    expect(src).not.toMatch(/<\/script/i);
+  });
 
+  it("renders run output Markdown safely", () => {
     const html = renderMarkdown(
       "# Report\n- point **ES 7778**\n  * nested `7720`\n1. first\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<img src=x onerror=alert(1)> [x](javascript:alert(1)) https://e.com/?a=1&b=2",
     );
@@ -72,6 +64,35 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     expect(html).not.toContain("<img");
     expect(html).not.toContain('href="javascript');
     expect(html).toContain('<a href="https://e.com/?a=1&amp;b=2"');
+    expect(renderMarkdown("-# 2026-10-05 09:00\n━━━━━━━━")).toBe('<p class="md-small">2026-10-05 09:00</p><hr>');
+  });
+
+  it("keeps only Telegram's HTML subset in Telegram replies", () => {
+    const html = renderRich('<b>Done</b> <i>ok</i> <code>32.00</code> <a href="https://e.com/?a=1&b=2">link</a> <a href="javascript:alert(1)">x</a> <img src=x onerror=alert(1)> <b onclick="x()">y</b>');
+    expect(html).toContain("<b>Done</b> <i>ok</i> <code>32.00</code>");
+    expect(html).toContain('<a href="https://e.com/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">link</a>');
+    expect(html).not.toContain('href="javascript');
+    expect(html).not.toContain("<img");
+    // Anything outside the subset stays as escaped text, never as a live tag or attribute
+    expect(html).toContain("&lt;b onclick=&quot;x()&quot;&gt;y");
+    expect(html).not.toMatch(/<[a-z]+\s[^>]*\bon[a-z]+=/i);
+    // Plain Markdown still goes through the Markdown renderer
+    expect(renderRich("**bold** and 2 < 3")).toBe("<p><strong>bold</strong> and 2 &lt; 3</p>");
+  });
+
+  it("splits reply prefixes and describes common cron schedules", () => {
+    expect(splitReply("[In reply to Atri: New session started: Session #6 [AGY]]\n谁是好的")).toEqual({
+      who: "Atri",
+      quote: "New session started: Session #6 [AGY]",
+      body: "谁是好的",
+    });
+    expect(splitReply("plain text")).toBeNull();
+    expect(describeCron("0 20 * * *", "zh")).toBe("每天 20:00");
+    expect(describeCron("30 8 * * 1-5", "zh")).toBe("工作日 08:30");
+    expect(describeCron("0 17 * * 5", "en")).toBe("Fri 17:00");
+    expect(describeCron("*/30 * * * *", "zh")).toBe("每 30 分钟");
+    expect(describeCron("0 9 1 * *", "en")).toBe("Monthly on day 1 09:00");
+    expect(describeCron("0 9 1-7 * 1", "zh")).toBeNull();
   });
 
   it("saveConfig saves valid YAML and returns parsed config", () => {

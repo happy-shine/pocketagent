@@ -163,14 +163,12 @@ describe("Background job skill", () => {
 });
 
 describe("Dashboard background jobs page", () => {
-  it("has a jobs tab whose script parses", () => {
+  it("has a jobs page whose script parses", () => {
     const html = getDashboardHtml();
-    expect(html).toContain('data-tab="jobs"');
-    expect(html).toContain('id="tab-jobs"');
-    expect(html).toContain('id="modalJobLog"');
     const script = html.match(/<script>([\s\S]*)<\/script>/)![1];
     expect(() => new Function(script)).not.toThrow();
-    expect(script).toContain("async function fetchJobs()");
-    expect(script).toContain('tabJobs: "后台任务"');
+    expect(script).toContain("function pageJobs(");
+    expect(script).toContain('L("后台作业", "Background jobs")');
+    for (const endpoint of ["/api/jobs", "/api/jobs/log", "/api/jobs/cancel"]) expect(script).toContain(endpoint);
   });
 });

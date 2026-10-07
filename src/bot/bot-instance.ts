@@ -6,7 +6,7 @@ import { checkAccess } from "../auth/access.js";
 import { PairingManager } from "../auth/pairing.js";
 import { TelegramAdapter } from "../channels/telegram/adapter.js";
 import { DiscordAdapter } from "../channels/discord/adapter.js";
-import type { ChannelAdapter, InboundMessage, InlineButton } from "../channels/types.js";
+import type { ChannelAdapter, InboundMessage, InlineButton, HistoryMessage } from "../channels/types.js";
 import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
 import { EngineManager } from "../engines/manager.js";
 import type { EngineType, ModelInfo, EffortInfo } from "../engines/types.js";
@@ -1508,7 +1508,87 @@ export class BotInstance {
     const pad = (n: number) => String(n).padStart(2, "0");
     const ts = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
 
-    let promptText = `[${ts}] ${msg.senderName}:\n`;
+    // Optimize context: provide up to 100 recent group messages with reply context,
+    // and if there is an overlap with previously sent messages in this session, only send the new delta.
+    let contextBlock = "";
+    const shouldFetchContext = Boolean(msg.isGroup || msg.channelType === "discord");
+
+    if (shouldFetchContext) {
+      let history: HistoryMessage[] = [];
+      if (channel.fetchHistory) {
+        try {
+          history = await channel.fetchHistory(msg.chatId, 100);
+        } catch (err) {
+          this.log.error({ error: err, chatId: msg.chatId }, "Failed to fetch channel history");
+        }
+      } else if (this.messageStore) {
+        const stored = this.messageStore.getRecent(msg.chatId, 100);
+        history = stored.map((s) => ({
+          id: s.id,
+          ts: s.ts,
+          sender: s.sender,
+          senderId: s.senderId,
+          text: s.text,
+          media: s.media,
+        }));
+      }
+
+      // Prior messages must be strictly BEFORE the trigger message!
+      // If messages arrived after msg.messageId (e.g. concurrent User 2 message), do NOT include them as prior history for this turn.
+      const triggerIdx = history.findIndex((m) => m.id === msg.messageId);
+      const priorMessages = triggerIdx !== -1 ? history.slice(0, triggerIdx) : history.filter((m) => m.id !== msg.messageId);
+
+      const lastCursor = session.lastContextMessageId;
+      let newMessages: HistoryMessage[] = [];
+      let header = "### Recent Group Chat Context (prior messages leading up to this turn):";
+
+      if (!lastCursor) {
+        // Initial turn for this session: provide up to 100 recent messages
+        newMessages = priorMessages.slice(-100);
+      } else {
+        const cursorIdx = priorMessages.findIndex((m) => m.id === lastCursor);
+        if (cursorIdx !== -1) {
+          // Found intersection with previously sent messages: ONLY send newly added messages!
+          newMessages = priorMessages.slice(cursorIdx + 1);
+          header = "### New Group Chat Messages (since last turn):";
+
+          // If the delta consists purely of the bot's own outbound messages (no third-party user messages),
+          // suppress it so we don't send redundant messages to the engine.
+          const botChannelId = (channel as any).client?.user?.id;
+          const hasOtherUserMessages = newMessages.some((m) => (botChannelId ? m.senderId !== botChannelId : true) && m.sender !== this.name);
+          if (!hasOtherUserMessages) {
+            newMessages = [];
+          }
+        } else {
+          // Gap exceeded recent window, provide up to 100 messages
+          newMessages = priorMessages.slice(-100);
+        }
+      }
+
+      if (newMessages.length > 0) {
+        const lines = newMessages.map((m) => {
+          const mDt = new Date(m.ts * 1000);
+          const time = `${pad(mDt.getHours())}:${pad(mDt.getMinutes())}:${pad(mDt.getSeconds())}`;
+          let line = `[${time}] ${m.sender}`;
+          if (m.replyToSender || m.replyToText) {
+            const target = m.replyToSender || "someone";
+            const snippet = m.replyToText
+              ? ` "${m.replyToText.slice(0, 80).replace(/\n/g, " ")}${m.replyToText.length > 80 ? "..." : ""}"`
+              : "";
+            line += ` (replying to ${target}${snippet})`;
+          }
+          const body = m.text || (m.media ? `[${m.media.join(", ")}]` : "");
+          return `${line}: ${body}`;
+        });
+        contextBlock = `${header}\n${lines.join("\n")}\n\n`;
+      }
+
+      // Advance cursor to current message
+      session.lastContextMessageId = msg.messageId;
+    }
+
+    let promptText = contextBlock;
+    promptText += `[${ts}] ${msg.senderName}:\n`;
     if (msg.replyText) {
       const quoteName = msg.replySenderName ?? "Unknown";
       const quoted = msg.replyText.split("\n").map((l) => `> ${l}`).join("\n");

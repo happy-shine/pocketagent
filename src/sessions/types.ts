@@ -44,6 +44,9 @@ export interface Session {
 
   // Workspace folder key, defaults to sessionId; side sessions (/btw) set it to share their parent session's files
   workspaceId?: string;
+
+  // Track last message ID injected into session context for group chats
+  lastContextMessageId?: string;
 }
 
 export interface ChatSessionState {

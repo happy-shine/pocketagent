@@ -28,6 +28,81 @@ import type {
 import type { MessageStore } from "../../sessions/message-store.js";
 import { prepareDiscordText } from "./formatter.js";
 
+export function extractEmbedText(embeds?: readonly any[]): string {
+  if (!embeds || embeds.length === 0) return "";
+  const parts: string[] = [];
+  for (const emb of embeds) {
+    if (emb.title) parts.push(emb.title);
+    if (emb.description) parts.push(emb.description);
+    if (emb.fields && emb.fields.length > 0) {
+      for (const field of emb.fields) {
+        if (field.name || field.value) {
+          parts.push(`${field.name}: ${field.value}`);
+        }
+      }
+    }
+  }
+  return parts.join("\n\n").trim();
+}
+
+export function extractDiscordAttachments(attachments?: any): Attachment[] {
+  const result: Attachment[] = [];
+  if (!attachments) return result;
+  const list = typeof attachments.values === "function"
+    ? Array.from(attachments.values())
+    : Array.isArray(attachments)
+      ? attachments
+      : [];
+  for (const att of list as any[]) {
+    if (!att || !att.url) continue;
+    const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name || "");
+    const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name || "");
+    const isVoice = att.waveform !== null && att.waveform !== undefined;
+    result.push({
+      type: isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document")),
+      fileId: att.url,
+      fileName: att.name || undefined,
+      mimeType: att.contentType ?? undefined,
+    });
+  }
+  return result;
+}
+
+export function extractSnapshotDetails(snapshots?: any): { text: string; attachments: Attachment[] } {
+  if (!snapshots) return { text: "", attachments: [] };
+  const list = typeof snapshots.values === "function"
+    ? Array.from(snapshots.values())
+    : Array.isArray(snapshots)
+      ? snapshots
+      : [];
+  if (list.length === 0) return { text: "", attachments: [] };
+
+  const texts: string[] = [];
+  const attachments: Attachment[] = [];
+
+  for (const snap of list as any[]) {
+    let snapText = (snap.content || "").trim();
+    const embedText = snap.embeds ? extractEmbedText(snap.embeds) : "";
+    if (embedText) {
+      snapText = snapText ? `${snapText}\n\n${embedText}` : embedText;
+    }
+    const snapAttachments = extractDiscordAttachments(snap.attachments);
+    attachments.push(...snapAttachments);
+
+    if (snapText) {
+      texts.push(snapText);
+    } else if (snapAttachments.length > 0) {
+      const attDesc = snapAttachments.map((a) => `[${a.type}: ${a.fileName || a.type}]`).join(" ");
+      texts.push(attDesc);
+    }
+  }
+
+  return {
+    text: texts.join("\n\n---\n\n").trim(),
+    attachments,
+  };
+}
+
 export class DiscordAdapter implements ChannelAdapter {
   readonly type = "discord";
   private token: string;
@@ -101,27 +176,18 @@ export class DiscordAdapter implements ChannelAdapter {
       return sorted.map((msg: any) => {
         let content = msg.content || "";
         if (!content && msg.embeds?.length > 0) {
-          const parts: string[] = [];
-          for (const emb of msg.embeds) {
-            if (emb.title) parts.push(emb.title);
-            if (emb.description) parts.push(emb.description);
-            for (const f of emb.fields || []) {
-              parts.push(`${f.name}: ${f.value}`);
-            }
-          }
-          content = parts.join("\n\n").trim();
+          content = extractEmbedText(msg.embeds);
         }
 
-        const media: string[] = [];
-        if (msg.attachments?.size > 0) {
-          for (const [, att] of msg.attachments) {
-            const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
-            const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
-            const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
-            const type = isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document"));
-            media.push(`${type}:${att.url}:${att.name ?? ""}`);
+        const attachments = extractDiscordAttachments(msg.attachments);
+        if (msg.messageSnapshots && msg.messageSnapshots.size > 0) {
+          const snap = extractSnapshotDetails(msg.messageSnapshots);
+          if (snap.text) {
+            content = content ? `${content}\n\n[转发消息]:\n${snap.text}` : `[转发消息]:\n${snap.text}`;
           }
+          attachments.push(...snap.attachments);
         }
+        const media = attachments.map((a) => `${a.type}:${a.fileId}:${a.fileName ?? ""}`);
 
         let replyToId: string | undefined;
         let replyToSender: string | undefined;
@@ -245,18 +311,16 @@ export class DiscordAdapter implements ChannelAdapter {
         text = text.replace(new RegExp(`<@!?${client.user.id}>`, "g"), "").trim();
       }
 
-      const inboundAttachments: Attachment[] = [];
-      if (message.attachments.size > 0) {
-        for (const [, att] of message.attachments) {
-          const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
-          const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
-          const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
-          inboundAttachments.push({
-            type: isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document")),
-            fileId: att.url,
-            fileName: att.name,
-            mimeType: att.contentType ?? undefined,
-          });
+      const inboundAttachments: Attachment[] = extractDiscordAttachments(message.attachments);
+
+      // Extract forwarded message snapshots if present (Discord native forward feature)
+      if ((message as any).messageSnapshots && (message as any).messageSnapshots.size > 0) {
+        const snap = extractSnapshotDetails((message as any).messageSnapshots);
+        if (snap.text) {
+          text = text ? `${text}\n\n[转发消息]:\n${snap.text}` : `[转发消息]:\n${snap.text}`;
+        }
+        if (snap.attachments.length > 0) {
+          inboundAttachments.push(...snap.attachments);
         }
       }
 
@@ -278,44 +342,37 @@ export class DiscordAdapter implements ChannelAdapter {
 
             // Extract embed contents if text is empty (e.g. VIP highlight embed card)
             if (!replyText && refMsg.embeds && refMsg.embeds.length > 0) {
-              const embedParts: string[] = [];
-              for (const embed of refMsg.embeds) {
-                if (embed.title) embedParts.push(embed.title);
-                if (embed.description) embedParts.push(embed.description);
-                if (embed.fields && embed.fields.length > 0) {
-                  for (const field of embed.fields) {
-                    embedParts.push(`${field.name}: ${field.value}`);
-                  }
-                }
+              const embedText = extractEmbedText(refMsg.embeds);
+              if (embedText) {
+                replyText = embedText;
               }
-              if (embedParts.length > 0) {
-                replyText = embedParts.join("\n\n");
+            }
+
+            // Extract forwarded content if refMsg has messageSnapshots
+            if ((refMsg as any).messageSnapshots && (refMsg as any).messageSnapshots.size > 0) {
+              const snap = extractSnapshotDetails((refMsg as any).messageSnapshots);
+              if (snap.text) {
+                replyText = replyText ? `${replyText}\n\n[转发消息]:\n${snap.text}` : `[转发消息]:\n${snap.text}`;
+              }
+              if (snap.attachments.length > 0) {
+                replyAttachments.push(...snap.attachments);
               }
             }
 
             if (refMsg.attachments && refMsg.attachments.size > 0) {
-              for (const [, att] of refMsg.attachments) {
-                const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
-                const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
-                const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
-                replyAttachments.push({
-                  type: isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document")),
-                  fileId: att.url,
-                  fileName: att.name,
-                  mimeType: att.contentType ?? undefined,
-                });
-              }
-              if (!replyText) {
-                const firstType = replyAttachments[0]?.type;
-                if (firstType === "photo") {
-                  replyText = "[Photo]";
-                } else if (firstType === "voice") {
-                  replyText = "[Voice]";
-                } else if (firstType === "audio") {
-                  replyText = replyAttachments[0]?.fileName ? `[Audio: ${replyAttachments[0].fileName}]` : "[Audio]";
-                } else {
-                  replyText = `[File: ${replyAttachments[0]?.fileName || "Document"}]`;
-                }
+              replyAttachments.push(...extractDiscordAttachments(refMsg.attachments));
+            }
+
+            if (!replyText && replyAttachments.length > 0) {
+              const firstType = replyAttachments[0]?.type;
+              if (firstType === "photo") {
+                replyText = "[Photo]";
+              } else if (firstType === "voice") {
+                replyText = "[Voice]";
+              } else if (firstType === "audio") {
+                replyText = replyAttachments[0]?.fileName ? `[Audio: ${replyAttachments[0].fileName}]` : "[Audio]";
+              } else {
+                replyText = `[File: ${replyAttachments[0]?.fileName || "Document"}]`;
               }
             }
           }
@@ -341,8 +398,8 @@ export class DiscordAdapter implements ChannelAdapter {
         return;
       }
 
-      // If user replied to a bot or webhook with empty text, provide a default intent
-      if (!text && (isReplyToBot || isReplyToWebhook) && replyText) {
+      // If user replied with empty text (or just @bot mention in a reply), provide a default intent
+      if (!text && (isReplyToBot || isReplyToWebhook || isMentioned || !message.guildId) && replyText) {
         text = "请针对被引用的这条消息进行分析和解读。";
       }
 

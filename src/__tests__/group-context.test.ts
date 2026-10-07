@@ -196,4 +196,50 @@ describe("Group Chat Context & Delta Deduplication", () => {
     // Ensure Bob's interleaved message is NOT lost
     expect(newMessages.find((m) => m.sender === "Bob")?.text).toBe("I think it's breaking resistance");
   });
+
+  it("captures interleaved messages sent between split long-response chunks", () => {
+    const sm = new SessionManager();
+    const session = sm.resolve({
+      chatId: "guild-channel-1",
+      channelType: "discord",
+      isGroup: true,
+      defaultEngine: "agy",
+    });
+
+    // Turn 1: User 1 sends msg-300 requesting a long report
+    session.lastContextMessageId = "msg-300";
+
+    // Bot generates long output split into Chunk 1 and Chunk 2.
+    // Someone in the channel sends msg-302 in the ~100ms window between Chunk 1 (msg-301) and Chunk 2 (msg-303)
+    const history: HistoryMessage[] = [
+      { id: "msg-300", ts: 1775580300, sender: "Alice", senderId: "u1", text: "@bot 请写一篇长研报" },
+      { id: "msg-301", ts: 1775580302, sender: "PocketAgent", senderId: "bot", text: "(研报前半部分 Part 1)..." },
+      { id: "msg-302", ts: 1775580303, sender: "Charlie", senderId: "u3", text: "插话：真的假的？" },
+      { id: "msg-303", ts: 1775580304, sender: "PocketAgent", senderId: "bot", text: "(研报后半部分 Part 2)..." },
+      { id: "msg-304", ts: 1775580310, sender: "Alice", senderId: "u1", text: "@bot 回复一下刚才Charlie的问题" },
+    ];
+
+    const currentMsgId = "msg-304";
+    const triggerIdx = history.findIndex((m) => m.id === currentMsgId);
+    const priorMessages = triggerIdx !== -1 ? history.slice(0, triggerIdx) : history.filter((m) => m.id !== currentMsgId);
+
+    // Prior messages before msg-304: [msg-300, msg-301, msg-302, msg-303]
+    expect(priorMessages.map((m) => m.id)).toEqual(["msg-300", "msg-301", "msg-302", "msg-303"]);
+
+    // Locate cursor msg-300
+    const cursorIdx = priorMessages.findIndex((m) => m.id === session.lastContextMessageId);
+    expect(cursorIdx).toBe(0);
+
+    const newMessages = priorMessages.slice(cursorIdx + 1);
+    // Verified: exactly Chunk 1, Charlie's interleaved message, and Chunk 2
+    expect(newMessages.map((m) => m.id)).toEqual(["msg-301", "msg-302", "msg-303"]);
+
+    // Verify Charlie's message between chunks is preserved
+    const charlieMsg = newMessages.find((m) => m.sender === "Charlie");
+    expect(charlieMsg).toBeDefined();
+    expect(charlieMsg?.text).toBe("插话：真的假的？");
+
+    const hasOtherUserMessages = newMessages.some((m) => m.senderId !== "bot" && m.sender !== "PocketAgent");
+    expect(hasOtherUserMessages).toBe(true);
+  });
 });

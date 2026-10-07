@@ -48,6 +48,18 @@ export interface InlineButton {
 export type MessageHandler = (msg: InboundMessage) => Promise<void>;
 export type CommandHandler = (msg: InboundMessage) => Promise<void>;
 
+export interface HistoryMessage {
+  id: string;
+  ts: number;
+  sender: string;
+  senderId: string;
+  text: string;
+  media?: string[];
+  replyToId?: string;
+  replyToSender?: string;
+  replyToText?: string;
+}
+
 export interface ChannelAdapter {
   readonly type: string;
   username?: string;
@@ -68,6 +80,7 @@ export interface ChannelAdapter {
   sendDocument?(chatId: string, filePath: string, caption?: string): Promise<string>;
   sendFile?(chatId: string, filePath: string, caption?: string): Promise<void>;
   downloadFile?(fileId: string, destDir: string, fileName?: string): Promise<string>;
+  fetchHistory?(chatId: string, limit?: number): Promise<HistoryMessage[]>;
   setMessageStore?(store: any, botName?: string): void;
   advanceCursorForSession?(sessionId: string, messageId: string): void;
   onMessage(handler: MessageHandler): void;

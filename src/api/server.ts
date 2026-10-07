@@ -686,10 +686,45 @@ export class ApiServer {
 
   private async handleChatHistory(res: ServerResponse, url: URL): Promise<void> {
     const chatId = url.searchParams.get("chat_id");
+    const botId = url.searchParams.get("bot_id");
     if (!chatId) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Missing chat_id" }));
       return;
+    }
+
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const sender = url.searchParams.get("sender") ?? undefined;
+    const search = url.searchParams.get("search") ?? undefined;
+
+    // Prioritize direct cloud history fetch (e.g. Discord) without touching local database
+    let channel: any = botId ? (this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId)) : undefined;
+    if (!channel && this.config.getBotsInfo) {
+      const bots = this.config.getBotsInfo();
+      for (const b of bots) {
+        const ch: any = this.config.getBotChannel?.(b.botId);
+        if (ch && typeof ch.fetchHistory === "function") {
+          channel = ch;
+          break;
+        }
+      }
+    }
+
+    if (channel && typeof channel.fetchHistory === "function") {
+      try {
+        let messages = await channel.fetchHistory(chatId, limit);
+        if (sender) {
+          messages = messages.filter((m: { sender: string }) => m.sender.toLowerCase().includes(sender.toLowerCase()));
+        }
+        if (search) {
+          messages = messages.filter((m: { text: string }) => m.text.toLowerCase().includes(search.toLowerCase()));
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, source: "discord-cloud", count: messages.length, messages }));
+        return;
+      } catch (err) {
+        this.log.error({ err, chatId }, "Failed to fetch cloud chat history");
+      }
     }
 
     if (!this.config.messageStore) {
@@ -697,10 +732,6 @@ export class ApiServer {
       res.end(JSON.stringify({ ok: true, count: 0, messages: [] }));
       return;
     }
-
-    const limit = Number(url.searchParams.get("limit") ?? "50");
-    const sender = url.searchParams.get("sender") ?? undefined;
-    const search = url.searchParams.get("search") ?? undefined;
 
     const messages = this.config.messageStore.query({
       chatId,
@@ -710,7 +741,7 @@ export class ApiServer {
     });
 
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, count: messages.length, messages }));
+    res.end(JSON.stringify({ ok: true, source: "local-store", count: messages.length, messages }));
   }
 
   private async handleReloadConfig(res: ServerResponse): Promise<void> {

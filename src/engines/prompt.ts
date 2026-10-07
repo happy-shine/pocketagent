@@ -61,7 +61,7 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
     parts.push(getTelegramFormatSkill());
   }
   if (input.isGroup) {
-    parts.push(getChatHistorySkill(input.apiPort, input.chatId));
+    parts.push(getChatHistorySkill(input.apiPort, input.chatId, input.botId));
   }
 
   try {

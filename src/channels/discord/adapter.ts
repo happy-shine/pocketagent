@@ -23,6 +23,7 @@ import type {
   InlineButton,
   InboundMessage,
   Attachment,
+  HistoryMessage,
 } from "../types.js";
 import type { MessageStore } from "../../sessions/message-store.js";
 import { prepareDiscordText } from "./formatter.js";
@@ -40,6 +41,8 @@ export class DiscordAdapter implements ChannelAdapter {
   private messageStore?: MessageStore;
   private botName = "PocketAgent";
   private outboundCallback?: (chatId: string, text: string, messageId: string) => void;
+  private recentMessagesCache = new Map<string, { id: string; sender: string; text: string }>();
+  private forwarderBotIds = new Set<string>();
   username?: string;
 
   constructor(token: string, log: Logger) {
@@ -47,20 +50,121 @@ export class DiscordAdapter implements ChannelAdapter {
     this.log = log.child({ module: "discord" });
   }
 
+  setForwarderBotIds(ids: string[] | Set<string>): void {
+    this.forwarderBotIds = new Set(ids);
+  }
+
   setMessageStore(store: MessageStore, botName?: string): void {
     this.messageStore = store;
     if (botName) this.botName = botName;
   }
 
-  private recordOutbound(chatId: string, messageId: string, text: string): void {
-    if (!this.messageStore) return;
-    this.messageStore.append(chatId, {
-      id: messageId,
-      ts: Math.floor(Date.now() / 1000),
-      sender: this.botName,
-      senderId: this.client?.user?.id ?? "bot",
-      text,
-    });
+  private cacheMessage(msg: any): void {
+    if (!msg || !msg.id) return;
+    let text = msg.content || msg.text || "";
+    if (!text && msg.embeds && msg.embeds.length > 0) {
+      text = msg.embeds.map((e: any) => e.title || e.description || "").filter(Boolean).join(" ");
+    }
+    const sender = msg.author?.displayName || msg.author?.username || msg.sender || "Unknown";
+    this.recentMessagesCache.set(msg.id, { id: msg.id, sender, text });
+    if (this.recentMessagesCache.size > 500) {
+      const oldestKey = this.recentMessagesCache.keys().next().value;
+      if (oldestKey) this.recentMessagesCache.delete(oldestKey);
+    }
+  }
+
+  private recordOutbound(_chatId: string, _messageId: string, _text: string): void {
+    // Discord uses cloud-only context retrieval; no local database writes needed
+  }
+
+  async fetchHistory(channelId: string, limit = 100): Promise<HistoryMessage[]> {
+    if (!this.client || !this.client.isReady()) {
+      return [];
+    }
+
+    try {
+      const channel = await this.client.channels.fetch(channelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        return [];
+      }
+
+      const fetched = await (channel as any).messages.fetch({ limit: Math.min(limit, 100) });
+      const sorted = Array.from(fetched.values()).reverse();
+
+      // Build quick lookup map from this batch
+      const batchMap = new Map<string, any>();
+      for (const m of fetched.values()) {
+        batchMap.set(m.id, m);
+        this.cacheMessage(m);
+      }
+
+      return sorted.map((msg: any) => {
+        let content = msg.content || "";
+        if (!content && msg.embeds?.length > 0) {
+          const parts: string[] = [];
+          for (const emb of msg.embeds) {
+            if (emb.title) parts.push(emb.title);
+            if (emb.description) parts.push(emb.description);
+            for (const f of emb.fields || []) {
+              parts.push(`${f.name}: ${f.value}`);
+            }
+          }
+          content = parts.join("\n\n").trim();
+        }
+
+        const media: string[] = [];
+        if (msg.attachments?.size > 0) {
+          for (const [, att] of msg.attachments) {
+            const isPhoto = att.contentType?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(att.name);
+            const isAudio = att.contentType?.startsWith("audio/") || /\.(mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(att.name);
+            const isVoice = (att as any).waveform !== null && (att as any).waveform !== undefined;
+            const type = isPhoto ? "photo" : (isVoice ? "voice" : (isAudio ? "audio" : "document"));
+            media.push(`${type}:${att.url}:${att.name ?? ""}`);
+          }
+        }
+
+        let replyToId: string | undefined;
+        let replyToSender: string | undefined;
+        let replyToText: string | undefined;
+
+        const replyId = msg.reference?.messageId;
+        if (replyId) {
+          replyToId = replyId;
+          const refFromBatch = batchMap.get(replyId);
+          if (refFromBatch) {
+            replyToSender = refFromBatch.author?.displayName || refFromBatch.author?.username;
+            replyToText = refFromBatch.content || "";
+            if (!replyToText && refFromBatch.embeds?.length > 0) {
+              replyToText = refFromBatch.embeds.map((e: any) => e.title || e.description || "").filter(Boolean).join(" ");
+            }
+          } else if (msg.referencedMessage) {
+            replyToSender = msg.referencedMessage.author?.displayName || msg.referencedMessage.author?.username;
+            replyToText = msg.referencedMessage.content || "";
+          } else {
+            const cached = this.recentMessagesCache.get(replyId);
+            if (cached) {
+              replyToSender = cached.sender;
+              replyToText = cached.text;
+            }
+          }
+        }
+
+        return {
+          id: msg.id,
+          ts: Math.floor(msg.createdTimestamp / 1000),
+          sender: msg.author.displayName || msg.author.username,
+          senderId: msg.author.id,
+          text: content,
+          media: media.length > 0 ? media : undefined,
+          replyToId,
+          replyToSender,
+          replyToText,
+        };
+      });
+    } catch (err) {
+      this.log.error({ error: err, channelId }, "Failed to fetch Discord history from cloud");
+      return [];
+    }
   }
 
   onOutbound(cb: (chatId: string, text: string, messageId: string) => void): void {
@@ -127,11 +231,16 @@ export class DiscordAdapter implements ChannelAdapter {
     });
 
     client.on("messageCreate", async (message: Message) => {
+      this.cacheMessage(message);
+
       // Ignore bot's own messages to avoid infinite feedback loops
       if (client.user && message.author.id === client.user.id) return;
 
       let text = message.content.trim();
-      const isMentioned = client.user && (message.mentions.has(client.user) || text.includes(client.user.id));
+      const isMentioned = client.user && (
+        message.mentions.has(client.user, { ignoreRepliedUser: true }) ||
+        text.includes(client.user.id)
+      );
       if (client.user && isMentioned) {
         text = text.replace(new RegExp(`<@!?${client.user.id}>`, "g"), "").trim();
       }
@@ -162,8 +271,8 @@ export class DiscordAdapter implements ChannelAdapter {
           const refMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
           if (refMsg) {
             isReplyToBot = client.user ? refMsg.author?.id === client.user.id : false;
-            // Webhook messages have refMsg.webhookId, or other bot forwarders
-            isReplyToWebhook = Boolean(refMsg.webhookId || (refMsg.author?.bot && !isReplyToBot));
+            // Webhook messages have refMsg.webhookId, or designated forwarder bot IDs
+            isReplyToWebhook = Boolean(refMsg.webhookId || (refMsg.author?.id && this.forwarderBotIds.has(refMsg.author.id)));
             replySenderName = refMsg.author?.displayName || refMsg.author?.username || undefined;
             replyText = refMsg.content || undefined;
 
@@ -220,38 +329,15 @@ export class DiscordAdapter implements ChannelAdapter {
           if (stored) {
             replyText = stored.text;
             if (!replySenderName) replySenderName = stored.sender;
-            isReplyToWebhook = true;
           }
         }
       }
 
-      // Record message in group MessageStore for conversation history tracking
-      if (this.messageStore && message.guildId) {
-        let storeText = message.content;
-        if (!storeText && message.embeds && message.embeds.length > 0) {
-          const parts: string[] = [];
-          for (const emb of message.embeds) {
-            if (emb.title) parts.push(emb.title);
-            if (emb.description) parts.push(emb.description);
-            for (const f of emb.fields || []) {
-              parts.push(`${f.name}: ${f.value}`);
-            }
-          }
-          storeText = parts.join("\n\n").trim();
-        }
-        this.messageStore.append(message.channelId, {
-          id: message.id,
-          ts: Math.floor(message.createdTimestamp / 1000),
-          sender: message.author.displayName || message.author.username,
-          senderId: message.author.id,
-          text: storeText,
-          media: inboundAttachments.map((a) => `${a.type}:${a.fileId}:${a.fileName ?? ""}`),
-        });
-      }
+      // Note: Discord conversation history is retrieved directly from Discord Cloud via fetchHistory,
+      // without persisting to a local JSONL message database.
 
-      // Incoming messages from bots/webhooks are recorded in MessageStore above,
-      // but should NOT trigger an LLM run on their own unless explicitly mentioned
-      if (message.author.bot && !isMentioned) {
+      // Incoming messages from bots are ignored unless they explicitly mention this bot OR directly reply to this bot
+      if (message.author.bot && !isMentioned && !isReplyToBot) {
         return;
       }
 

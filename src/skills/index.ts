@@ -69,14 +69,15 @@ curl -s -X POST "http://127.0.0.1:${apiPort}/api/soul" \\
 `.trim();
 }
 
-export function getChatHistorySkill(apiPort: number, chatId: string): string {
+export function getChatHistorySkill(apiPort: number, chatId: string, botId?: string): string {
+  const botParam = botId ? `&bot_id=${botId}` : "";
   return `
 ## Reading Group Chat History
 
 You can query the group chat history to understand context, summarize discussions, or find specific messages:
 
 \`\`\`bash
-curl -s "http://127.0.0.1:${apiPort}/api/chat-history?chat_id=${chatId}&since=2h&limit=100"
+curl -s "http://127.0.0.1:${apiPort}/api/chat-history?chat_id=${chatId}${botParam}&limit=100"
 \`\`\`
 `.trim();
 }

@@ -6,6 +6,7 @@ import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
 import { buildSystemPromptParts } from "../prompt.js";
+import { TextBlocks } from "../text-blocks.js";
 import type {
   BotIdentity,
   EngineAdapter,
@@ -207,6 +208,8 @@ export class AgyEngineAdapter implements EngineAdapter {
     ep.process.stdin.write(payload + "\n");
 
     const rl = createInterface({ input: ep.process.stdout!, crlfDelay: Infinity });
+    const blocks = new TextBlocks();
+    let textStepKey: unknown;
 
     try {
       for await (const line of rl) {
@@ -247,12 +250,17 @@ export class AgyEngineAdapter implements EngineAdapter {
           const step = event.step_update as Record<string, unknown>;
           if (step.step_type === "agent_response") {
             if (typeof step.text_delta === "string" && step.text_delta) {
-              yield { type: "text", text: step.text_delta };
+              // Deltas of one response step form one block; a different step starts a new one
+              const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
+              const newStep = stepKey !== undefined && textStepKey !== undefined && stepKey !== textStepKey;
+              if (stepKey !== undefined) textStepKey = stepKey;
+              yield blocks.text(step.text_delta, newStep);
             }
             if (step.state === "ACTIVE" && !step.text_delta) {
               yield { type: "thinking_started" };
             }
           } else if (step.step_type === "tool" && step.state === "ACTIVE") {
+            blocks.close();
             const toolName = typeof step.tool_name === "string" ? step.tool_name : "tool";
             const toolInfo = (step.tool_info as Record<string, unknown>) ?? {};
             yield {

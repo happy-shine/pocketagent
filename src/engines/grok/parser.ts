@@ -1,4 +1,5 @@
 import type { EngineEvent } from "../types.js";
+import { TextBlocks } from "../text-blocks.js";
 
 const MAX_DETAIL_LENGTH = 500;
 
@@ -81,9 +82,12 @@ export function parseGrokJsonLine(line: string): GrokJsonEvent | null {
  */
 export class GrokEventMapper {
   private inThought = false;
+  // Text deltas arrive in pieces too; reasoning or a tool call between them starts a new block
+  private blocks = new TextBlocks();
 
   map(event: GrokJsonEvent): EngineEvent[] {
     if (event.type === "thought") {
+      this.blocks.close();
       if (this.inThought) return [];
       this.inThought = true;
       return [{ type: "thinking_started" }];
@@ -91,10 +95,11 @@ export class GrokEventMapper {
     this.inThought = false;
 
     if (event.type === "text") {
-      return typeof event.data === "string" && event.data ? [{ type: "text", text: event.data }] : [];
+      return typeof event.data === "string" && event.data ? [this.blocks.text(event.data)] : [];
     }
 
     if (event.type === "tool_call") {
+      this.blocks.close();
       return [mapGrokTool(event)];
     }
 

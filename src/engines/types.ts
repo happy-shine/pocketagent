@@ -55,7 +55,8 @@ export type EngineEvent =
   | { type: "session_started"; sessionId: string }
   | { type: "thinking_started" }
   | { type: "tool_started"; name: string; detail?: string }
-  | { type: "text"; text: string }
+  // newBlock: this text starts a block separate from the turn's earlier text (absent for pieces of the same block)
+  | { type: "text"; text: string; newBlock?: boolean }
   | { type: "result"; result?: string; isError?: boolean }
   | { type: "error"; message: string };
 

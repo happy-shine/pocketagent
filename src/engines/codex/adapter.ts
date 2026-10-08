@@ -16,6 +16,7 @@ import type {
 } from "../types.js";
 import { discoverCodexCapabilities } from "./discovery.js";
 import { buildCodexSpawnArgs, mapCodexEvent, parseCodexJsonLine } from "./parser.js";
+import { TextBlocks } from "../text-blocks.js";
 
 export class CodexEngineAdapter implements EngineAdapter {
   readonly type = "codex" as const;
@@ -162,6 +163,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     proc.stdin?.end();
 
     const rl = createInterface({ input: proc.stdout!, crlfDelay: Infinity });
+    const blocks = new TextBlocks();
 
     try {
       for await (const line of rl) {
@@ -174,6 +176,12 @@ export class CodexEngineAdapter implements EngineAdapter {
             session.codexSessionId = ev.sessionId;
             ep.engineSessionId = ev.sessionId;
           }
+          // Codex reports each agent message whole
+          if (ev.type === "text") {
+            yield blocks.text(ev.text, true);
+            continue;
+          }
+          if (ev.type === "tool_started" || ev.type === "thinking_started") blocks.close();
           yield ev;
         }
       }

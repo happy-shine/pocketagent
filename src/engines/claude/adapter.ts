@@ -6,6 +6,7 @@ import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
 import { buildSystemPromptParts } from "../prompt.js";
+import { TextBlocks } from "../text-blocks.js";
 import type {
   BotIdentity,
   EngineAdapter,
@@ -178,6 +179,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     ep.process.stdin.write(payload + "\n");
 
     const rl = createInterface({ input: ep.process.stdout!, crlfDelay: Infinity });
+    const blocks = new TextBlocks();
 
     try {
       for await (const line of rl) {
@@ -199,31 +201,39 @@ export class ClaudeEngineAdapter implements EngineAdapter {
 
         // Map events
         if (event.type === "thinking_start" || event.subtype === "thinking") {
+          blocks.close();
           yield { type: "thinking_started" };
         } else if (event.type === "stream_event" && (event.event as any)?.type === "content_block_start" && (event.event as any)?.content_block?.type === "thinking") {
+          blocks.close();
           yield { type: "thinking_started" };
         } else if (event.type === "tool_use" || (event.type === "content_block_start" && (event.content_block as any)?.type === "tool_use")) {
           const tool = (event.content_block as any) ?? event;
+          blocks.close();
           yield { type: "tool_started", name: tool.name ?? "tool", detail: JSON.stringify(tool.input ?? {}) };
+        } else if (event.type === "content_block_start" && (event.content_block as any)?.type === "text") {
+          // Streamed text: the deltas that follow belong to this new block
+          blocks.close();
         } else if (event.type === "text" && typeof event.text === "string") {
-          yield { type: "text", text: event.text };
+          yield blocks.text(event.text, true);
         } else if (event.type === "content_block_delta" && (event.delta as any)?.type === "text_delta") {
-          yield { type: "text", text: (event.delta as any).text };
+          yield blocks.text((event.delta as any).text);
         } else if (event.type === "assistant" && event.message) {
+          // Each content block of an assistant message is a whole block
           const content = (event.message as any).content;
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block && typeof block === "object") {
                 if (block.type === "tool_use" && typeof block.name === "string") {
+                  blocks.close();
                   yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
                 }
                 if (block.type === "text" && typeof block.text === "string") {
-                  yield { type: "text", text: block.text };
+                  yield blocks.text(block.text, true);
                 }
               }
             }
           } else if (typeof content === "string") {
-            yield { type: "text", text: content };
+            yield blocks.text(content, true);
           }
         } else if (event.type === "result") {
           yield {

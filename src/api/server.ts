@@ -3,17 +3,23 @@ import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync } from "
 import { join, basename } from "node:path";
 import type { Logger } from "pino";
 import type { TelegramAdapter } from "../channels/telegram/adapter.js";
-import type { ChannelAdapter } from "../channels/types.js";
+import type { ChannelAdapter, OutboundMessage } from "../channels/types.js";
 import type { MessageStore } from "../sessions/message-store.js";
 import type { GatewayConfig } from "../config/types.js";
 import type { EngineManager } from "../engines/manager.js";
 import { SkillRegistry } from "../skills/index.js";
+import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 import { getDashboardHtml } from "./dashboard-html.js";
+import { DEFAULT_SEND_LIMITS, SendLimiter, type SendLimits } from "./send-limiter.js";
 
 export interface ApiServerConfig {
   port: number;
   getBotTelegram: (botId: string) => TelegramAdapter | undefined;
-  getBotChannel?: (botId: string) => ChannelAdapter | undefined;
+  // With a channel type, the bot's adapter for that platform (a bot may be on both)
+  getBotChannel?: (botId: string, channelType?: string) => ChannelAdapter | undefined;
+  // The chat a CLI's session id (X-PocketAgent-Session header) belongs to; undefined if the session is unknown
+  resolveSession?: (sessionId: string) => ApiSessionBinding | undefined;
+  getSendLimits?: () => SendLimits;
   dataDir: string;
   log: Logger;
   messageStore?: MessageStore;
@@ -71,6 +77,14 @@ export interface ApiServerConfig {
   steerHook?: (engine: string, event: string, sessionId: string, payload: Record<string, unknown>) => Record<string, unknown>;
 }
 
+/** Where a session's API calls go, and the turn running in it (whose identity scopes the send limits). */
+export interface ApiSessionBinding {
+  botId: string;
+  chatId: string;
+  channelType: string;
+  turn?: object;
+}
+
 export interface JobApiResult {
   ok: boolean;
   error?: string;
@@ -89,11 +103,19 @@ export class ApiServer {
   private server: Server;
   private config: ApiServerConfig;
   private log: Logger;
+  private sendLimiter: SendLimiter;
 
   constructor(config: ApiServerConfig) {
     this.config = config;
     this.log = config.log.child({ module: "api" });
+    this.sendLimiter = new SendLimiter({ getLimits: () => this.config.getSendLimits?.() ?? DEFAULT_SEND_LIMITS });
     this.server = createServer((req, res) => this.handleRequest(req, res));
+  }
+
+  /** Port the server listens on; differs from the configured one when that was 0 (any free port). */
+  get port(): number {
+    const address = this.server.address();
+    return address && typeof address === "object" ? address.port : this.config.port;
   }
 
   async start(): Promise<void> {
@@ -117,7 +139,7 @@ export class ApiServer {
     // Enable local CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-PocketAgent-Session");
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -425,11 +447,52 @@ export class ApiServer {
     }
   }
 
+  /**
+   * The bot and chat an outgoing message goes to. A CLI's call carries its session in the X-PocketAgent-Session
+   * header, which fixes both: naming another chat or bot is refused rather than followed. Other callers (cron,
+   * jobs, scripts) name them in the request, as before.
+   */
+  private bindTarget(
+    req: IncomingMessage,
+    params: Map<string, string>,
+    endpoint: string,
+  ): { ok: true; botId?: string; chatId?: string; session?: ApiSessionBinding & { id: string } } | { ok: false } {
+    const header = req.headers["x-pocketagent-session"];
+    const sessionId = (Array.isArray(header) ? header[0] : header)?.trim();
+    const botId = params.get("bot_id") || undefined;
+    const chatId = params.get("chat_id") || undefined;
+    if (!sessionId) {
+      this.log.warn({ endpoint, botId, chatId }, "Request without X-PocketAgent-Session header; using its bot_id/chat_id");
+      return { ok: true, botId, chatId };
+    }
+    const bound = this.config.resolveSession?.(sessionId);
+    if (!bound) {
+      this.log.warn({ endpoint, sessionId, botId, chatId }, "Unknown X-PocketAgent-Session; using the request's bot_id/chat_id");
+      return { ok: true, botId, chatId };
+    }
+    if ((botId && botId !== bound.botId) || (chatId && chatId !== bound.chatId)) {
+      this.log.warn({ endpoint, sessionId, botId, chatId, boundBotId: bound.botId, boundChatId: bound.chatId }, "Refused a send outside the caller's chat");
+      return { ok: false };
+    }
+    return { ok: true, botId: bound.botId, chatId: bound.chatId, session: { ...bound, id: sessionId } };
+  }
+
+  private channelFor(botId: string | undefined, channelType?: string): ChannelAdapter | undefined {
+    if (!botId) return undefined;
+    if (this.config.getBotChannel) return this.config.getBotChannel(botId, channelType);
+    return this.config.getBotTelegram(botId);
+  }
+
   private async handleSendFile(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const params = await readParams(req, url);
-    const chatId = params.get("chat_id");
+    const target = this.bindTarget(req, params, "send-file");
+    if (!target.ok) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "This session can only send to its own chat; omit bot_id/chat_id or use this chat's" }));
+      return;
+    }
+    const { chatId, botId } = target;
     const filePath = params.get("file_path");
-    const botId = params.get("bot_id");
     const caption = params.get("caption") ?? undefined;
 
     if (!chatId || !filePath) {
@@ -443,7 +506,7 @@ export class ApiServer {
       return;
     }
 
-    const channel = botId ? (this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId)) : undefined;
+    const channel = this.channelFor(botId, target.session?.channelType);
     if (!channel) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Missing or unknown bot_id" }));
@@ -471,34 +534,66 @@ export class ApiServer {
   }
 
   private async handleSendMessage(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const chatId = url.searchParams.get("chat_id");
-    const botId = url.searchParams.get("bot_id");
-    let text = url.searchParams.get("text");
-
-    if (!text) {
-      const body = await readBody(req);
-      try {
-        const json = JSON.parse(body);
-        text = json.text;
-      } catch {}
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    };
+    const params = await readParams(req, url);
+    const target = this.bindTarget(req, params, "send-message");
+    if (!target.ok) {
+      send(403, { ok: false, error: "This session can only send to its own chat; omit bot_id/chat_id or use this chat's" });
+      return;
     }
+    const { chatId, botId, session } = target;
+    const text = params.get("text");
+    const replyTo = params.get("reply_to")?.trim() || undefined;
 
     if (!chatId || !text) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Missing chat_id or text" }));
+      send(400, { error: "Missing chat_id or text" });
+      return;
+    }
+    // Both platforms number messages; anything else would make Discord reject the whole message
+    if (replyTo && !/^\d+$/.test(replyTo)) {
+      send(400, { ok: false, error: `reply_to must be a message id (digits), got "${replyTo}"` });
       return;
     }
 
-    const channel = botId ? (this.config.getBotChannel?.(botId) ?? this.config.getBotTelegram(botId)) : undefined;
+    const channel = this.channelFor(botId, session?.channelType);
     if (!channel) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Missing or unknown bot_id" }));
+      send(400, { error: "Missing or unknown bot_id" });
       return;
     }
 
-    await channel.send({ chatId, text });
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true }));
+    const message: OutboundMessage = { chatId, text };
+    if (replyTo) message.replyToMessageId = replyTo;
+    // The agent writes Markdown, like its final replies, which Telegram only shows formatted as HTML
+    if (session && channel.type === "telegram") {
+      message.text = markdownToTelegramHtml(text);
+      message.parseMode = "HTML";
+      message.plainFallback = stripHtml(message.text);
+    }
+    const deliver = async () => {
+      const ids = channel.sendMessages ? await channel.sendMessages(message) : [await channel.send(message)];
+      return ids.filter(Boolean);
+    };
+
+    if (!session) {
+      send(200, { ok: true, message_ids: await deliver() });
+      return;
+    }
+    const result = await this.sendLimiter.run(session.id, session.turn, async () => {
+      const ids = await deliver();
+      return { value: ids, count: ids.length };
+    });
+    if (!result.ok) {
+      this.log.warn({ sessionId: session.id, chatId, sent: result.sent }, "Agent hit the per-turn message cap");
+      send(429, {
+        ok: false,
+        error: `Message limit reached: at most ${result.max} messages per turn. Put the rest in your final reply.`,
+      });
+      return;
+    }
+    send(200, { ok: true, message_ids: result.value });
   }
 
   private async handleCron(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {

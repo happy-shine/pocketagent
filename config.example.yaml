@@ -40,3 +40,8 @@ bots:
 #   defaultTimeoutMs: 21600000  # 6 h per job
 #   maxTimeoutMs: 86400000      # longest timeout the agent may ask for (24 h)
 #   historyLimit: 200           # finished jobs kept, with their logs
+
+# Optional: chat messages the agent sends itself during a turn (POST /api/send-message)
+# agentMessages:
+#   maxPerTurn: 12              # per session and turn; further sends get HTTP 429
+#   minIntervalMs: 800          # gap between two of them; faster calls wait

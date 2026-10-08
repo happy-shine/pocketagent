@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
-import { ApiServer, type CronApiResult, type JobApiResult } from "../api/server.js";
+import { ApiServer, type ApiSessionBinding, type CronApiResult, type JobApiResult } from "../api/server.js";
+import { DEFAULT_SEND_LIMITS } from "../api/send-limiter.js";
 import { BotInstance } from "../bot/bot-instance.js";
 import { setMessageStore } from "../channels/telegram/handlers.js";
 import { loadConfig, resolveBots, resolveDataDir, saveConfig, syncPairingToConfig } from "../config/loader.js";
@@ -191,7 +192,9 @@ export class Gateway {
       port: this.config.gateway.port,
       steerHook: (engine, event, sessionId, payload) => this.answerSteerHook(engine, event, sessionId, payload),
       getBotTelegram: (botId) => this.bots.get(botId)?.telegram,
-      getBotChannel: (botId) => this.bots.get(botId)?.telegram ?? this.bots.get(botId)?.discord,
+      getBotChannel: (botId, channelType) => this.bots.get(botId)?.getChannel(channelType),
+      resolveSession: (sessionId) => this.resolveApiSession(sessionId),
+      getSendLimits: () => this.config.agentMessages ?? DEFAULT_SEND_LIMITS,
       dataDir: this.dataDir,
       log: this.log,
       messageStore: this.messageStore,
@@ -263,6 +266,15 @@ export class Gateway {
     this.jobManager.start();
     this.startConfigWatcher();
     this.log.info("PocketAgent Gateway running successfully");
+  }
+
+  /** The bot and chat of a CLI session that calls the API, so its messages cannot go anywhere else. */
+  private resolveApiSession(sessionId: string): ApiSessionBinding | undefined {
+    for (const bot of this.bots.values()) {
+      const found = bot.resolveApiSession(sessionId);
+      if (found) return { botId: bot.botId, ...found };
+    }
+    return undefined;
   }
 
   /** Hands the messages waiting for a session to its running turn, through the hook that asked. */

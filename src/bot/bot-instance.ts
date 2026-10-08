@@ -119,6 +119,8 @@ export class BotInstance {
   private busyChats = new Set<string>();
   // Turn currently running per chat, used to attribute API calls the CLI makes during that turn
   private turnSenders = new Map<string, TurnInfo>();
+  // Scheduled runs and side questions running now, in sessions of their own that the session manager does not keep
+  private sideRuns = new Map<string, { chatId: string; channelType: string }>();
   private steerMailbox?: SteerMailbox;
 
   constructor(opts: {
@@ -194,6 +196,26 @@ export class BotInstance {
 
   getTurnSender(chatId: string): TurnInfo | undefined {
     return this.turnSenders.get(chatId);
+  }
+
+  /** The bot's adapter for a platform; without one named, the bot's only (or Telegram) adapter. */
+  getChannel(channelType?: string): ChannelAdapter | undefined {
+    if (channelType === "telegram") return this.telegram;
+    if (channelType === "discord") return this.discord;
+    return this.telegram ?? this.discord;
+  }
+
+  /**
+   * The chat that API calls from a CLI session belong to, and the run going on in it now (an object that
+   * stays the same for one turn), or undefined if the session is not this bot's.
+   */
+  resolveApiSession(sessionId: string): { chatId: string; channelType: string; turn?: object } | undefined {
+    const side = this.sideRuns.get(sessionId);
+    if (side) return { chatId: side.chatId, channelType: side.channelType, turn: side };
+    const session = this.sessionManager.findSession(sessionId);
+    if (!session) return undefined;
+    const turn = this.turnSenders.get(session.chatId);
+    return { chatId: session.chatId, channelType: session.channelType, turn: turn?.sessionId === sessionId ? turn : undefined };
   }
 
   /** Working directory of a chat session, where background jobs run unless told otherwise. */
@@ -905,6 +927,7 @@ export class BotInstance {
     // that gets the recent conversation as context instead of interleaving with the running turn
     const busy = this.busyChats.has(msg.chatId) || this.engineManager.isBusy(chatSession.sessionId, chatSession.activeEngine);
     const session = busy ? this.forkSession(chatSession, `btw-${randomBytes(4).toString("hex")}`) : chatSession;
+    if (session !== chatSession) this.sideRuns.set(session.sessionId, { chatId: msg.chatId, channelType: msg.channelType });
 
     const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();
@@ -927,7 +950,10 @@ export class BotInstance {
       tracker.stop();
       await channel.send({ chatId: msg.chatId, text: `Error: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
-      if (session !== chatSession) this.engineManager.release(session.sessionId, session.activeEngine);
+      if (session !== chatSession) {
+        this.sideRuns.delete(session.sessionId);
+        this.engineManager.release(session.sessionId, session.activeEngine);
+      }
     }
   }
 
@@ -1129,6 +1155,8 @@ export class BotInstance {
 
     const session = this.buildCronSession(job);
     const prompt = buildCronPrompt(job, run, this.scheduler?.timezone() ?? "UTC");
+    const sideRun = { chatId: job.chatId, channelType: job.channelType };
+    this.sideRuns.set(session.sessionId, sideRun);
 
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -1144,6 +1172,7 @@ export class BotInstance {
       response = { text: "", finalText: "", isError: true, errorMessage: err instanceof Error ? err.message : String(err) };
     } finally {
       clearTimeout(timer);
+      if (this.sideRuns.get(session.sessionId) === sideRun) this.sideRuns.delete(session.sessionId);
       // Every run starts from a clean context; only the workspace directory carries over
       this.engineManager.release(session.sessionId, session.activeEngine);
     }

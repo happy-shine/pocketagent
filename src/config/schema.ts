@@ -109,6 +109,12 @@ const jobsSchema = z.object({
   pollIntervalMs: z.number().int().positive().default(2000), // how often running jobs are checked
 });
 
+// Chat messages the agent sends itself through /api/send-message during a turn
+const agentMessagesSchema = z.object({
+  maxPerTurn: z.number().int().positive().default(12), // per session and turn; more is refused with HTTP 429
+  minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -192,6 +198,7 @@ export const configSchema = z.preprocess((input) => {
   auth: authSchema.default(authSchema.parse({})),
   scheduler: schedulerSchema.default(schedulerSchema.parse({})),
   jobs: jobsSchema.default(jobsSchema.parse({})),
+  agentMessages: agentMessagesSchema.default(agentMessagesSchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));

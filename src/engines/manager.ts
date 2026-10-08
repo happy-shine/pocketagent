@@ -147,6 +147,10 @@ export class EngineManager {
     return Boolean(adapter && adapter.isBusy(sessionId));
   }
 
+  supportsSteer(activeEngine: EngineType): boolean {
+    return Boolean(this.adapters.get(activeEngine)?.supportsSteer);
+  }
+
   getWorkspaceDir(sessionId: string, activeEngine: EngineType): string | undefined {
     const adapter = this.adapters.get(activeEngine);
     return adapter?.getWorkspaceDir(sessionId);

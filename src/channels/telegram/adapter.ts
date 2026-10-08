@@ -86,6 +86,7 @@ export class TelegramAdapter implements ChannelAdapter {
       { command: "sessions", description: "List or switch sessions" },
       { command: "title", description: "Set session title" },
       { command: "btw", description: "Quick side question without interrupting" },
+      { command: "queue", description: "Run a message after the current task" },
       { command: "stop", description: "Interrupt current task" },
       { command: "cron", description: "List and manage scheduled tasks" },
       { command: "jobs", description: "List background jobs, stop them or view logs" },
@@ -300,6 +301,16 @@ export class TelegramAdapter implements ChannelAdapter {
           }
         }
       }
+    }
+  }
+
+  async setReaction(chatId: string, messageId: string, emoji: string | null): Promise<void> {
+    try {
+      // Telegram allows a fixed set of reaction emoji; setting a list replaces the bot's previous reaction
+      const reaction = emoji ? [{ type: "emoji" as const, emoji: emoji as any }] : [];
+      await this.bot.api.setMessageReaction(chatId, Number(messageId), reaction);
+    } catch (err) {
+      this.log.debug({ error: err instanceof Error ? err.message : String(err), chatId, messageId }, "Failed to set reaction");
     }
   }
 

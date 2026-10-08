@@ -30,8 +30,14 @@ import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/
 import type { JobManager } from "../jobs/manager.js";
 import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration } from "../jobs/format.js";
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
+import { decideFollowUp, type SteerMailbox } from "../steer/steer.js";
 
 const SESSIONS_PER_PAGE = 10;
+
+// Reactions on a message sent while a turn runs; all are in Telegram's fixed reaction set
+const REACTION_STEER_PENDING = "👀";
+const REACTION_STEER_DELIVERED = "👌";
+const REACTION_QUEUED = "🫡";
 
 interface TurnResponse {
   text: string;
@@ -49,6 +55,9 @@ export interface TurnInfo {
   sessionId: string;
   // Background jobs started during this turn, to cap how many one message can start
   jobsStarted: number;
+  // Chat messages that belong to the turn (what started it and what joined it); a reply to one joins it too
+  messageIds: Set<string>;
+  tracker?: ProgressTracker;
 }
 
 const CRON_STATUS_LABELS: Record<string, string> = {
@@ -58,6 +67,11 @@ const CRON_STATUS_LABELS: Record<string, string> = {
   timeout: "timed out",
   skipped: "skipped",
 };
+
+/** A chat message as recorded in session history, which other engines get on a handover. */
+function historyTextOf(msg: InboundMessage): string {
+  return msg.replyText ? `[In reply to ${msg.replySenderName ?? "Unknown"}: ${msg.replyText}]\n${msg.text}` : msg.text;
+}
 
 /** Strips `[button: A | B]` and `<<A>>` markup from a reply and returns the button labels. */
 function extractButtons(response: string): { text: string; buttons?: string[] } {
@@ -99,6 +113,7 @@ export class BotInstance {
   private busyChats = new Set<string>();
   // Turn currently running per chat, used to attribute API calls the CLI makes during that turn
   private turnSenders = new Map<string, TurnInfo>();
+  private steerMailbox?: SteerMailbox;
 
   constructor(opts: {
     botConfig: ResolvedBotConfig;
@@ -109,11 +124,13 @@ export class BotInstance {
     log: Logger;
     scheduler?: Scheduler;
     jobs?: JobManager;
+    steerMailbox?: SteerMailbox;
   }) {
     this.config = opts.botConfig;
     this.engineManager = opts.engineManager;
     this.scheduler = opts.scheduler;
     this.jobManager = opts.jobs;
+    this.steerMailbox = opts.steerMailbox;
     this.messageStore = opts.messageStore;
     this.dataDir = opts.dataDir;
     this.log = opts.log.child({ bot: opts.botConfig.name, botId: opts.botConfig.botId });
@@ -307,6 +324,7 @@ export class BotInstance {
     channel.onCommand("title", (msg) => this.handleTitle(msg, channel));
     channel.onCommand("btw", (msg) => this.handleBtw(msg, channel));
     channel.onCommand("stop", (msg) => this.handleStop(msg, channel));
+    channel.onCommand("queue", (msg) => this.handleMessage(msg, channel, { queue: true }));
     channel.onCommand("cron", (msg) => this.handleCron(msg, channel));
     channel.onCommand("jobs", (msg) => this.handleJobs(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
@@ -1317,14 +1335,16 @@ export class BotInstance {
     this.sessionManager.addTurn(session.sessionId, { role: "system", text: `[${outcome}]` });
 
     // The follow-up acts for the requester, e.g. if it starts the next job of a pipeline
+    const tracker = new ProgressTracker(channel, job.chatId, job.originMessageId);
     this.turnSenders.set(job.chatId, {
       senderId: job.requester.senderId ?? "",
       senderName: job.requester.senderName ?? "",
       messageId: job.originMessageId ?? "",
       sessionId: session.sessionId,
       jobsStarted: 0,
+      messageIds: new Set(job.originMessageId ? [job.originMessageId] : []),
+      tracker,
     });
-    const tracker = new ProgressTracker(channel, job.chatId, job.originMessageId);
     tracker.start();
     try {
       const response = await this.collectResponse(session, prompt, tracker);
@@ -1341,6 +1361,7 @@ export class BotInstance {
       throw err;
     } finally {
       this.turnSenders.delete(job.chatId);
+      this.releaseSteered(session.sessionId);
     }
   }
 
@@ -1425,6 +1446,7 @@ export class BotInstance {
       `• \`/new\` — Start a fresh session`,
       `• \`/sessions [num]\` — List and switch sessions`,
       `• \`/btw <question>\` — Ask side question in parallel`,
+      `• \`/queue <message>\` — Run a message after the current task instead of adding it to the task`,
       `• \`/stop\` — Interrupt current task`,
       `• \`/cron\` — List and manage scheduled tasks (or just ask: "every day at 8am ...")`,
       `• \`/jobs\` — Background jobs (long commands running outside the chat): progress, logs, stop`,
@@ -1436,7 +1458,7 @@ export class BotInstance {
     await channel.send({ chatId: msg.chatId, text: helpText });
   }
 
-  private async handleMessage(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+  private async handleMessage(msg: InboundMessage, channel: ChannelAdapter, opts: { queue?: boolean } = {}): Promise<void> {
     const access = this.checkAccess(msg);
     if (!access.allowed) {
       if (access.reason === "needs_pairing" || access.reason === "needs_group_pairing") {
@@ -1473,7 +1495,96 @@ export class BotInstance {
       }
     }
 
+    if (!opts.queue && (await this.trySteer(msg, channel))) return;
+    if (this.busyChats.has(msg.chatId)) {
+      void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_QUEUED);
+    }
     await this.enqueueTurn(msg.chatId, () => this.processTurn(msg, channel));
+  }
+
+  /**
+   * Adds a message to the turn running in its chat, when the engine can take it mid-turn and the message is
+   * about that turn (see decideFollowUp). It waits in the steer mailbox until a hook of the CLI picks it up.
+   */
+  private async trySteer(msg: InboundMessage, channel: ChannelAdapter): Promise<boolean> {
+    if (!this.steerMailbox || this.config.followUp === "queue") return false;
+    const turn = this.turnSenders.get(msg.chatId);
+    if (!turn || !this.busyChats.has(msg.chatId)) return false;
+    const session = this.sessionManager.findSession(turn.sessionId);
+    if (!session || !this.engineManager.supportsSteer(session.activeEngine)) return false;
+
+    const turnMessageIds = new Set(turn.messageIds);
+    const progressId = turn.tracker?.getMessageId();
+    if (progressId) turnMessageIds.add(progressId);
+    const decision = decideFollowUp({
+      senderId: msg.senderId,
+      replyToMessageId: msg.replyToMessageId,
+      turnSenderId: turn.senderId,
+      turnMessageIds,
+    });
+    if (decision !== "steer") return false;
+
+    const text = await this.formatMessage(msg);
+    // The turn may have ended while attachments downloaded; then the message gets a turn of its own
+    if (this.turnSenders.get(msg.chatId) !== turn || !this.engineManager.isBusy(turn.sessionId, session.activeEngine)) {
+      return false;
+    }
+
+    turn.messageIds.add(msg.messageId);
+    void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_STEER_PENDING);
+    this.steerMailbox.push({
+      sessionId: turn.sessionId,
+      messageId: msg.messageId,
+      senderName: msg.senderName,
+      text,
+      onDelivered: () => {
+        this.sessionManager.addTurn(turn.sessionId, { role: "user", text: historyTextOf(msg), author: msg.senderName });
+        void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_STEER_DELIVERED);
+      },
+      onUndelivered: () => {
+        void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_QUEUED);
+        void this.enqueueTurn(msg.chatId, () => this.processTurn(msg, channel));
+      },
+    });
+    this.log.info({ chatId: msg.chatId, sessionId: turn.sessionId, messageId: msg.messageId }, "Message will join the running turn");
+    return true;
+  }
+
+  /** Messages that were to join a turn which ended before any hook took them get turns of their own. */
+  private releaseSteered(sessionId: string): void {
+    for (const item of this.steerMailbox?.drain(sessionId) ?? []) {
+      item.onUndelivered?.();
+    }
+  }
+
+  /** A chat message as the agent reads it: time, sender, quoted reply, text and downloaded attachments. */
+  private async formatMessage(msg: InboundMessage): Promise<string> {
+    const dt = new Date(msg.timestamp * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ts = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+
+    let text = `[${ts}] ${msg.senderName}:\n`;
+    if (msg.replyText) {
+      const quoteName = msg.replySenderName ?? "Unknown";
+      const quoted = msg.replyText.split("\n").map((l) => `> ${l}`).join("\n");
+      text += `[In reply to ${quoteName}]:\n${quoted}\n\n`;
+    }
+    text += msg.text;
+
+    const allAttachments = [...(msg.attachments ?? []), ...(msg.replyAttachments ?? [])];
+    const adapter = msg.channelType === "discord" ? this.discord : this.telegram;
+    if (adapter?.downloadFile && allAttachments.length > 0) {
+      const downloadsDir = join(this.dataDir, "downloads", this.botId, msg.chatId);
+      for (const att of allAttachments) {
+        try {
+          const localPath = await adapter.downloadFile(att.fileId, downloadsDir, att.fileName);
+          text += `\n[Attached ${att.type}: ${localPath}]`;
+        } catch (err) {
+          this.log.error({ error: err }, "Failed to download attachment");
+        }
+      }
+    }
+    return text;
   }
 
   /** Runs turns of a chat one at a time: its session has a single engine process. */
@@ -1503,10 +1614,7 @@ export class BotInstance {
       defaultEffort: this.config.effort,
     });
 
-    // Format prompt text with metadata, timestamp, and reply context
-    const dt = new Date(msg.timestamp * 1000);
     const pad = (n: number) => String(n).padStart(2, "0");
-    const ts = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
 
     // Optimize context: provide up to 100 recent group messages with reply context,
     // and if there is an overlap with previously sent messages in this session, only send the new delta.
@@ -1587,49 +1695,25 @@ export class BotInstance {
       session.lastContextMessageId = msg.messageId;
     }
 
-    let promptText = contextBlock;
-    promptText += `[${ts}] ${msg.senderName}:\n`;
-    if (msg.replyText) {
-      const quoteName = msg.replySenderName ?? "Unknown";
-      const quoted = msg.replyText.split("\n").map((l) => `> ${l}`).join("\n");
-      promptText += `[In reply to ${quoteName}]:\n${quoted}\n\n`;
-    }
-    promptText += msg.text;
-
-    // Handle attachments if present
-    const allAttachments = [...(msg.attachments ?? []), ...(msg.replyAttachments ?? [])];
-    const adapter = msg.channelType === "discord" ? this.discord : this.telegram;
-    if (adapter?.downloadFile && allAttachments.length > 0) {
-      const downloadsDir = join(this.dataDir, "downloads", this.botId, msg.chatId);
-      for (const att of allAttachments) {
-        try {
-          const localPath = await adapter.downloadFile(att.fileId, downloadsDir, att.fileName);
-          promptText += `\n[Attached ${att.type}: ${localPath}]`;
-        } catch (err) {
-          this.log.error({ error: err }, "Failed to download attachment");
-        }
-      }
-    }
+    const promptText = contextBlock + (await this.formatMessage(msg));
 
     // Record turn in session history
-    const historyText = msg.replyText
-      ? `[In reply to ${msg.replySenderName ?? "Unknown"}: ${msg.replyText}]\n${msg.text}`
-      : msg.text;
     this.sessionManager.addTurn(session.sessionId, {
       role: "user",
-      text: historyText,
+      text: historyTextOf(msg),
       author: msg.senderName,
     });
 
+    const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     this.turnSenders.set(msg.chatId, {
       senderId: msg.senderId,
       senderName: msg.senderName,
       messageId: msg.messageId,
       sessionId: session.sessionId,
       jobsStarted: 0,
+      messageIds: new Set([msg.messageId]),
+      tracker,
     });
-
-    const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();
 
     try {
@@ -1657,6 +1741,7 @@ export class BotInstance {
       });
     } finally {
       this.turnSenders.delete(msg.chatId);
+      this.releaseSteered(session.sessionId);
     }
   }
 

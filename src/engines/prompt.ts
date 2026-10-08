@@ -11,6 +11,7 @@ import {
   getBackgroundJobSkill,
   SkillRegistry,
 } from "../skills/index.js";
+import { STEER_SYSTEM_NOTE } from "../steer/steer.js";
 import type { BotIdentity } from "./types.js";
 
 export interface SystemPromptPartsInput {
@@ -22,6 +23,8 @@ export interface SystemPromptPartsInput {
   isGroup: boolean;
   identity?: BotIdentity;
   backgroundJobs?: boolean;
+  // The engine relays messages sent during a turn into it
+  steer?: boolean;
 }
 
 export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] {
@@ -53,6 +56,9 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   parts.push(getSchedulerSkill(input.apiPort, input.botId, input.chatId));
   if (input.backgroundJobs) {
     parts.push(getBackgroundJobSkill(input.apiPort, input.botId, input.chatId));
+  }
+  if (input.steer) {
+    parts.push(STEER_SYSTEM_NOTE);
   }
   parts.push(getTelegramButtonsSkill());
   if (input.channelType === "discord") {

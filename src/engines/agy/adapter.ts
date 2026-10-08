@@ -15,9 +15,28 @@ import type {
   EngineRuntimeConfig,
 } from "../types.js";
 import { discoverAgyCapabilities } from "./discovery.js";
+import { agyHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+
+/** Adds the steer hooks to the workspace's `.agents/hooks.json`, keeping any other hooks defined there. */
+function writeAgySteerHooks(sessionDir: string): void {
+  const dir = join(sessionDir, ".agents");
+  const file = join(dir, "hooks.json");
+  let existing: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) existing = parsed as Record<string, unknown>;
+    } catch {
+      // An unreadable file is replaced
+    }
+  }
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(file, JSON.stringify({ ...existing, ...agyHooks() }, null, 2) + "\n");
+}
 
 export class AgyEngineAdapter implements EngineAdapter {
   readonly type = "agy" as const;
+  readonly supportsSteer = true;
 
   private processes = new Map<string, EngineProcess>();
   private config: EngineRuntimeConfig;
@@ -61,11 +80,17 @@ export class AgyEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
+      steer: true,
     });
     if (systemParts.length > 0) {
       const content = systemParts.join("\n\n---\n\n");
       writeFileSync(join(sessionDir, "AGENTS.md"), content);
       writeFileSync(join(sessionDir, "GEMINI.md"), content);
+    }
+    try {
+      writeAgySteerHooks(sessionDir);
+    } catch (err) {
+      this.log.warn({ error: err instanceof Error ? err.message : String(err), sessionDir }, "Could not write Agy steer hooks");
     }
 
     const args = [
@@ -105,7 +130,7 @@ export class AgyEngineAdapter implements EngineAdapter {
     const proc = spawn(this.config.binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
     });
 
     const ep: EngineProcess = {

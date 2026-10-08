@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
@@ -18,6 +18,7 @@ import type {
 } from "../types.js";
 import { discoverGrokCapabilities } from "./discovery.js";
 import { buildGrokSpawnArgs, GrokEventMapper, parseGrokJsonLine } from "./parser.js";
+import { claudeStyleHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
 
 const GROK_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const MAX_STDERR_LENGTH = 4000;
@@ -26,6 +27,7 @@ type TurnOutcome = "ok" | "resume_failed";
 
 export class GrokEngineAdapter implements EngineAdapter {
   readonly type = "grok" as const;
+  readonly supportsSteer = true;
 
   private processes = new Map<string, EngineProcess>();
   private interrupted = new Set<string>();
@@ -35,6 +37,24 @@ export class GrokEngineAdapter implements EngineAdapter {
   constructor(config: EngineRuntimeConfig, log: Logger) {
     this.config = config;
     this.log = log.child({ module: "grok-engine-adapter" });
+    this.installSteerHooks();
+  }
+
+  /**
+   * Grok reads project hooks only at a trusted git repository root, which session workspaces are not, so the
+   * steer hooks are global. They do nothing in grok processes PocketAgent did not start (no steer URL set).
+   */
+  private installSteerHooks(): void {
+    const file = join(process.env.GROK_HOME ?? join(homedir(), ".grok"), "hooks", "pocketagent-steer.json");
+    const content = JSON.stringify(claudeStyleHooks("grok"), null, 2) + "\n";
+    try {
+      if (existsSync(file) && readFileSync(file, "utf-8") === content) return;
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, content);
+      this.log.info({ file }, "Installed Grok steer hooks");
+    } catch (err) {
+      this.log.warn({ error: err instanceof Error ? err.message : String(err), file }, "Could not install Grok steer hooks");
+    }
   }
 
   async getCapabilities(forceRefresh?: boolean): Promise<EngineCapabilities> {
@@ -130,6 +150,7 @@ export class GrokEngineAdapter implements EngineAdapter {
         isGroup: Boolean(session.isGroup),
         identity,
         backgroundJobs: this.config.backgroundJobs,
+        steer: true,
       });
       if (systemParts.length > 0) rules = systemParts.join("\n\n---\n\n");
 
@@ -186,7 +207,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     const proc = spawn(spawnCmd.cmd, spawnCmd.args, {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: ep.workspaceDir,
-      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
     });
     ep.process = proc;
 

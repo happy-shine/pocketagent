@@ -15,9 +15,11 @@ import type {
   EngineRuntimeConfig,
 } from "../types.js";
 import { discoverClaudeCapabilities } from "./discovery.js";
+import { claudeStyleHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
 
 export class ClaudeEngineAdapter implements EngineAdapter {
   readonly type = "claude" as const;
+  readonly supportsSteer = true;
 
   private processes = new Map<string, EngineProcess>();
   private config: EngineRuntimeConfig;
@@ -61,6 +63,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
+      steer: true,
     });
     const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
     if (promptContent) {
@@ -73,6 +76,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       "--output-format", "stream-json",
       "--verbose",
       "--permission-mode", "bypassPermissions",
+      // Hooks that relay messages sent during a turn into it
+      "--settings", JSON.stringify(claudeStyleHooks("claude")),
     ];
 
     if (session.claudeSessionId) {
@@ -106,7 +111,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     const proc = spawn(this.config.binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId },
+      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
     });
 
     const ep: EngineProcess = {

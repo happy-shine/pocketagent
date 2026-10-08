@@ -18,6 +18,7 @@ import { JobManager } from "../jobs/manager.js";
 import { JobStore } from "../jobs/store.js";
 import { jobDuration } from "../jobs/format.js";
 import { isEphemeralSessionId, isJobActive, type BackgroundJob } from "../jobs/types.js";
+import { answerSteerHook, SteerMailbox } from "../steer/steer.js";
 
 export interface SessionSummary {
   botId: string;
@@ -112,6 +113,8 @@ export class Gateway {
   private lastReloadTime = 0;
   private scheduler: Scheduler;
   private jobManager: JobManager;
+  // Chat messages waiting to join the turn running in their session
+  private steerMailbox = new SteerMailbox();
 
   constructor(config: GatewayConfig, log: Logger, configPath?: string) {
     this.config = config;
@@ -171,6 +174,7 @@ export class Gateway {
         log,
         scheduler: this.scheduler,
         jobs: this.jobManager,
+        steerMailbox: this.steerMailbox,
       });
       this.bots.set(bot.botId, bot);
     }
@@ -185,6 +189,7 @@ export class Gateway {
 
     this.apiServer = new ApiServer({
       port: this.config.gateway.port,
+      steerHook: (engine, event, sessionId, payload) => this.answerSteerHook(engine, event, sessionId, payload),
       getBotTelegram: (botId) => this.bots.get(botId)?.telegram,
       getBotChannel: (botId) => this.bots.get(botId)?.telegram ?? this.bots.get(botId)?.discord,
       dataDir: this.dataDir,
@@ -260,6 +265,15 @@ export class Gateway {
     this.log.info("PocketAgent Gateway running successfully");
   }
 
+  /** Hands the messages waiting for a session to its running turn, through the hook that asked. */
+  private answerSteerHook(engine: string, event: string, sessionId: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const { output, delivered } = answerSteerHook(this.steerMailbox, engine, event, sessionId, payload);
+    if (delivered.length > 0) {
+      this.log.info({ sessionId, engine, event, count: delivered.length }, "Relayed chat messages into the running turn");
+    }
+    return output;
+  }
+
   private syncPeerBots(): void {
     const peers: Array<{ name: string; username: string }> = [];
     for (const bot of this.bots.values()) {
@@ -330,6 +344,7 @@ export class Gateway {
             log: this.log,
             scheduler: this.scheduler,
             jobs: this.jobManager,
+            steerMailbox: this.steerMailbox,
           });
           await newBot.start();
           this.bots.set(newBot.botId, newBot);

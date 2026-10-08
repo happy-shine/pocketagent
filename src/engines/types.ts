@@ -72,6 +72,8 @@ export interface EngineProcess {
 
 export interface EngineAdapter {
   readonly type: EngineType;
+  /** Messages sent during a turn can join it through the CLI's hooks (see steer/steer.ts). */
+  readonly supportsSteer?: boolean;
   getCapabilities(forceRefresh?: boolean): Promise<EngineCapabilities>;
   acquire(session: Session, botId: string, botExtraArgs?: string[], identity?: BotIdentity): EngineProcess;
   sendMessage(

@@ -21,4 +21,5 @@ export interface ResolvedBotConfig {
   guilds: Record<string, { enabled: boolean; allowedChannels?: string[]; allowFrom?: string[] }>;
   soul?: string;
   skills?: boolean | string[];
+  followUp: "steer" | "queue";
 }

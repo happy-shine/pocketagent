@@ -176,6 +176,7 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
       guilds,
       soul: bot.soul,
       skills: bot.skills,
+      followUp: bot.followUp ?? "steer",
     };
   });
 }

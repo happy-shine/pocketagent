@@ -145,6 +145,8 @@ const botSchema = z.object({
   auth: botAuthSchema.optional(),
   soul: z.string().optional(),
   skills: z.union([z.boolean(), z.array(z.string())]).optional(),
+  // Messages sent while a turn runs: "steer" lets them join it where the engine supports that, "queue" runs them after
+  followUp: z.enum(["steer", "queue"]).optional(),
 });
 
 export const configSchema = z.preprocess((input) => {

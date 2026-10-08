@@ -67,6 +67,8 @@ export interface ApiServerConfig {
     cancel: (id: string, callerSessionId?: string) => JobApiResult;
     remove: (id: string) => JobApiResult;
   };
+  // Answers a CLI hook asking whether chat messages are waiting to join the running turn; returns the hook's stdout
+  steerHook?: (engine: string, event: string, sessionId: string, payload: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export interface JobApiResult {
@@ -191,6 +193,8 @@ export class ApiServer {
         await this.handleCron(req, res, url);
       } else if (url.pathname === "/api/jobs" || url.pathname.startsWith("/api/jobs/")) {
         await this.handleJobs(req, res, url);
+      } else if (req.method === "POST" && url.pathname === "/api/steer/hook") {
+        await this.handleSteerHook(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -552,6 +556,24 @@ export class ApiServer {
     } else {
       send(404, { ok: false, error: `No such cron endpoint: ${route}` });
     }
+  }
+
+  /** Called by the CLIs' steer hooks; any answer other than a delivery must be `{}` so the agent carries on. */
+  private async handleSteerHook(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const header = req.headers["x-pocketagent-session"];
+    const sessionId = (Array.isArray(header) ? header[0] : header)?.trim();
+    const engine = url.searchParams.get("engine") ?? "";
+    const event = url.searchParams.get("event") ?? "";
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(await readBody(req));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch {
+      // The hook input is only used to tell turn ends from other stops
+    }
+    const output = sessionId && this.config.steerHook ? this.config.steerHook(engine, event, sessionId, payload) : {};
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(output));
   }
 
   private async handleJobs(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {

@@ -76,6 +76,8 @@ export interface ChannelAdapter {
     plainFallback?: string,
   ): Promise<void>;
   deleteMessage?(chatId: string, messageId: string): Promise<void>;
+  /** Sets the bot's reaction on a message, replacing its previous one; null clears it. Never throws. */
+  setReaction?(chatId: string, messageId: string, emoji: string | null): Promise<void>;
   sendPhoto?(chatId: string, filePath: string, caption?: string): Promise<string>;
   sendDocument?(chatId: string, filePath: string, caption?: string): Promise<string>;
   sendFile?(chatId: string, filePath: string, caption?: string): Promise<void>;

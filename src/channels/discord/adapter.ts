@@ -108,6 +108,8 @@ export class DiscordAdapter implements ChannelAdapter {
   private token: string;
   private log: Logger;
   private client?: Client;
+  // Reaction this bot last put on a message, so the next one can replace it
+  private ownReactions = new Map<string, string>();
   private messageHandler?: MessageHandler;
   private commandHandlers = new Map<string, CommandHandler>();
   private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
@@ -766,6 +768,30 @@ export class DiscordAdapter implements ChannelAdapter {
     }
   }
 
+  async setReaction(chatId: string, messageId: string, emoji: string | null): Promise<void> {
+    if (!this.client?.user) return;
+    try {
+      const channel = await this.client.channels.fetch(chatId).catch(() => null);
+      if (!channel || !channel.isTextBased()) return;
+      const msg = await (channel as any).messages.fetch(messageId).catch(() => null);
+      if (!msg) return;
+      const prev = this.ownReactions.get(messageId);
+      if (prev && prev !== emoji) {
+        await msg.reactions.resolve(prev)?.users.remove(this.client.user.id).catch(() => {});
+      }
+      this.ownReactions.delete(messageId);
+      if (!emoji) return;
+      if (prev !== emoji) await msg.react(emoji);
+      this.ownReactions.set(messageId, emoji);
+      // Only recent messages get their reaction changed again
+      if (this.ownReactions.size > 500) {
+        this.ownReactions.delete(this.ownReactions.keys().next().value!);
+      }
+    } catch (err) {
+      this.log.debug({ error: err instanceof Error ? err.message : String(err), chatId, messageId }, "Failed to set reaction");
+    }
+  }
+
   async deleteMessage(chatId: string, messageId: string): Promise<void> {
     if (!this.client) return;
     try {
@@ -866,6 +892,10 @@ export class DiscordAdapter implements ChannelAdapter {
         .setName("btw")
         .setDescription("Ask a quick side question without modifying workspace files")
         .addStringOption((opt) => opt.setName("question").setDescription("Your question").setRequired(true)),
+      new SlashCommandBuilder()
+        .setName("queue")
+        .setDescription("Run a message after the current task instead of adding it to the task")
+        .addStringOption((opt) => opt.setName("message").setDescription("Your message").setRequired(true)),
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Interrupt current running task"),

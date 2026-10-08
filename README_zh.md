@@ -204,6 +204,15 @@ pa pairing approve 123456
 - **安全**：群聊中只有已配对 / 在 allowlist 里的用户能管理任务；任务连续失败 3 次会自动暂停；机器睡眠期间错过的执行最多只补跑一次（宽限期由 `catchUpGraceMs` 控制）。
 - 任务存储在 `~/.pocketagent/cron/`。可选参数写在 `config.yaml` 的 `scheduler:` 段（见 `config.example.yaml`）。
 
+## Agent 主动发消息
+
+除了最终回复，agent 在一轮对话中还可以通过本地 API（`POST /api/send-message`）自己往聊天里发消息：长步骤前先打个招呼、分别回答几个问题，或者回复某一条具体的消息。
+
+- **绑定到所在聊天**：CLI 的调用会带上自己的会话（`X-PocketAgent-Session: $POCKETAGENT_SESSION_ID`），网关只会发到该会话所属的 bot 和聊天；指定其他聊天或 bot 会被 403 拒绝。不带这个 header 的调用（定时脚本、你自己的工具）照旧按 `bot_id` 和 `chat_id` 发送，并记录一条警告日志。
+- **回复指定消息**：`reply_to`（消息 id）用于回复某条消息；agent 能在触发本轮的消息和中途转入的每条消息上看到 `[message_id: ...]`。原消息已删除时仍会正常发出。响应里会返回已发出的 `message_ids`。
+- **静默结束**：任何聊天轮次中，最终回复恰好是 `[SILENT]`（或最后一行是 `[SILENT]`）时不再推送任何内容，agent 可以全部通过自己发的消息来表达。
+- **防刷屏**：每个会话每轮最多 12 条，间隔至少 800 ms（太快的调用会等待而不是失败）；超出上限返回 429。长文本按最终回复的同样规则拆分。可在 `config.yaml` 的 `agentMessages:` 段调整（见 `config.example.yaml`）。
+
 ## 命令行 CLI 管理
 
 | 命令 | 描述 |

@@ -204,6 +204,15 @@ Ask the bot in plain words, e.g. *"every weekday at 9am send me a digest of the 
 - **Safety**: in group chats, only paired / allowlisted users can manage tasks. Tasks are paused after 3 consecutive failures. Runs missed while the machine was asleep are caught up at most once (within `catchUpGraceMs`).
 - Tasks are stored in `~/.pocketagent/cron/`. Optional tuning goes in a `scheduler:` block in `config.yaml` (see `config.example.yaml`).
 
+## Agent Messages
+
+Besides its final reply, the agent can post chat messages itself during a turn through the local API (`POST /api/send-message`): a heads-up before a long step, separate answers to separate questions, or a reply to one specific message.
+
+- **Bound to its chat**: the CLI's calls carry its session (`X-PocketAgent-Session: $POCKETAGENT_SESSION_ID`), and the gateway sends to that session's bot and chat only. A call naming another chat or bot is refused with 403. Calls without the header (cron scripts, your own tools) work as before, naming `bot_id` and `chat_id`, and are logged with a warning.
+- **Replies**: `reply_to` (a message id) answers a specific message; the agent sees `[message_id: ...]` on the message that started the turn and on every message relayed into it. It still sends if that message was deleted. The response lists the posted `message_ids`.
+- **Silent endings**: in any chat turn, a final reply of exactly `[SILENT]` (or ending with a `[SILENT]` line) posts nothing more, so the agent can say everything through its own messages.
+- **Anti-spam**: per session and turn, at most 12 messages, at least 800 ms apart (faster calls wait); beyond that the API answers 429. Long texts are split like final replies. Tune it in an `agentMessages:` block in `config.yaml` (see `config.example.yaml`).
+
 ## CLI Commands
 
 | Command | Description |

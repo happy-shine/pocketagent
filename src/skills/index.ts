@@ -1,8 +1,9 @@
 export function getTelegramFileSkill(apiPort: number, chatId: string, botId: string, isGroup?: boolean): string {
   return `
-## File Transfer API
+## File Transfer and Chat Message API
 
-You can send files to the user and download files the user sent to you via the local Gateway API.
+You can send files and extra chat messages to the user, and download files the user sent to you, via the local Gateway API.
+Keep the \`X-PocketAgent-Session\` header exactly as shown; the shell fills it in, and it ties the call to this chat.
 
 ### 1. Send files to user
 
@@ -10,7 +11,7 @@ When the user asks you to send/export/share/download a file, or when your task c
 
 \`\`\`bash
 curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-file" \\
-  -H "Content-Type: application/json" \\
+  -H "Content-Type: application/json" -H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID" \\
   -d '{"bot_id":"${botId}","chat_id":"${chatId}","file_path":"/absolute/path/to/file.ext","caption":"Optional description"}'
 \`\`\`
 
@@ -18,7 +19,22 @@ curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-file" \\
 - \`caption\`: Optional text shown with the file.
 - For multiple files, call the command once per file.
 
-### 2. Download files from user
+### 2. Send chat messages
+
+Your final reply is posted to the chat automatically. To post more during your turn (a short heads-up before a long step, separate answers to separate questions) or to answer a specific message, send it yourself:
+
+\`\`\`bash
+curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-message" \\
+  -H "Content-Type: application/json" -H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID" \\
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","text":"Message in Markdown","reply_to":"<message_id>"}'
+\`\`\`
+
+- \`reply_to\` (optional): the message to answer, by the id shown as \`[message_id: ...]\` above each chat message you receive. Omit it for a plain message.
+- Messages appear in the order you send them; the response lists the \`message_ids\` that were posted. Long texts are split automatically.
+- If you already said everything this way, make your final reply exactly \`[SILENT]\` and nothing more is posted. Never repeat a sent message in your final reply.
+- At most 12 messages per turn by default, at least 0.8 s apart (faster calls just wait). Beyond the cap the API answers HTTP 429: put the rest in your final reply.
+
+### 3. Download files from user
 
 Files attached to the message you are answering are already downloaded; their local paths appear in the message as \`[Attached ...: /path]\`.
 For other files (e.g. a \`media\` entry like \`photo:<FILE_ID>\` or \`document:<FILE_ID>:<name>\` in chat history), download by file id:

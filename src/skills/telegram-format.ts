@@ -94,7 +94,7 @@ Your final reply is posted to Discord as a regular message. Discord renders its 
 - Tables (\`| a | b |\`): write a list instead, one item per row, e.g. \`- **ES** · 方向: 做多 · 结果: 已达标\`. For columns of numbers, use a code block with space-aligned columns.
 - \`####\` and deeper headings: use \`###\` or a **bold** line.
 - Horizontal rules (\`---\`, \`***\`): separate sections with a heading or a blank line.
-- HTML tags (\`<b>\`, \`<br>\`, \`<pre>\`, ...) and Markdown images (\`![](...)\`). To show an image, send the file with the File Transfer API.
+- HTML tags (\`<b>\`, \`<br>\`, \`<pre>\`, ...) and Markdown images (\`![](...)\`). To show an image, send the file with the File Transfer and Chat Message API.
 
 The gateway converts stray tables, deep headings and horizontal rules automatically, but writing Discord syntax yourself reads better.
 

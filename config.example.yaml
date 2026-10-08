@@ -14,6 +14,8 @@ bots:
     #   - "1465542100"
     # groups:
     #   "-1003981923249": true
+    # interimText: message # text the agent writes before a tool call: "message" posts it right away as its
+    #                      # own message (default); "final" keeps it for the end, in front of the answer
 
   # Optional Discord Bot
   # - name: "my-discord-bot"

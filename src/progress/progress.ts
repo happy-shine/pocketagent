@@ -125,6 +125,18 @@ export class ProgressTracker {
     return this.messageId;
   }
 
+  /** Ends without posting an answer: stops the updates and removes the progress message. */
+  async discard(): Promise<void> {
+    this.done = true;
+    this.stop();
+    await this.pendingFlush;
+    if (this.messageId) {
+      const progressId = this.messageId;
+      this.messageId = null;
+      await this.channel.deleteMessage?.(this.chatId, progressId).catch(() => {});
+    }
+  }
+
   /**
    * Posts the final answer, replacing the progress message. With `mention`, the answer starts by mentioning
    * that user and is sent as a new message, because mentions added by an edit do not notify anyone.

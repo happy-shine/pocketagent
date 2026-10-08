@@ -23,6 +23,7 @@ import {
   describeSchedule,
   formatTime,
   isSilentOutput,
+  isSilentReply,
   parseScheduleInput,
   scheduleTimezone,
 } from "../scheduler/schedule.js";
@@ -71,6 +72,11 @@ const CRON_STATUS_LABELS: Record<string, string> = {
 /** A chat message as recorded in session history, which other engines get on a handover. */
 function historyTextOf(msg: InboundMessage): string {
   return msg.replyText ? `[In reply to ${msg.replySenderName ?? "Unknown"}: ${msg.replyText}]\n${msg.text}` : msg.text;
+}
+
+/** A chat turn whose final answer is `[SILENT]`, so nothing more is posted. */
+function isSilentTurn(response: TurnResponse): boolean {
+  return isSilentReply(response.finalText) || isSilentReply(response.text);
 }
 
 /** Strips `[button: A | B]` and `<<A>>` markup from a reply and returns the button labels. */
@@ -1353,6 +1359,10 @@ export class BotInstance {
       this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: reply, engine: session.activeEngine });
       session.lastEngine = session.activeEngine;
       await this.sessionManager.flush(job.chatId);
+      if (isSilentTurn(response)) {
+        await tracker.discard();
+        return;
+      }
       const mention =
         job.isGroup && job.requester.senderId ? { id: job.requester.senderId, name: job.requester.senderName || "requester" } : undefined;
       await tracker.finish(reply, buttons, { mention });
@@ -1732,6 +1742,11 @@ export class BotInstance {
 
       session.lastEngine = session.activeEngine;
       await this.sessionManager.flush(msg.chatId);
+      // The agent may have said everything through the send-message API and ends the turn without a reply
+      if (isSilentTurn(response)) {
+        await tracker.discard();
+        return;
+      }
       await tracker.finish(fullResponse || "(Task completed)", buttons);
     } catch (err) {
       tracker.stop();

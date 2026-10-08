@@ -157,6 +157,15 @@ export function isSilentOutput(output: string): boolean {
   return output.includes(SILENT_TOKEN);
 }
 
+/**
+ * Whether a chat turn's final text asks to post nothing: it is the silent token, or ends with it on a line of
+ * its own. Stricter than isSilentOutput, since a chat reply may well mention the token in passing.
+ */
+export function isSilentReply(output: string): boolean {
+  const lines = output.trim().split("\n");
+  return lines[lines.length - 1].trim() === SILENT_TOKEN;
+}
+
 /** Scheduled runs use a stable session id so each task keeps its own workspace directory. */
 export function cronSessionId(jobId: string): string {
   return `cron-${jobId}`;

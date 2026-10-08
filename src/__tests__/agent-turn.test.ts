@@ -124,7 +124,7 @@ describe("agent-driven chat turns", () => {
   it.each([
     ["exactly [SILENT]", ["[SILENT]"]],
     ["[SILENT] as the last line", ["Sent both answers above.\n[SILENT]"]],
-    ["[SILENT] after the last tool call", ["Let me send those.", "@tool", "[SILENT]"]],
+    ["[SILENT] after a tool call", ["@tool", "[SILENT]"]],
   ])("posts nothing for a chat turn ending with %s", async (_label, parts) => {
     const { bot, channel } = makeBot(async function* () {
       for (const part of parts) {

@@ -153,6 +153,9 @@ const botSchema = z.object({
   skills: z.union([z.boolean(), z.array(z.string())]).optional(),
   // Messages sent while a turn runs: "steer" lets them join it where the engine supports that, "queue" runs them after
   followUp: z.enum(["steer", "queue"]).optional(),
+  // What the agent writes before a tool call: "message" posts it right away as its own message, "final" keeps it
+  // for the final reply as before
+  interimText: z.enum(["message", "final"]).optional(),
 });
 
 export const configSchema = z.preprocess((input) => {

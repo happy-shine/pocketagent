@@ -6,6 +6,8 @@ const TICK_INTERVAL = 3000;
 const FLUSH_MIN = 3000;
 const FLUSH_MAX = 15000;
 const FLUSH_TAU = 120000;
+// Interim text blocks arriving within this window are posted together as one message
+export const INTERIM_COALESCE_MS = 3000;
 
 function getFlushInterval(elapsedMs: number): number {
   return FLUSH_MIN + (FLUSH_MAX - FLUSH_MIN) * (1 - Math.exp(-elapsedMs / FLUSH_TAU));
@@ -60,6 +62,16 @@ export class ProgressTracker {
   private done = false;
   private buffer = "";
   private pendingFlush: Promise<void> = Promise.resolve();
+  // The progress update being sent right now, if any
+  private flushInFlight: Promise<void> = Promise.resolve();
+  // Interim text waiting for its coalescing window to close
+  private interimBlocks: string[] = [];
+  private interimTimer?: ReturnType<typeof setTimeout>;
+  private interimQueue: Promise<void> = Promise.resolve();
+  private interimIds: string[] = [];
+  private interimPosts = 0;
+  // Set while an interim message is posted, so the progress message is not sent or edited in between
+  private holdProgress = false;
 
   constructor(channel: ChannelAdapter, chatId: string, replyToMessageId?: string) {
     this.channel = channel;
@@ -78,6 +90,8 @@ export class ProgressTracker {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
+    // Text the agent already wrote still reaches the chat
+    void this.flushInterim();
   }
 
   thinking(): void {
@@ -118,6 +132,71 @@ export class ProgressTracker {
     this.buffer = appendText(this.buffer, text, newBlock);
   }
 
+  /**
+   * Posts text the agent wrote before a tool call as its own chat message, replying to the triggering message.
+   * Blocks arriving within INTERIM_COALESCE_MS are joined into one message. Each post moves the progress message
+   * below it, so the spinner stays at the bottom of the chat and the final answer lands after the interim text.
+   */
+  postInterim(text: string): void {
+    this.interimPosts += 1;
+    this.interimBlocks.push(text);
+    if (!this.interimTimer) {
+      this.interimTimer = setTimeout(() => {
+        this.interimTimer = undefined;
+        void this.flushInterim();
+      }, INTERIM_COALESCE_MS);
+    }
+  }
+
+  /** Posts the interim text waiting to be coalesced now; resolves once every interim post has been sent. */
+  flushInterim(): Promise<void> {
+    if (this.interimTimer) {
+      clearTimeout(this.interimTimer);
+      this.interimTimer = undefined;
+    }
+    const text = this.interimBlocks.join("\n\n").trim();
+    this.interimBlocks = [];
+    if (text) {
+      this.interimQueue = this.interimQueue.then(() => this.sendInterim(text)).catch(() => {});
+    }
+    return this.interimQueue;
+  }
+
+  /** Whether any interim text was handed over to be posted this turn. */
+  hasInterim(): boolean {
+    return this.interimPosts > 0;
+  }
+
+  /** Ids of the interim messages posted so far; replies to them are about this turn. */
+  getInterimMessageIds(): readonly string[] {
+    return this.interimIds;
+  }
+
+  private async sendInterim(text: string): Promise<void> {
+    this.holdProgress = true;
+    try {
+      await this.flushInFlight;
+      const id = await this.channel.send({ chatId: this.chatId, replyToMessageId: this.replyToMessageId, ...this.format(text) });
+      if (id) this.interimIds.push(id);
+      // The next update posts the progress message again, below the interim text
+      if (this.messageId) {
+        const progressId = this.messageId;
+        this.messageId = null;
+        this.lastFlush = 0;
+        await this.channel.deleteMessage?.(this.chatId, progressId).catch(() => {});
+      }
+    } finally {
+      this.holdProgress = false;
+    }
+  }
+
+  /** Text in the platform's format: Telegram gets HTML from the agent's Markdown, Discord renders Markdown itself. */
+  private format(text: string): { text: string; parseMode?: "HTML"; plainFallback?: string } {
+    if (this.channel.type !== "telegram") return { text };
+    const html = markdownToTelegramHtml(text);
+    return { text: html, parseMode: "HTML", plainFallback: stripHtml(html) };
+  }
+
   getBuffer(): string {
     return this.buffer;
   }
@@ -128,6 +207,7 @@ export class ProgressTracker {
 
   /** Ends without posting an answer: stops the updates and removes the progress message. */
   async discard(): Promise<void> {
+    await this.flushInterim();
     this.done = true;
     this.stop();
     await this.pendingFlush;
@@ -143,6 +223,7 @@ export class ProgressTracker {
    * that user and is sent as a new message, because mentions added by an edit do not notify anyone.
    */
   async finish(finalText: string, buttons?: string[], opts: { mention?: { id: string; name: string } } = {}): Promise<void> {
+    await this.flushInterim();
     this.done = true;
     this.stop();
     await this.pendingFlush;
@@ -193,12 +274,18 @@ export class ProgressTracker {
   }
 
   private async flush(): Promise<void> {
-    if (this.flushing || this.done) return;
+    if (this.flushing || this.done || this.holdProgress) return;
     const now = Date.now();
     const interval = getFlushInterval(now - this.globalStart);
     if (now - this.lastFlush < interval) return;
 
     this.flushing = true;
+    const work = this.sendProgress();
+    this.flushInFlight = work;
+    await work;
+  }
+
+  private async sendProgress(): Promise<void> {
     try {
       const text = this.render().slice(0, 1000);
       if (!this.messageId) {

@@ -26,6 +26,7 @@ import {
   isSilentOutput,
   isSilentReply,
   parseScheduleInput,
+  SILENT_TOKEN,
   scheduleTimezone,
 } from "../scheduler/schedule.js";
 import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/types.js";
@@ -73,6 +74,16 @@ const CRON_STATUS_LABELS: Record<string, string> = {
 /** A chat message as recorded in session history, which other engines get on a handover. */
 function historyTextOf(msg: InboundMessage): string {
   return msg.replyText ? `[In reply to ${msg.replySenderName ?? "Unknown"}: ${msg.replyText}]\n${msg.text}` : msg.text;
+}
+
+/**
+ * Text written before a tool call, as posted on its own: without button markup or a closing `[SILENT]` line;
+ * empty if nothing is left to post.
+ */
+function interimBody(block: string): string {
+  const lines = block.trim().split("\n");
+  if (lines[lines.length - 1].trim() === SILENT_TOKEN) lines.pop();
+  return extractButtons(lines.join("\n")).text.trim();
 }
 
 /** A chat turn whose final answer is `[SILENT]`, so nothing more is posted. */
@@ -1372,16 +1383,24 @@ export class BotInstance {
     });
     tracker.start();
     try {
-      const response = await this.collectResponse(session, prompt, tracker);
-      const { text, buttons } = extractButtons(response.text);
-      const reply = text || `${outcome}.${response.errorMessage ? `\n(Follow-up failed: ${response.errorMessage})` : ""}`;
-      this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: reply, engine: session.activeEngine });
+      const interim = this.config.interimText !== "final";
+      const response = await this.collectResponse(session, prompt, tracker, { interim });
+      const fallback = `${outcome}.${response.errorMessage ? `\n(Follow-up failed: ${response.errorMessage})` : ""}`;
+      const fullText = extractButtons(response.text).text;
+      this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: fullText || fallback, engine: session.activeEngine });
       session.lastEngine = session.activeEngine;
       await this.sessionManager.flush(job.chatId);
       if (isSilentTurn(response)) {
         await tracker.discard();
         return;
       }
+      // As in chat turns, text before tool calls was already posted
+      const { text, buttons } = extractButtons(interim ? response.finalText : response.text);
+      if (!text.trim() && tracker.hasInterim()) {
+        await tracker.discard();
+        return;
+      }
+      const reply = text || fallback;
       const mention =
         job.isGroup && job.requester.senderId ? { id: job.requester.senderId, name: job.requester.senderName || "requester" } : undefined;
       await tracker.finish(reply, buttons, { mention });
@@ -1421,12 +1440,14 @@ export class BotInstance {
 
   /**
    * Runs one engine turn and collects its text: separate blocks joined by a blank line, streamed pieces of one
-   * block as they come.
+   * block as they come. With `interim`, text the agent writes before a tool call is posted to the chat right
+   * away (see ProgressTracker.postInterim) and `finalText` keeps only what follows the last tool call.
    */
   private async collectResponse(
     session: Session,
     promptText: string,
     tracker?: ProgressTracker,
+    opts: { interim?: boolean } = {},
   ): Promise<TurnResponse> {
     let text = "";
     let finalText = "";
@@ -1444,6 +1465,10 @@ export class BotInstance {
       if (event.type === "thinking_started") {
         tracker?.thinking();
       } else if (event.type === "tool_started") {
+        if (opts.interim && tracker) {
+          const interim = interimBody(finalText);
+          if (interim) tracker.postInterim(interim);
+        }
         tracker?.toolStart(event.name, event.detail);
         finalText = "";
         afterTool = true;
@@ -1558,6 +1583,7 @@ export class BotInstance {
     const turnMessageIds = new Set(turn.messageIds);
     const progressId = turn.tracker?.getMessageId();
     if (progressId) turnMessageIds.add(progressId);
+    for (const id of turn.tracker?.getInterimMessageIds() ?? []) turnMessageIds.add(id);
     const decision = decideFollowUp({
       senderId: msg.senderId,
       replyToMessageId: msg.replyToMessageId,
@@ -1760,10 +1786,11 @@ export class BotInstance {
     tracker.start();
 
     try {
-      const response = await this.collectResponse(session, promptText, tracker);
+      const interim = this.config.interimText !== "final";
+      const response = await this.collectResponse(session, promptText, tracker, { interim });
 
       // Check for inline buttons markup: [button: Opt1 | Opt2] or <<Opt1>>
-      const { text: fullResponse, buttons } = extractButtons(response.text);
+      const { text: fullResponse } = extractButtons(response.text);
 
       // Record assistant turn in session history
       this.sessionManager.addTurn(session.sessionId, {
@@ -1779,7 +1806,13 @@ export class BotInstance {
         await tracker.discard();
         return;
       }
-      await tracker.finish(fullResponse || "(Task completed)", buttons);
+      // Text written before tool calls was posted as it came; the reply is what followed the last one
+      const { text: reply, buttons } = extractButtons(interim ? response.finalText : response.text);
+      if (!reply.trim() && tracker.hasInterim()) {
+        await tracker.discard();
+        return;
+      }
+      await tracker.finish(reply || "(Task completed)", buttons);
     } catch (err) {
       tracker.stop();
       this.log.error({ error: err }, "Error processing turn");

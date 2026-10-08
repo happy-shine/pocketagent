@@ -177,6 +177,7 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
       soul: bot.soul,
       skills: bot.skills,
       followUp: bot.followUp ?? "steer",
+      interimText: bot.interimText ?? "message",
     };
   });
 }

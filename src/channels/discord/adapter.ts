@@ -582,7 +582,17 @@ export class DiscordAdapter implements ChannelAdapter {
   }
 
   async send(msg: OutboundMessage): Promise<string> {
-    if (!this.client) return "";
+    return (await this.deliver(msg)).primary;
+  }
+
+  async sendMessages(msg: OutboundMessage): Promise<string[]> {
+    return (await this.deliver(msg)).ids;
+  }
+
+  /** Sends a message; `primary` is the id send() has always returned, `ids` those of every message posted. */
+  private async deliver(msg: OutboundMessage): Promise<{ primary: string; ids: string[] }> {
+    if (!this.client) return { primary: "", ids: [] };
+    const ids: string[] = [];
 
     const chunks = prepareDiscordText(msg.text);
     const firstChunk = chunks[0] || msg.text;
@@ -603,6 +613,7 @@ export class DiscordAdapter implements ChannelAdapter {
       const res = await slashInteraction.editReply(payload).catch(() => null);
       const resId = (res as any)?.id ?? "";
       if (resId) {
+        ids.push(resId);
         this.recordOutbound(msg.chatId, resId, firstChunk);
         this.outboundCallback?.(msg.chatId, firstChunk, resId);
       }
@@ -612,17 +623,18 @@ export class DiscordAdapter implements ChannelAdapter {
           for (let i = 1; i < chunks.length; i++) {
             const followUp = await (channel as any).send({ content: chunks[i] }).catch(() => null);
             if (followUp?.id) {
+              ids.push(followUp.id);
               this.recordOutbound(msg.chatId, followUp.id, chunks[i]);
               this.outboundCallback?.(msg.chatId, chunks[i], followUp.id);
             }
           }
         }
       }
-      return resId;
+      return { primary: resId, ids };
     }
 
     const channel = await this.client.channels.fetch(msg.chatId).catch(() => null);
-    if (!channel || !channel.isTextBased()) return "";
+    if (!channel || !channel.isTextBased()) return { primary: "", ids };
 
     let lastMsg: Message | undefined;
     for (let i = 0; i < chunks.length; i++) {
@@ -641,11 +653,12 @@ export class DiscordAdapter implements ChannelAdapter {
         return undefined;
       });
       if (lastMsg) {
+        ids.push(lastMsg.id);
         this.recordOutbound(msg.chatId, lastMsg.id, chunk);
         this.outboundCallback?.(msg.chatId, chunk, lastMsg.id);
       }
     }
-    return lastMsg?.id ?? "";
+    return { primary: lastMsg?.id ?? "", ids };
   }
 
   async sendWithButtons(chatId: string, text: string, buttons: InlineButton[][]): Promise<string> {

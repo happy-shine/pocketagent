@@ -66,6 +66,8 @@ export interface ChannelAdapter {
   start(): Promise<void>;
   stop(): Promise<void>;
   send(msg: OutboundMessage): Promise<string>;
+  /** Like send, but returns the ids of every chat message it produced (a long text is split into several). */
+  sendMessages?(msg: OutboundMessage): Promise<string[]>;
   sendWithButtons?(chatId: string, text: string, buttons: InlineButton[][]): Promise<string>;
   editMessage(
     chatId: string,

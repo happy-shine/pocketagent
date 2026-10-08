@@ -144,9 +144,13 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async send(msg: OutboundMessage): Promise<string> {
+    return (await this.sendMessages(msg)).at(-1) ?? "";
+  }
+
+  async sendMessages(msg: OutboundMessage): Promise<string[]> {
     // Telegram rejects empty messages; file-only sends carry their text as the attachment caption
     const chunks = msg.text ? splitMessage(msg.text) : [];
-    let lastMessageId = "";
+    const ids: string[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -173,9 +177,10 @@ export class TelegramAdapter implements ChannelAdapter {
           throw err;
         }
       }
-      lastMessageId = String(sent.message_id);
-      this.recordOutbound(msg.chatId, lastMessageId, chunk);
-      this.outboundCallback?.(msg.chatId, chunk, lastMessageId);
+      const id = String(sent.message_id);
+      ids.push(id);
+      this.recordOutbound(msg.chatId, id, chunk);
+      this.outboundCallback?.(msg.chatId, chunk, id);
     }
 
     if (msg.attachments && msg.attachments.length > 0) {
@@ -184,16 +189,16 @@ export class TelegramAdapter implements ChannelAdapter {
           const file = new InputFile(att.path);
           if (att.type === "photo") {
             const sent = await this.bot.api.sendPhoto(msg.chatId, file, { caption: att.caption });
-            lastMessageId = String(sent.message_id);
+            ids.push(String(sent.message_id));
           } else {
             const sent = await this.bot.api.sendDocument(msg.chatId, file, { caption: att.caption });
-            lastMessageId = String(sent.message_id);
+            ids.push(String(sent.message_id));
           }
         }
       }
     }
 
-    return lastMessageId;
+    return ids;
   }
 
   async sendWithButtons(
@@ -207,7 +212,9 @@ export class TelegramAdapter implements ChannelAdapter {
     const keyboard = buttonGrid.map((row) =>
       row.map((btn) => ({ text: btn.text, callback_data: btn.data })),
     );
-    const replyOpts = replyToMessageId ? { reply_parameters: { message_id: Number(replyToMessageId) } } : {};
+    const replyOpts = replyToMessageId
+      ? { reply_parameters: { message_id: Number(replyToMessageId), allow_sending_without_reply: true } }
+      : {};
     const parseOpts = parseMode ? { parse_mode: parseMode } : {};
 
     try {

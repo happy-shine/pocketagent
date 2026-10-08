@@ -11,6 +11,7 @@ import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
 import { EngineManager } from "../engines/manager.js";
 import type { EngineType, ModelInfo, EffortInfo } from "../engines/types.js";
 import { ProgressTracker } from "../progress/progress.js";
+import { appendText } from "../engines/text-blocks.js";
 import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 import { SessionManager } from "../sessions/manager.js";
 import { SessionStore } from "../sessions/store.js";
@@ -933,19 +934,8 @@ export class BotInstance {
     tracker.start();
 
     try {
-      let replyText = "";
-      for await (const event of this.engineManager.sendMessage(
-        session,
-        `[Quick Side Question - Do not modify workspace files]\n${question}`,
-        this.botId,
-        this.config.extraArgs,
-        this.botIdentity(),
-      )) {
-        if (event.type === "thinking_started") tracker.thinking();
-        else if (event.type === "tool_started") tracker.toolStart(event.name, event.detail);
-        else if (event.type === "text") replyText += event.text;
-      }
-      await tracker.finish(replyText || "(No response)");
+      const response = await this.collectResponse(session, `[Quick Side Question - Do not modify workspace files]\n${question}`, tracker);
+      await tracker.finish(response.text || "(No response)");
     } catch (err) {
       tracker.stop();
       await channel.send({ chatId: msg.chatId, text: `Error: ${err instanceof Error ? err.message : String(err)}` });
@@ -1429,11 +1419,21 @@ export class BotInstance {
     };
   }
 
-  private async collectResponse(session: Session, promptText: string, tracker?: ProgressTracker): Promise<TurnResponse> {
+  /**
+   * Runs one engine turn and collects its text: separate blocks joined by a blank line, streamed pieces of one
+   * block as they come.
+   */
+  private async collectResponse(
+    session: Session,
+    promptText: string,
+    tracker?: ProgressTracker,
+  ): Promise<TurnResponse> {
     let text = "";
     let finalText = "";
     let isError = false;
     let errorMessage: string | undefined;
+    // Text after a tool call is a new block even if the engine did not say so
+    let afterTool = false;
     for await (const event of this.engineManager.sendMessage(
       session,
       promptText,
@@ -1446,10 +1446,13 @@ export class BotInstance {
       } else if (event.type === "tool_started") {
         tracker?.toolStart(event.name, event.detail);
         finalText = "";
+        afterTool = true;
       } else if (event.type === "text") {
-        tracker?.appendText(event.text);
-        text += event.text;
-        finalText += event.text;
+        const newBlock = Boolean(event.newBlock) || afterTool;
+        afterTool = false;
+        tracker?.appendText(event.text, newBlock);
+        text = appendText(text, event.text, newBlock);
+        finalText = appendText(finalText, event.text, newBlock);
       } else if (event.type === "result") {
         const hadPriorText = Boolean(text);
         if (event.result && !text) {

@@ -1,5 +1,6 @@
 import type { ChannelAdapter } from "../channels/types.js";
 import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
+import { appendText } from "../engines/text-blocks.js";
 
 const TICK_INTERVAL = 3000;
 const FLUSH_MIN = 3000;
@@ -113,8 +114,8 @@ export class ProgressTracker {
     this.phaseStart = Date.now();
   }
 
-  appendText(text: string): void {
-    this.buffer += text;
+  appendText(text: string, newBlock = false): void {
+    this.buffer = appendText(this.buffer, text, newBlock);
   }
 
   getBuffer(): string {

@@ -30,7 +30,7 @@ import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/
 import type { JobManager } from "../jobs/manager.js";
 import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration } from "../jobs/format.js";
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
-import { decideFollowUp, type SteerMailbox } from "../steer/steer.js";
+import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
 
 const SESSIONS_PER_PAGE = 10;
 
@@ -1535,6 +1535,7 @@ export class BotInstance {
     this.steerMailbox.push({
       sessionId: turn.sessionId,
       messageId: msg.messageId,
+      senderId: msg.senderId,
       senderName: msg.senderName,
       text,
       onDelivered: () => {
@@ -1695,7 +1696,7 @@ export class BotInstance {
       session.lastContextMessageId = msg.messageId;
     }
 
-    const promptText = contextBlock + (await this.formatMessage(msg));
+    const promptText = `${contextBlock}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
 
     // Record turn in session history
     this.sessionManager.addTurn(session.sessionId, {

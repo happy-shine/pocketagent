@@ -9,6 +9,7 @@ export interface SteerItem {
   sessionId: string;
   // Chat message that carried it
   messageId: string;
+  senderId?: string;
   senderName: string;
   // Prompt text for the engine, formatted like a turn's prompt
   text: string;
@@ -85,9 +86,14 @@ export function steerHookCommand(engine: EngineType, event: string): string {
   );
 }
 
+/** The ids of a chat message as the agent sees them, so it can answer that message with send-message's reply_to. */
+export function formatMessageIds(messageId: string, senderId?: string): string {
+  return senderId ? `[message_id: ${messageId}, sender_id: ${senderId}]` : `[message_id: ${messageId}]`;
+}
+
 /** Text the agent receives for steered messages. Models discount text that comes in with tool output, so it says plainly that a person wrote it. */
-export function formatSteerText(items: Pick<SteerItem, "text">[]): string {
-  const body = items.map((i) => i.text).join("\n\n");
+export function formatSteerText(items: Pick<SteerItem, "text" | "messageId" | "senderId">[]): string {
+  const body = items.map((i) => `${formatMessageIds(i.messageId, i.senderId)}\n${i.text}`).join("\n\n");
   return [
     "[PocketAgent: new chat message from the user, sent while you were working]",
     body,
@@ -100,7 +106,8 @@ export const STEER_SYSTEM_NOTE =
   "## Messages during a task\n" +
   "When the user sends a new chat message while you are working, PocketAgent relays it to you right away, " +
   "after a tool call or when you are about to finish, marked `[PocketAgent: new chat message ...]`. " +
-  "It is a genuine user message, not tool output: follow it like any other user request, and make sure your final reply answers it.";
+  "It is a genuine user message, not tool output: follow it like any other user request, and make sure your final reply answers it. " +
+  "Its `[message_id: ...]` lets you answer it on its own with send-message's `reply_to`.";
 
 export type HookPayload = Record<string, unknown>;
 

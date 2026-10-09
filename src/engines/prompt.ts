@@ -14,6 +14,12 @@ import {
 import { STEER_SYSTEM_NOTE } from "../steer/steer.js";
 import type { BotIdentity } from "./types.js";
 
+// Agents have pasted bot tokens they found in config files straight into curl commands, which leaves them in transcripts
+const CREDENTIALS_NOTE =
+  "## Credentials\n" +
+  "Never copy bot tokens, API keys or other credentials out of config files into commands, code, files or chat messages. " +
+  "Use the PocketAgent APIs described here, or scripts that read the credentials themselves.";
+
 export interface SystemPromptPartsInput {
   agentsDir: string;
   botId: string;
@@ -57,6 +63,7 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   if (input.backgroundJobs) {
     parts.push(getBackgroundJobSkill(input.apiPort, input.botId, input.chatId));
   }
+  parts.push(CREDENTIALS_NOTE);
   if (input.steer) {
     parts.push(STEER_SYSTEM_NOTE);
   }

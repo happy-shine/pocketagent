@@ -33,6 +33,7 @@ import type { CronExecutionResult, CronJob, CronRunContext } from "../scheduler/
 import type { JobManager } from "../jobs/manager.js";
 import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration } from "../jobs/format.js";
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
+import { buildGroupContext } from "./group-context.js";
 import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
 
 const SESSIONS_PER_PAGE = 10;
@@ -1592,7 +1593,11 @@ export class BotInstance {
     });
     if (decision !== "steer") return false;
 
-    const text = await this.formatMessage(msg);
+    // A reply to the progress message quotes the spinner, which says nothing to the agent
+    const relayed = msg.replyToMessageId && msg.replyToMessageId === progressId
+      ? { ...msg, replyText: undefined, replySenderName: undefined, replyAttachments: undefined }
+      : msg;
+    const text = await this.formatMessage(relayed);
     // The turn may have ended while attachments downloaded; then the message gets a turn of its own
     if (this.turnSenders.get(msg.chatId) !== turn || !this.engineManager.isBusy(turn.sessionId, session.activeEngine)) {
       return false;
@@ -1607,7 +1612,7 @@ export class BotInstance {
       senderName: msg.senderName,
       text,
       onDelivered: () => {
-        this.sessionManager.addTurn(turn.sessionId, { role: "user", text: historyTextOf(msg), author: msg.senderName });
+        this.sessionManager.addTurn(turn.sessionId, { role: "user", text: historyTextOf(relayed), author: msg.senderName });
         void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_STEER_DELIVERED);
       },
       onUndelivered: () => {
@@ -1683,8 +1688,6 @@ export class BotInstance {
       defaultEffort: this.config.effort,
     });
 
-    const pad = (n: number) => String(n).padStart(2, "0");
-
     // Optimize context: provide up to 100 recent group messages with reply context,
     // and if there is an overlap with previously sent messages in this session, only send the new delta.
     let contextBlock = "";
@@ -1710,55 +1713,13 @@ export class BotInstance {
         }));
       }
 
-      // Prior messages must be strictly BEFORE the trigger message!
-      // If messages arrived after msg.messageId (e.g. concurrent User 2 message), do NOT include them as prior history for this turn.
-      const triggerIdx = history.findIndex((m) => m.id === msg.messageId);
-      const priorMessages = triggerIdx !== -1 ? history.slice(0, triggerIdx) : history.filter((m) => m.id !== msg.messageId);
-
-      const lastCursor = session.lastContextMessageId;
-      let newMessages: HistoryMessage[] = [];
-      let header = "### Recent Group Chat Context (prior messages leading up to this turn):";
-
-      if (!lastCursor) {
-        // Initial turn for this session: provide up to 100 recent messages
-        newMessages = priorMessages.slice(-100);
-      } else {
-        const cursorIdx = priorMessages.findIndex((m) => m.id === lastCursor);
-        if (cursorIdx !== -1) {
-          // Found intersection with previously sent messages: ONLY send newly added messages!
-          newMessages = priorMessages.slice(cursorIdx + 1);
-          header = "### New Group Chat Messages (since last turn):";
-
-          // If the delta consists purely of the bot's own outbound messages (no third-party user messages),
-          // suppress it so we don't send redundant messages to the engine.
-          const botChannelId = (channel as any).client?.user?.id;
-          const hasOtherUserMessages = newMessages.some((m) => (botChannelId ? m.senderId !== botChannelId : true) && m.sender !== this.name);
-          if (!hasOtherUserMessages) {
-            newMessages = [];
-          }
-        } else {
-          // Gap exceeded recent window, provide up to 100 messages
-          newMessages = priorMessages.slice(-100);
-        }
-      }
-
-      if (newMessages.length > 0) {
-        const lines = newMessages.map((m) => {
-          const mDt = new Date(m.ts * 1000);
-          const time = `${pad(mDt.getHours())}:${pad(mDt.getMinutes())}:${pad(mDt.getSeconds())}`;
-          let line = `[${time}] ${m.sender}`;
-          if (m.replyToSender || m.replyToText) {
-            const target = m.replyToSender || "someone";
-            const snippet = m.replyToText
-              ? ` "${m.replyToText.slice(0, 80).replace(/\n/g, " ")}${m.replyToText.length > 80 ? "..." : ""}"`
-              : "";
-            line += ` (replying to ${target}${snippet})`;
-          }
-          const body = m.text || (m.media ? `[${m.media.join(", ")}]` : "");
-          return `${line}: ${body}`;
-        });
-        contextBlock = `${header}\n${lines.join("\n")}\n\n`;
-      }
+      const botUserId = (channel as any).client?.user?.id;
+      contextBlock = buildGroupContext({
+        history,
+        triggerId: msg.messageId,
+        lastCursor: session.lastContextMessageId,
+        isOwn: (m) => Boolean(botUserId && m.senderId === botUserId) || m.sender === this.name,
+      });
 
       // Advance cursor to current message
       session.lastContextMessageId = msg.messageId;

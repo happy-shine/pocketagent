@@ -134,6 +134,23 @@ describe("answerSteerHook", () => {
     expect(box.pending("s1")).toBe(0);
   });
 
+  it("keeps a message away from an Antigravity subagent's conversation", () => {
+    const box = new SteerMailbox();
+    box.push(item("s1", "use the avatar"));
+    expect(answerSteerHook(box, "agy", "PreInvocation", "s1", { conversationId: "sub" }, "main").output).toEqual({});
+    expect(box.pending("s1")).toBe(1);
+    const main = answerSteerHook(box, "agy", "PreInvocation", "s1", { conversationId: "main" }, "main");
+    expect((main.output as any).injectSteps[0].userMessage).toContain("use the avatar");
+  });
+
+  it("asks the agent to answer a question in the message right away", () => {
+    const box = new SteerMailbox();
+    box.push(item("s1", "how far along are you?"));
+    const text = (answerSteerHook(box, "claude", "PostToolUse", "s1", {}).output as any).hookSpecificOutput.additionalContext;
+    expect(text).toContain("answer it now");
+    expect(text).toContain("before your next tool call");
+  });
+
   it("keeps messages for a stop where they cannot be delivered", () => {
     const box = new SteerMailbox();
     box.push(item("s1", "later"));

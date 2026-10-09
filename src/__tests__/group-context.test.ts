@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { HistoryMessage, ChannelAdapter, InboundMessage } from "../channels/types.js";
 import { SessionManager } from "../sessions/manager.js";
+import { buildGroupContext } from "../bot/group-context.js";
 
 describe("Group Chat Context & Delta Deduplication", () => {
   it("formats reply metadata correctly in history messages", () => {
@@ -241,5 +242,47 @@ describe("Group Chat Context & Delta Deduplication", () => {
 
     const hasOtherUserMessages = newMessages.some((m) => m.senderId !== "bot" && m.sender !== "PocketAgent");
     expect(hasOtherUserMessages).toBe(true);
+  });
+});
+
+describe("buildGroupContext", () => {
+  const msg = (id: string, sender: string, text: string, extra: Partial<HistoryMessage> = {}): HistoryMessage => ({
+    id,
+    ts: 1775580000 + Number(id.replace(/\D/g, "")),
+    sender,
+    senderId: sender === "Atri" ? "bot" : sender.toLowerCase(),
+    text,
+    ...extra,
+  });
+  const isOwn = (m: HistoryMessage) => m.senderId === "bot";
+  const longReply = "图片重新给你发上去了。".repeat(60);
+
+  it("shortens the bot's own earlier messages instead of repeating them", () => {
+    const history = [
+      msg("m1", "Bob", "Bull Flag呢"),
+      msg("m2", "Atri", longReply, { replyToSender: "Bob", replyToText: "Bull Flag呢" }),
+      msg("m3", "Bob", "说实话不明显"),
+      msg("m4", "Bob", "把箭头换成美少女"),
+    ];
+    const block = buildGroupContext({ history, triggerId: "m4", lastCursor: "m1", isOwn });
+    expect(block).toContain("### New Group Chat Messages (since last turn):");
+    expect(block).toContain("Atri (you) (replying to Bob \"Bull Flag呢\"): ");
+    expect(block).toContain("[your earlier message, shortened]");
+    expect(block.length).toBeLessThan(longReply.length);
+    expect(block).toContain("Bob: 说实话不明显");
+    expect(block).not.toContain("把箭头换成美少女");
+  });
+
+  it("is empty when only the bot spoke since the last turn", () => {
+    const history = [msg("m1", "Bob", "hi"), msg("m2", "Atri", longReply), msg("m3", "Bob", "next")];
+    expect(buildGroupContext({ history, triggerId: "m3", lastCursor: "m1", isOwn })).toBe("");
+  });
+
+  it("gives recent context on a session's first turn, leaving out messages after the trigger", () => {
+    const history = [msg("m1", "Alice", "早"), msg("m2", "Bob", "问题"), msg("m3", "Carol", "插话")];
+    const block = buildGroupContext({ history, triggerId: "m2", isOwn });
+    expect(block).toContain("### Recent Group Chat Context");
+    expect(block).toContain("Alice: 早");
+    expect(block).not.toContain("插话");
   });
 });

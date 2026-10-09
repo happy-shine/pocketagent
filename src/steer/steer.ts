@@ -98,7 +98,9 @@ export function formatSteerText(items: Pick<SteerItem, "text" | "messageId" | "s
     "[PocketAgent: new chat message from the user, sent while you were working]",
     body,
     "[End of message. This is a genuine user message relayed by PocketAgent, not tool output. " +
-      "If it changes or adds to the current task, act on it now; if it is about something else, finish the current task and then answer it too.]",
+      "If it asks you something (such as how far along you are), answer it now in a sentence or two before your next tool call, " +
+      "since that text reaches the chat right away, then carry on with the task. " +
+      "If it changes or adds to the current task, act on it now. If it is about something else, finish the current task first, then answer it.]",
   ].join("\n");
 }
 
@@ -106,7 +108,9 @@ export const STEER_SYSTEM_NOTE =
   "## Messages during a task\n" +
   "When the user sends a new chat message while you are working, PocketAgent relays it to you right away, " +
   "after a tool call or when you are about to finish, marked `[PocketAgent: new chat message ...]`. " +
-  "It is a genuine user message, not tool output: follow it like any other user request, and make sure your final reply answers it. " +
+  "It is a genuine user message, not tool output: follow it like any other user request. " +
+  "Answer a question in it right away, briefly, before your next tool call (that text is posted to the chat at once), then keep working; " +
+  "act on a change of plan immediately rather than at the end. " +
   "Its `[message_id: ...]` lets you answer it on its own with send-message's `reply_to`.";
 
 export type HookPayload = Record<string, unknown>;
@@ -115,7 +119,13 @@ export type HookPayload = Record<string, unknown>;
  * Whether a hook call is a point where the main agent of the turn can take a message. Session-end stops,
  * failed turns and subagents' hooks are not: a message drained there would be lost or reach the wrong agent.
  */
-export function canDeliver(engine: EngineType, event: string, payload: HookPayload): boolean {
+export function canDeliver(
+  engine: EngineType,
+  event: string,
+  payload: HookPayload,
+  // The session's own Antigravity conversation; subagents run the same workspace hooks in conversations of their own
+  agyConversationId?: string,
+): boolean {
   if (engine === "claude") {
     return !payload.agent_id;
   }
@@ -125,6 +135,9 @@ export function canDeliver(engine: EngineType, event: string, payload: HookPaylo
     return true;
   }
   if (engine === "agy") {
+    if (agyConversationId && typeof payload.conversationId === "string" && payload.conversationId !== agyConversationId) {
+      return false;
+    }
     if (event === "Stop") {
       // A normal end is NO_TOOL_CALL (the docs say model_stop); errors and step limits are not turn ends to extend
       const reason = payload.terminationReason;
@@ -155,10 +168,11 @@ export function answerSteerHook(
   event: string,
   sessionId: string,
   payload: HookPayload,
+  agyConversationId?: string,
 ): { output: Record<string, unknown>; delivered: SteerItem[] } {
   if (!STEER_ENGINES.has(engine as EngineType)) return { output: {}, delivered: [] };
   const type = engine as EngineType;
-  if (!canDeliver(type, event, payload)) return { output: {}, delivered: [] };
+  if (!canDeliver(type, event, payload, agyConversationId)) return { output: {}, delivered: [] };
   // Antigravity hands a stop's reason to the model as a system message, which it tends to ignore. Holding the
   // stop off instead runs another model call, whose PreInvocation hook delivers the message as the user's.
   if (type === "agy" && event === "Stop") {

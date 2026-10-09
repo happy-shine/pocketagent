@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
@@ -17,6 +17,20 @@ import type {
 } from "../types.js";
 import { discoverAgyCapabilities } from "./discovery.js";
 import { agyHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+
+// Context size (tokens) past which the next turn starts a new Antigravity conversation. Antigravity compacts its
+// context on its own near 270k tokens, mid-task, after which it loses track of the task and of its instructions;
+// starting over between turns, with a handover of the recent conversation, avoids that.
+export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
+
+/** How Antigravity should work, from watching it take many slow, tiny steps and lose track after compaction. */
+export const AGY_WORKING_STYLE =
+  "## Working style\n" +
+  "- Each step you take costs the user several seconds, so do more per step: put related checks and edits into one shell " +
+  "command or one script instead of one tiny command at a time, and do not re-check a file you have just inspected.\n" +
+  "- Before work that will take more than a few steps, say in one sentence what you are going to do; that text is posted to the chat.\n" +
+  "- Report only what actually happened. Never say something was done, sent or decided earlier than it was, or that you did not do something you did.\n" +
+  "- Do not read Antigravity's own transcript or log files (under ~/.gemini). If your context was compacted, continue from the summary and the workspace files.";
 
 /** Adds the steer hooks to the workspace's `.agents/hooks.json`, keeping any other hooks defined there. */
 function writeAgySteerHooks(sessionDir: string): void {
@@ -71,7 +85,8 @@ export class AgyEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
-    // Inject system prompt & skills into AGENTS.md & GEMINI.md
+    // Antigravity loads AGENTS.md from its working directory as rules: part of every request, so unlike a prompt
+    // they survive its context compaction. A GEMINI.md next to it would be loaded as a second copy.
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -83,11 +98,15 @@ export class AgyEngineAdapter implements EngineAdapter {
       backgroundJobs: this.config.backgroundJobs,
       steer: true,
     });
-    if (systemParts.length > 0) {
-      const content = systemParts.join("\n\n---\n\n");
-      writeFileSync(join(sessionDir, "AGENTS.md"), content);
-      writeFileSync(join(sessionDir, "GEMINI.md"), content);
+    systemParts.push(AGY_WORKING_STYLE);
+    const content = systemParts.join("\n\n---\n\n");
+    const agentsMd = join(sessionDir, "AGENTS.md");
+    const geminiMd = join(sessionDir, "GEMINI.md");
+    // Earlier versions wrote the same rules to GEMINI.md too; drop that copy, not a GEMINI.md someone else wrote
+    if (existsSync(geminiMd) && existsSync(agentsMd) && readFileSync(geminiMd, "utf-8") === readFileSync(agentsMd, "utf-8")) {
+      rmSync(geminiMd, { force: true });
     }
+    writeFileSync(agentsMd, content);
     try {
       writeAgySteerHooks(sessionDir);
     } catch (err) {
@@ -173,23 +192,14 @@ export class AgyEngineAdapter implements EngineAdapter {
     ep.lastActiveAt = Date.now();
     this.clearIdleTimer(session.sessionId);
 
-    // Check for Context Handover
+    // Check for Context Handover (the system prompt reaches Antigravity as AGENTS.md rules, see acquire)
     let fullPrompt = text;
     if (!session.agySessionId) {
-      let agentsMdContent = "";
-      try {
-        agentsMdContent = readFileSync(join(ep.workspaceDir, "AGENTS.md"), "utf-8");
-      } catch {}
-
       if (session.turns && session.turns.length > 0) {
         const primer = buildContextHandoverPrimer(session, "agy", ep.workspaceDir);
         if (primer) {
           fullPrompt = `${primer}\n\n${text}`;
         }
-      }
-
-      if (agentsMdContent) {
-        fullPrompt = `<SYSTEM_INSTRUCTIONS>\n${agentsMdContent}\n</SYSTEM_INSTRUCTIONS>\n\n${fullPrompt}`;
       }
     } else if (session.agySessionId && session.lastEngine && session.lastEngine !== "agy") {
       const deltaTurns = getDeltaTurnsForEngine(session, "agy");
@@ -210,6 +220,8 @@ export class AgyEngineAdapter implements EngineAdapter {
     const rl = createInterface({ input: ep.process.stdout!, crlfDelay: Infinity });
     const blocks = new TextBlocks();
     let textStepKey: unknown;
+    // Tokens the latest model call was given, i.e. how large the conversation has grown
+    let contextTokens = 0;
 
     try {
       for await (const line of rl) {
@@ -249,6 +261,10 @@ export class AgyEngineAdapter implements EngineAdapter {
         if (eventType === "step_update" && event.step_update && typeof event.step_update === "object") {
           const step = event.step_update as Record<string, unknown>;
           if (step.step_type === "agent_response") {
+            const usage = step.usage as Record<string, unknown> | undefined;
+            if (usage && typeof usage.input_tokens === "number") {
+              contextTokens = usage.input_tokens + (typeof usage.cache_read_tokens === "number" ? usage.cache_read_tokens : 0);
+            }
             if (typeof step.text_delta === "string" && step.text_delta) {
               // Deltas of one response step form one block; a different step starts a new one
               const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
@@ -299,6 +315,16 @@ export class AgyEngineAdapter implements EngineAdapter {
       ep.busy = false;
       ep.lastActiveAt = Date.now();
       this.scheduleIdle(session.sessionId);
+      if (contextTokens > AGY_ROTATE_CONTEXT_TOKENS) {
+        this.log.info(
+          { sessionId: session.sessionId, conversation: session.agySessionId, contextTokens },
+          "Agy conversation is large; the next turn starts a new one",
+        );
+        session.agySessionId = undefined;
+        // The new conversation gets the recent chat again, not just what was said since this turn
+        session.lastContextMessageId = undefined;
+        this.release(session.sessionId);
+      }
     }
   }
 

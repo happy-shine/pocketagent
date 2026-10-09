@@ -279,7 +279,15 @@ export class Gateway {
 
   /** Hands the messages waiting for a session to its running turn, through the hook that asked. */
   private answerSteerHook(engine: string, event: string, sessionId: string, payload: Record<string, unknown>): Record<string, unknown> {
-    const { output, delivered } = answerSteerHook(this.steerMailbox, engine, event, sessionId, payload);
+    let agyConversationId: string | undefined;
+    for (const bot of this.bots.values()) {
+      const session = bot.getSessionManager().findSession(sessionId);
+      if (session) {
+        agyConversationId = session.agySessionId;
+        break;
+      }
+    }
+    const { output, delivered } = answerSteerHook(this.steerMailbox, engine, event, sessionId, payload, agyConversationId);
     if (delivered.length > 0) {
       this.log.info({ sessionId, engine, event, count: delivered.length }, "Relayed chat messages into the running turn");
     }

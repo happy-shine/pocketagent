@@ -77,13 +77,66 @@ export function steerHookUrl(apiPort: number): string {
 /**
  * Shell command for a CLI hook: forwards the hook's JSON input to the gateway and prints the answer. It does
  * nothing outside PocketAgent (no steer URL in the environment) and prints `{}`, i.e. "carry on", on any failure.
+ * Run Node directly: the CLIs use cmd.exe on Windows, where POSIX tests and single-quoted JSON do not work.
  */
 export function steerHookCommand(engine: EngineType, event: string): string {
-  return (
-    `[ -n "$${STEER_URL_ENV}" ] && curl -sf -m 10 -X POST -H 'Content-Type: application/json' ` +
-    `-H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID" --data-binary @- ` +
-    `"$${STEER_URL_ENV}?engine=${engine}&event=${event}" || echo '{}'`
-  );
+  const program = `
+const http = require('node:http');
+const target = process.env.POCKETAGENT_STEER_URL;
+let finished = false;
+function finish(value) {
+  if (finished) return;
+  finished = true;
+  process.stdout.write(JSON.stringify(value) + '\\n');
+}
+if (!target) {
+  finish({});
+} else {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', chunk => { input += chunk; });
+  process.stdin.on('error', () => finish({}));
+  process.stdin.on('end', () => {
+    try {
+      const url = new URL(target);
+      url.searchParams.set('engine', ${JSON.stringify(engine)});
+      url.searchParams.set('event', ${JSON.stringify(event)});
+      const req = http.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-PocketAgent-Session': process.env.POCKETAGENT_SESSION_ID || '',
+        },
+      }, res => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { body += chunk; });
+        res.on('error', () => finish({}));
+        res.on('end', () => {
+          try {
+            const value = JSON.parse(body);
+            finish(res.statusCode >= 200 && res.statusCode < 300 && value &&
+              typeof value === 'object' && !Array.isArray(value) ? value : {});
+          } catch { finish({}); }
+        });
+      });
+      const timer = setTimeout(() => req.destroy(new Error('Hook request timed out')), 10000);
+      req.on('close', () => clearTimeout(timer));
+      req.on('error', () => finish({}));
+      req.end(input);
+    } catch { finish({}); }
+  });
+  process.stdin.resume();
+}
+`;
+  // Encoding keeps shell metacharacters and all environment values out of the command text.
+  const encoded = Buffer.from(program, "utf8").toString("base64");
+  const loader = `eval(Buffer.from('${encoded}','base64').toString('utf8'))`;
+  // Go's Windows exec.Command("cmd", "/c", command) escapes embedded double quotes.
+  // This loader has no whitespace or shell operators, so Windows needs none.
+  if (process.platform === "win32") return `node -e ${loader}`;
+  const executable = `'${process.execPath.replace(/'/g, "'\\''")}'`;
+  return `${executable} -e "${loader}"`;
 }
 
 /** The ids of a chat message as the agent sees them, so it can answer that message with send-message's reply_to. */

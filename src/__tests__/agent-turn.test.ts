@@ -76,6 +76,18 @@ describe("agent-driven chat turns", () => {
     ...extra,
   });
 
+  it("reports an engine failure instead of announcing an empty task completion", async () => {
+    const failure = "invalid model selection: high conflicts with medium";
+    const { bot, channel } = makeBot(async function* () {
+      yield { type: "error", message: failure };
+      yield { type: "result", result: "", isError: true };
+    });
+    await (bot as any).handleMessage(message("101", "hello"), channel);
+    const sent = channel.send.mock.calls.map((call) => (call[0] as any)?.text ?? "").join("\n");
+    expect(sent).toContain(failure);
+    expect(sent).not.toContain("(Task completed)");
+  });
+
   it("shows the agent the ids of the message that started the turn and of messages relayed into it", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));

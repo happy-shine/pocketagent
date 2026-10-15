@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { homedir } from "node:os";
+import { execCli as execFileAsync } from "../../runtime/process.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineCapabilities, ModelInfo, EffortInfo } from "../types.js";
 
-const execFileAsync = promisify(execFile);
 
 let cachedCapabilities: EngineCapabilities | null = null;
 let lastFetchedAt = 0;
@@ -94,7 +93,7 @@ export function parseGrokModelsOutput(stdout: string): { defaultModel?: string; 
 function readGrokModelsCache(): Map<string, RawGrokModelInfo> {
   const result = new Map<string, RawGrokModelInfo>();
   try {
-    const grokHome = process.env.GROK_HOME || join(process.env.HOME || "", ".grok");
+    const grokHome = process.env.GROK_HOME || join(homedir(), ".grok");
     const cachePath = join(grokHome, "models_cache.json");
     if (!existsSync(cachePath)) return result;
     const data = JSON.parse(readFileSync(cachePath, "utf-8"));

@@ -9,10 +9,17 @@ import {
   rmSync,
   cpSync,
   readlinkSync,
+  renameSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { join, basename, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parse as parseYaml } from "yaml";
+
+function samePath(a: string, b: string): boolean {
+  return process.platform === "win32" ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b);
+}
 
 export interface SkillInfo {
   name: string;
@@ -47,7 +54,7 @@ export class SkillRegistry {
 
   constructor(opts?: SkillRegistryOptions) {
     const home = homedir();
-    this.hubDir = opts?.hubDir ?? join(home, ".pocketagent", "skills");
+    this.hubDir = opts?.hubDir ?? join(process.env.POCKETAGENT_HOME ?? join(home, ".pocketagent"), "skills");
     this.agySkillsDir = opts?.agySkillsDir ?? join(home, ".gemini", "config", "skills");
     this.claudeSkillsDir = opts?.claudeSkillsDir ?? join(home, ".claude", "skills");
     this.codexSkillsDir = opts?.codexSkillsDir ?? join(home, ".codex", "skills");
@@ -121,16 +128,14 @@ export class SkillRegistry {
             let isTargetingHub = false;
             if (stat.isSymbolicLink()) {
               const currentTarget = resolve(dir, readlinkSync(srcSkillDir));
-              isTargetingHub = currentTarget === resolve(hubSkillDir);
+              isTargetingHub = samePath(currentTarget, hubSkillDir);
             }
 
             if (!isTargetingHub) {
-              if (!existsSync(hubSkillDir)) {
-                cpSync(srcSkillDir, hubSkillDir, { recursive: true, dereference: true });
-              }
-              // Replace real directory or external symlink with symlink to Hub
-              rmSync(srcSkillDir, { recursive: true, force: true });
-              symlinkSync(hubSkillDir, srcSkillDir, "dir");
+              // Keep an independent same-name skill intact instead of overwriting it.
+              if (existsSync(hubSkillDir)) continue;
+              cpSync(srcSkillDir, hubSkillDir, { recursive: true, dereference: true });
+              this.linkSkill(hubSkillDir, srcSkillDir);
             }
           } catch {
             // Ignore single skill sync error
@@ -152,20 +157,21 @@ export class SkillRegistry {
         for (const { dir } of cliDirs) {
           const targetLink = join(dir, entry.name);
           try {
-            if (existsSync(targetLink)) {
-              const stat = lstatSync(targetLink);
+            const stat = lstatSync(targetLink, { throwIfNoEntry: false });
+            if (stat) {
               if (stat.isSymbolicLink()) {
                 const existingTarget = resolve(dir, readlinkSync(targetLink));
-                if (existingTarget === resolve(hubSkillDir)) {
+                if (samePath(existingTarget, hubSkillDir)) {
                   continue;
                 }
+                if (existsSync(targetLink)) continue;
                 rmSync(targetLink, { force: true });
               } else {
-                // Real directory: remove to ensure symlink
-                rmSync(targetLink, { recursive: true, force: true });
+                // It may contain local edits that differ from the Hub.
+                continue;
               }
             }
-            symlinkSync(hubSkillDir, targetLink, "dir");
+            symlinkSync(resolve(hubSkillDir), targetLink, process.platform === "win32" ? "junction" : "dir");
           } catch {
             // Ignore symlink failure
           }
@@ -195,6 +201,21 @@ export class SkillRegistry {
     }
 
     return this.list();
+  }
+
+  private linkSkill(hubSkillDir: string, source: string): void {
+    const temporary = join(dirname(source), `.pa-link-${randomUUID()}`);
+    const backup = join(dirname(source), `.pa-backup-${randomUUID()}`);
+    // Establish a usable link before touching the original. Junctions need no admin privileges.
+    symlinkSync(resolve(hubSkillDir), temporary, process.platform === "win32" ? "junction" : "dir");
+    try {
+      renameSync(source, backup);
+      try { renameSync(temporary, source); }
+      catch (error) { renameSync(backup, source); throw error; }
+      rmSync(backup, { recursive: true, force: true });
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
   }
 
   /**
@@ -233,7 +254,12 @@ export class SkillRegistry {
 
       const checkSynced = (cliDir: string) => {
         const target = join(cliDir, entry.name);
-        return existsSync(target) && existsSync(join(target, "SKILL.md"));
+        try {
+          if (!lstatSync(target).isSymbolicLink()) return false;
+          const linkTarget = resolve(cliDir, readlinkSync(target));
+          const canonical = resolve(skillDir);
+          return samePath(linkTarget, canonical);
+        } catch { return false; }
       };
 
       skills.push({
@@ -269,7 +295,7 @@ export class SkillRegistry {
     ];
 
     for (const skill of skills) {
-      lines.push(`- **${skill.name}** (\`file://${skill.skillMdPath}\`):`);
+      lines.push(`- **${skill.name}** (\`${pathToFileURL(skill.skillMdPath).href}\`):`);
       if (skill.description) {
         lines.push(`  ${skill.description}`);
       }
@@ -320,8 +346,8 @@ ${desc}
 
 ## Usage
 
-\`\`\`bash
-python3 ${scriptPath} [options]
+\`\`\`${process.platform === "win32" ? "powershell" : "bash"}
+${process.platform === "win32" ? "python" : "python3"} "${scriptPath}" [options]
 \`\`\`
 `;
     writeFileSync(join(skillDir, "SKILL.md"), skillMdContent);
@@ -413,7 +439,8 @@ python3 ${scriptPath} [options]
     for (const dir of cliDirs) {
       const target = join(dir, safeName);
       try {
-        if (existsSync(target)) {
+        if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()
+          && samePath(resolve(dir, readlinkSync(target)), hubSkillDir)) {
           rmSync(target, { recursive: true, force: true });
         }
       } catch {}

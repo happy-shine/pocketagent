@@ -2,10 +2,11 @@
 
 import dns from "node:dns";
 import net from "node:net";
+import { randomUUID } from "node:crypto";
 dns.setDefaultResultOrder("ipv4first");
 net.setDefaultAutoSelectFamily(false);
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import pino from "pino";
 import { loadConfig, resolveBots, resolveDataDir, syncPairingToConfig } from "./config/loader.js";
 import type { GatewayConfig } from "./config/types.js";
@@ -23,6 +24,10 @@ import {
   closeSync,
 } from "node:fs";
 import { resolve, join } from "node:path";
+import { homedir } from "node:os";
+import { configureNetworkProxy } from "./network/proxy.js";
+import { spawnCliSync } from "./runtime/process.js";
+import { requestWindowsStop, startWindowsControl, windowsEnvironmentHandoff, WINDOWS_ENV_BOOTSTRAP } from "./runtime/control.js";
 
 const program = new Command();
 
@@ -35,9 +40,9 @@ program
 function getDataDir(configPath?: string): string {
   try {
     const config = loadConfig(configPath);
-    return resolve(config.gateway.dataDir.replace(/^~/, process.env.HOME ?? ""));
+    return resolveDataDir(config);
   } catch {
-    return resolve(process.env.HOME ?? "~", ".pocketagent");
+    return resolve(process.env.POCKETAGENT_HOME ?? join(homedir(), ".pocketagent"));
   }
 }
 
@@ -87,7 +92,7 @@ function checkEngineClis(config: GatewayConfig): void {
   ];
 
   for (const eng of engines) {
-    const res = spawnSync(eng.binary, [eng.flag], { stdio: "pipe", timeout: 3000 });
+    const res = spawnCliSync(eng.binary, [eng.flag], { stdio: "pipe", timeout: 3000 });
     if (res.status === 0) {
       console.log(`  ✓ ${eng.name} found (${eng.binary})`);
     } else {
@@ -99,6 +104,7 @@ function checkEngineClis(config: GatewayConfig): void {
 async function startForeground(opts: { config?: string }): Promise<void> {
   printBanner();
   const config = loadConfig(opts.config);
+  configureNetworkProxy(config.gateway.proxy);
   const dataDir = getDataDir(opts.config);
 
   const existingPid = getRunningPid(dataDir);
@@ -110,7 +116,8 @@ async function startForeground(opts: { config?: string }): Promise<void> {
 
   mkdirSync(dataDir, { recursive: true });
   const lockPath = join(dataDir, "gateway.lock");
-  writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  const controlToken = randomUUID();
+  writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now(), controlToken }));
 
   const log = pino({
     level: config.gateway.logLevel,
@@ -122,12 +129,21 @@ async function startForeground(opts: { config?: string }): Promise<void> {
 
   const gateway = new Gateway(config, log, opts.config);
 
+  let stopping = false;
+  let control: net.Server | undefined;
   const cleanup = async () => {
+    if (stopping) return;
+    stopping = true;
     console.log("\nShutting down PocketAgent Gateway...");
-    try { unlinkSync(lockPath); } catch {}
+    control?.close();
     await gateway.stop();
+    try { unlinkSync(lockPath); } catch {}
     process.exit(0);
   };
+
+  if (process.platform === "win32") {
+    control = await startWindowsControl(dataDir, controlToken, () => { void cleanup(); });
+  }
 
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
@@ -138,7 +154,8 @@ async function startForeground(opts: { config?: string }): Promise<void> {
   });
 
   try {
-    const syncedSkills = SkillRegistry.getInstance().sync();
+    const syncedSkills = process.platform === "win32" && process.env.POCKETAGENT_AUTO_SYNC_SKILLS !== "1"
+      ? [] : SkillRegistry.getInstance().sync();
     if (syncedSkills.length > 0) {
       log.info(
         { count: syncedSkills.length, skills: syncedSkills.map((s) => s.name) },
@@ -156,7 +173,7 @@ async function startForeground(opts: { config?: string }): Promise<void> {
   }
 }
 
-async function startDaemon(opts: { config?: string }): Promise<void> {
+async function startDaemon(opts: { config?: string; windowsChild?: boolean }): Promise<void> {
   const dataDir = getDataDir(opts.config);
   const runningPid = getRunningPid(dataDir);
   if (runningPid) {
@@ -172,6 +189,56 @@ async function startDaemon(opts: { config?: string }): Promise<void> {
     process.exit(1);
   }
 
+  // A detached child can still inherit a Windows Job Object from the desktop app.
+  // Let WMI create a root outside that job; it then uses the normal log/IPC startup.
+  if (process.platform === "win32" && !opts.windowsChild) {
+    const quoteWindowsArg = (value: string) => `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, '$1$1')}"`;
+    const psLiteral = (value: string) => `'${value.replace(/'/g, "''")}'`;
+    const handoff = await windowsEnvironmentHandoff();
+    const configPath = resolve(opts.config ?? join(process.env.POCKETAGENT_HOME ?? join(homedir(), ".pocketagent"), "config.yaml"));
+    const commandLine = [process.execPath, "-e", WINDOWS_ENV_BOOTSTRAP, handoff.pipe,
+      resolve(process.argv[1]), "start", "--windows-child", "-c", configPath].map(quoteWindowsArg).join(" ");
+    const psCommand = [
+      "$ErrorActionPreference = 'Stop'",
+      "$paStartup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{CreateFlags=[uint32]16777224;ShowWindow=[uint16]0}",
+      `$paCreated = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=${psLiteral(commandLine)};CurrentDirectory=${psLiteral(process.cwd())};ProcessStartupInformation=$paStartup}`,
+      "$paCreated | Select-Object ReturnValue,ProcessId | ConvertTo-Json -Compress",
+    ].join("\n");
+    const powershell = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const launched = spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", psCommand], {
+      encoding: "utf8", windowsHide: true, timeout: 15000,
+    });
+    let result: { ReturnValue?: number } = {};
+    try { result = JSON.parse(launched.stdout?.trim() ?? "{}"); } catch {}
+    if (launched.status !== 0 || result.ReturnValue !== 0) {
+      handoff.close();
+      console.error(`Independent Windows startup failed (WMI result: ${result.ReturnValue ?? "unavailable"}).`);
+      process.exit(1);
+    }
+    const config = loadConfig(opts.config);
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      const gatewayPid = getRunningPid(dataDir);
+      if (gatewayPid) {
+        try {
+          const response = await fetch(`http://127.0.0.1:${config.gateway.port}/api/status`, { signal: AbortSignal.timeout(1000) });
+          const status = await response.json() as { gateway?: { pid?: number }; bots?: Array<{ status?: string }> };
+          if (status.gateway?.pid === gatewayPid && status.bots?.every((bot) => bot.status === "online")) {
+            handoff.close();
+            console.log(`PocketAgent daemon started independently in background (PID: ${gatewayPid})`);
+            console.log(`Dashboard: http://127.0.0.1:${config.gateway.port}`);
+            console.log(`Logs: ${join(getLogDir(dataDir), "gateway.log")}`);
+            return;
+          }
+        } catch {}
+      }
+      await new Promise((done) => setTimeout(done, 300));
+    }
+    console.error(`Windows process was created but gateway readiness was not confirmed. Check ${join(dataDir, "logs")}.`);
+    handoff.close();
+    process.exit(1);
+  }
+
   const logDir = getLogDir(dataDir);
   const outLog = join(logDir, "gateway.log");
   const errLog = join(logDir, "gateway.err");
@@ -184,6 +251,7 @@ async function startDaemon(opts: { config?: string }): Promise<void> {
     [process.argv[1], "start", "-f", ...(opts.config ? ["-c", opts.config] : [])],
     {
       detached: true,
+      windowsHide: true,
       stdio: ["ignore", out, err, "ipc"],
       env: { ...process.env },
     }
@@ -246,7 +314,16 @@ async function stopDaemon(dataDir: string): Promise<boolean> {
     return false;
   }
   console.log(`Stopping PocketAgent (PID: ${runningPid})...`);
-  try { process.kill(runningPid, "SIGTERM"); } catch {}
+  let graceful = false;
+  if (process.platform === "win32") {
+    try {
+      const lock = JSON.parse(readFileSync(join(dataDir, "gateway.lock"), "utf8"));
+      if (typeof lock.controlToken === "string") graceful = await requestWindowsStop(dataDir, runningPid, lock.controlToken);
+    } catch {}
+  }
+  if (!graceful) {
+    try { process.kill(runningPid, "SIGTERM"); } catch {}
+  }
   const start = Date.now();
   while (isPidRunning(runningPid) && Date.now() - start < 5000) {
     await new Promise((r) => setTimeout(r, 200));
@@ -287,6 +364,7 @@ program
   .description("Start the PocketAgent gateway (daemon by default, use -f for foreground)")
   .option("-f, --foreground", "Run in foreground with real-time log output")
   .option("-c, --config <path>", "Path to config file")
+  .addOption(new Option("--windows-child").hideHelp())
   .action(async (opts) => {
     if (opts.foreground) {
       await startForeground(opts);
@@ -554,8 +632,10 @@ program
     }
 
     try {
-      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      spawn(openCmd, [url], { detached: true, stdio: "ignore" }).unref();
+      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "rundll32.exe" : "xdg-open";
+      const child = spawn(openCmd, process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url], { detached: true, windowsHide: true, stdio: "ignore" });
+      child.on("error", () => console.log(`  Open ${url} in your browser.`));
+      child.unref();
       console.log(`  Opened in default browser.`);
     } catch {
       console.log(`  Open ${url} in your browser.`);

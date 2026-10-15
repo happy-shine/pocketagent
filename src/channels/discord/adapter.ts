@@ -1,3 +1,4 @@
+import { safeFileName } from "../../runtime/filenames.js";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
@@ -868,7 +869,7 @@ export class DiscordAdapter implements ChannelAdapter {
     const baseName = fileName
       ? fileName.replace(/(\.[^.]+)$/, `_${ts}$1`).replace(/^([^.]+)$/, `$1_${ts}`)
       : `${ts}_${idSuffix}${ext}`;
-    const localPath = join(destDir, baseName);
+    const localPath = join(destDir, safeFileName(baseName));
     mkdirSync(destDir, { recursive: true });
     writeFileSync(localPath, buffer);
     return localPath;

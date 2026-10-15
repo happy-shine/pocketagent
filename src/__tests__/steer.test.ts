@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +21,8 @@ import {
   type SteerItem,
 } from "../steer/steer.js";
 
-const run = promisify(execFile);
+const run = promisify(exec);
+const runFile = promisify(execFile);
 
 const item = (sessionId: string, text: string, extra: Partial<SteerItem> = {}): SteerItem => ({
   sessionId,
@@ -183,21 +185,24 @@ describe("steer hook command", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // Runs the hook command the way the CLIs do: through sh, with the hook input on stdin
+  // Use the host shell, including cmd.exe on Windows, as the CLIs do.
   const runHook = async (engine: "claude" | "grok" | "agy", event: string, env: Record<string, string>, input = "{}") => {
-    const pending = run("sh", ["-c", steerHookCommand(engine, event)], { env: { PATH: process.env.PATH ?? "", ...env } });
+    const hookEnv = { ...process.env };
+    delete hookEnv[STEER_URL_ENV];
+    delete hookEnv.POCKETAGENT_SESSION_ID;
+    const pending = run(steerHookCommand(engine, event), { env: { ...hookEnv, ...env }, windowsHide: true });
     pending.child.stdin?.end(input);
     const { stdout } = await pending;
     return JSON.parse(stdout);
   };
 
   it("relays the waiting message through the gateway", async () => {
-    box.push(item("sess-1", "also run the tests"));
+    box.push(item("sess-1", "also run the tests — 检查中文"));
     const out = await runHook("agy", "PreInvocation", {
       [STEER_URL_ENV]: steerHookUrl(port),
       POCKETAGENT_SESSION_ID: "sess-1",
     });
-    expect(out.injectSteps[0].userMessage).toContain("also run the tests");
+    expect(out.injectSteps[0].userMessage).toContain("also run the tests — 检查中文");
   });
 
   it("passes the hook input on, so session-end stops are told apart", async () => {
@@ -210,5 +215,29 @@ describe("steer hook command", () => {
   it("does nothing outside PocketAgent or when the gateway is down", async () => {
     expect(await runHook("claude", "PostToolUse", {})).toEqual({});
     expect(await runHook("claude", "PostToolUse", { [STEER_URL_ENV]: "http://127.0.0.1:1/api/steer/hook" })).toEqual({});
+  });
+
+  it("prints valid fallback JSON when the gateway response is not JSON", async () => {
+    const invalidServer = createServer((_req, res) => res.end("not-json"));
+    await new Promise<void>(resolve => invalidServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = invalidServer.address() as { port: number };
+      expect(await runHook("agy", "PreInvocation", {
+        [STEER_URL_ENV]: steerHookUrl(address.port),
+      })).toEqual({});
+    } finally {
+      await new Promise<void>((resolve, reject) => invalidServer.close(err => err ? reject(err) : resolve()));
+    }
+  });
+
+  it.skipIf(process.platform !== "win32")("also works with cmd argument escaping used by AGY on Windows", async () => {
+    box.push(item("go-shell", "message through the CLI shell"));
+    const pending = runFile(process.env.ComSpec || "cmd.exe", ["/c", steerHookCommand("agy", "PreInvocation")], {
+      env: { ...process.env, [STEER_URL_ENV]: steerHookUrl(port), POCKETAGENT_SESSION_ID: "go-shell" },
+      windowsHide: true,
+    });
+    pending.child.stdin?.end("{}");
+    const { stdout } = await pending;
+    expect(JSON.parse(stdout).injectSteps[0].userMessage).toContain("message through the CLI shell");
   });
 });

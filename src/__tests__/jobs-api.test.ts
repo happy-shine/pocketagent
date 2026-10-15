@@ -1,3 +1,4 @@
+import { nodeCommand, sleepCommand } from "./helpers/commands.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,7 @@ describe("Background jobs HTTP API", () => {
     workspace = mkdtempSync(join(tmpdir(), "pa-jobs-ws-"));
     const port = 20000 + Math.floor(Math.random() * 20000);
     base = `http://127.0.0.1:${port}/api/jobs`;
-    const config = parseConfig(`gateway:\n  port: ${port}\n  dataDir: "${dataDir}"\njobs:\n  pollIntervalMs: 30\n  maxPerChat: 1\n`);
+    const config = parseConfig(`gateway:\n  port: ${port}\n  dataDir: ${JSON.stringify(dataDir)}\njobs:\n  pollIntervalMs: 30\n  maxPerChat: 1\n`);
     gateway = new Gateway(config, pino({ level: "silent" }), join(dataDir, "config.yaml"));
 
     turn = undefined;
@@ -63,7 +64,7 @@ describe("Background jobs HTTP API", () => {
     turn = aliceTurn();
     const res = await post(
       "",
-      { bot_id: "bot1", chat_id: "group1", title: "Fetch data", command: "echo progress 50%; echo done", then: "Summarize", timeout_minutes: 90 },
+      { bot_id: "bot1", chat_id: "group1", title: "Fetch data", command: nodeCommand("console.log('progress 50%'); console.log('done')"), then: "Summarize", timeout_minutes: 90 },
       "sess-1",
     );
     expect(res.status).toBe(200);
@@ -107,9 +108,9 @@ describe("Background jobs HTTP API", () => {
       expect((await res.json()).error).toMatch(/run the command directly/);
     }
 
-    expect((await post("", { bot_id: "bot1", chat_id: "group1", command: "sleep 5" }, "sess-1")).status).toBe(200);
-    expect((await post("", { bot_id: "bot1", chat_id: "group1", command: "sleep 5" }, "sess-1")).status).toBe(200);
-    const third = await post("", { bot_id: "bot1", chat_id: "group1", command: "sleep 5" }, "sess-1");
+    expect((await post("", { bot_id: "bot1", chat_id: "group1", command: sleepCommand(5) }, "sess-1")).status).toBe(200);
+    expect((await post("", { bot_id: "bot1", chat_id: "group1", command: sleepCommand(5) }, "sess-1")).status).toBe(200);
+    const third = await post("", { bot_id: "bot1", chat_id: "group1", command: sleepCommand(5) }, "sess-1");
     expect(third.status).toBe(429);
     expect((await third.json()).error).toMatch(/At most 2 background jobs per message/);
   });
@@ -129,7 +130,7 @@ describe("Background jobs HTTP API", () => {
 
   it("lets the requester, a trusted user or the dashboard stop a job", async () => {
     turn = aliceTurn();
-    const { job } = await (await post("", { bot_id: "bot1", chat_id: "group1", command: "sleep 30" }, "sess-1")).json();
+    const { job } = await (await post("", { bot_id: "bot1", chat_id: "group1", command: sleepCommand(30) }, "sess-1")).json();
 
     turn = { ...aliceTurn(), senderId: "u2", senderName: "Bob" };
     expect((await post(`/cancel?id=${job.id}`, {}, "sess-1")).status).toBe(403);
@@ -156,7 +157,7 @@ describe("Background job skill", () => {
     expect(prompt).toContain("## Background Jobs (for genuinely long commands only)");
     expect(prompt).toContain("MORE THAN 5 MINUTES");
     expect(prompt).toContain("If you are not sure it will take more than 5 minutes, it does not qualify");
-    expect(prompt).toContain('-H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID"');
+    expect(prompt).toContain(process.platform === "win32" ? "'X-PocketAgent-Session' = $env:POCKETAGENT_SESSION_ID" : '-H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID"');
     expect(prompt).toContain("END YOUR TURN");
     expect(buildSystemPromptParts({ ...base, backgroundJobs: false }).join("\n")).not.toContain("Background Jobs");
   });

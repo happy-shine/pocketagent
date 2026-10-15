@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -8,6 +8,7 @@ import { cleanTerminalOutput, readLastLogLine, readLogTail } from "../jobs/log.j
 import { JobManager } from "../jobs/manager.js";
 import { JobStore } from "../jobs/store.js";
 import type { BackgroundJob, JobInput, JobSettings } from "../jobs/types.js";
+import { nodeCommand, sleepCommand } from "./helpers/commands.js";
 
 describe("JobManager", () => {
   let dir: string;
@@ -38,8 +39,9 @@ describe("JobManager", () => {
       for (const job of m.list({ activeOnly: true })) m.cancel(job.id);
       m.stop();
     }
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(cwd, { recursive: true, force: true });
+    // Windows can retain directory handles briefly after a terminated process exits.
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   function makeManager() {
@@ -68,12 +70,12 @@ describe("JobManager", () => {
     ...over,
   });
 
-  const waitFor = (fn: () => void) => vi.waitFor(fn, { timeout: 5000, interval: 20 });
+  const waitFor = (fn: () => void) => vi.waitFor(fn, { timeout: process.platform === "win32" ? 15000 : 5000, interval: 20 });
 
   it("runs a command in its directory, logs its output and reports success", async () => {
     const manager = makeManager();
     manager.start();
-    const { job } = manager.create(input("echo hello; pwd; echo $POCKETAGENT_JOB_ID; echo done > out.txt", { title: "Say hello", then: "Report" }));
+    const { job } = manager.create(input(nodeCommand("console.log('hello'); console.log(process.cwd()); console.log(process.env.POCKETAGENT_JOB_ID); require('node:fs').writeFileSync('out.txt', 'done\\n')"), { title: "Say hello", then: "Report" }));
     expect(job).toMatchObject({ seq: 1, status: "running", title: "Say hello", then: "Report" });
     expect(job!.pid).toBeGreaterThan(0);
 
@@ -81,7 +83,11 @@ describe("JobManager", () => {
     expect(manager.get(job!.id)).toMatchObject({ exitCode: 0, callback: "done" });
     const log = manager.readLog(job!.id);
     expect(log).toContain("hello");
-    expect(log).toContain(cwd.split("/").pop());
+    // The same Windows directory can be spelled with an 8.3 alias or a long name.
+    // Check filesystem identity instead of comparing either path's spelling.
+    const loggedDirectory = statSync(log.split(/\r?\n/)[1]);
+    const expectedDirectory = statSync(cwd);
+    expect({ dev: loggedDirectory.dev, ino: loggedDirectory.ino }).toEqual({ dev: expectedDirectory.dev, ino: expectedDirectory.ino });
     expect(log).toContain(job!.id);
     expect(readFileSync(join(cwd, "out.txt"), "utf-8")).toBe("done\n");
     expect(finished).toHaveLength(1);
@@ -91,7 +97,7 @@ describe("JobManager", () => {
   it("reports a failing command with its exit code", async () => {
     const manager = makeManager();
     manager.start();
-    const { job } = manager.create(input("echo oops >&2; exit 3"));
+    const { job } = manager.create(input(nodeCommand("console.error('oops'); process.exit(3)")));
     await waitFor(() => expect(manager.get(job!.id)!.status).toBe("failed"));
     expect(manager.get(job!.id)).toMatchObject({ exitCode: 3, error: "Exited with code 3" });
     expect(manager.readLog(job!.id)).toContain("oops");
@@ -115,9 +121,9 @@ describe("JobManager", () => {
   it("queues jobs beyond a chat's limit and refuses more than it may hold", async () => {
     const manager = makeManager();
     manager.start();
-    const a = manager.create(input("sleep 0.3")).job!;
+    const a = manager.create(input(sleepCommand(0.3))).job!;
     const b = manager.create(input("echo second")).job!;
-    const other = manager.create(input("sleep 0.3", { chatId: "chat2" })).job!;
+    const other = manager.create(input(sleepCommand(0.3), { chatId: "chat2" })).job!;
     expect([a.status, b.status, other.status]).toEqual(["running", "queued", "running"]);
     manager.create(input("echo third"));
     expect(manager.create(input("echo fourth")).error).toMatch(/already has 3 background jobs/);
@@ -129,7 +135,7 @@ describe("JobManager", () => {
   it("stops a running job together with the processes it started", async () => {
     const manager = makeManager();
     manager.start();
-    const { job } = manager.create(input("sleep 30 & echo $! > child.pid; wait"));
+    const { job } = manager.create(input(nodeCommand("const c=require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(()=>{}, 30000)']); require('node:fs').writeFileSync('child.pid', String(c.pid)); setTimeout(()=>{}, 30000)")));
     await waitFor(() => expect(existsSync(join(cwd, "child.pid"))).toBe(true));
     const childPid = Number(readFileSync(join(cwd, "child.pid"), "utf-8"));
 
@@ -143,7 +149,7 @@ describe("JobManager", () => {
   it("drops a queued job without running it", () => {
     const manager = makeManager();
     manager.start();
-    manager.create(input("sleep 0.5"));
+    manager.create(input(sleepCommand(0.5)));
     const queued = manager.create(input("touch should-not-exist")).job!;
     expect(manager.cancel(queued.id).ok).toBe(true);
     expect(manager.get(queued.id)).toMatchObject({ status: "cancelled", callback: "skipped" });
@@ -152,7 +158,7 @@ describe("JobManager", () => {
   it("stops jobs that exceed their time limit", async () => {
     const manager = makeManager();
     manager.start();
-    const { job } = manager.create(input("echo started; sleep 30", { timeoutMs: 200 }));
+    const { job } = manager.create(input(sleepCommand(30), { timeoutMs: 200 }));
     await waitFor(() => expect(manager.get(job!.id)!.status).toBe("timeout"));
     expect(manager.get(job!.id)!.error).toMatch(/time limit/);
     expect(finished[0].status).toBe("timeout");
@@ -161,7 +167,8 @@ describe("JobManager", () => {
   it("keeps jobs running across a gateway restart and reports them afterwards", async () => {
     const first = makeManager();
     first.start();
-    const { job } = first.create(input("sleep 0.4; echo finished-after-restart"));
+    const { job } = first.create(input(nodeCommand("require('node:fs').writeFileSync('started', 'ok'); setTimeout(()=>console.log('finished-after-restart'),400)")));
+    await waitFor(() => expect(existsSync(join(cwd, "started"))).toBe(true));
     first.stop();
     await new Promise((resolve) => setTimeout(resolve, 600));
     // Nothing was reported while no gateway was watching
@@ -174,7 +181,7 @@ describe("JobManager", () => {
     expect(finished).toHaveLength(1);
     expect(second.readLog(job!.id)).toContain("finished-after-restart");
     // Numbers keep counting
-    expect(second.create(input("true")).job!.seq).toBe(2);
+    expect(second.create(input(nodeCommand("process.exit(0)"))).job!.seq).toBe(2);
   });
 
   it("retries a follow-up that a restart cut off", async () => {
@@ -186,7 +193,7 @@ describe("JobManager", () => {
     });
     managers.push(first);
     first.start();
-    const { job } = first.create(input("true"));
+    const { job } = first.create(input(nodeCommand("process.exit(0)")));
     await waitFor(() => expect(first.get(job!.id)).toMatchObject({ status: "succeeded", callback: "pending" }));
     first.stop();
 

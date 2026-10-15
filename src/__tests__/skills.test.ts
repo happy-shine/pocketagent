@@ -110,10 +110,10 @@ description: External skill test
     writeFileSync(join(externalSkillDir, "scripts", "run.py"), "print('ext')");
 
     // Put a symlink in claudeDir pointing to externalSkillDir
-    symlinkSync(externalSkillDir, join(claudeDir, "external-skill"), "dir");
+    symlinkSync(externalSkillDir, join(claudeDir, "external-skill"), process.platform === "win32" ? "junction" : "dir");
 
     // Put a dangling symlink in agyDir pointing to non-existent hub skill
-    symlinkSync(join(hubDir, "dangling-skill"), join(agyDir, "dangling-skill"), "dir");
+    symlinkSync(join(hubDir, "dangling-skill"), join(agyDir, "dangling-skill"), process.platform === "win32" ? "junction" : "dir");
 
     // Run sync
     const synced = registry.sync();
@@ -144,6 +144,18 @@ description: External skill test
     expect(prompt).toContain("Calculates portfolio risk");
     expect(prompt).toContain("file://");
     expect(prompt).toContain("run.py");
+  });
+
+  it("preserves an independent same-name CLI skill and marks it unsynchronized", () => {
+    const canonical = join(hubDir, "conflict");
+    const independent = join(claudeDir, "conflict");
+    mkdirSync(canonical); mkdirSync(independent);
+    writeFileSync(join(canonical, "SKILL.md"), "Hub version");
+    writeFileSync(join(independent, "SKILL.md"), "Local edits");
+    expect(registry.sync()[0].synced.claude).toBe(false);
+    expect(lstatSync(independent).isSymbolicLink()).toBe(false);
+    expect(registry.deleteSkill("conflict")).toBe(true);
+    expect(existsSync(join(independent, "SKILL.md"))).toBe(true);
   });
 
   it("creates a new skill and immediately synchronizes across all 4 CLIs", () => {

@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type { Logger } from "pino";
 import { readLastLogLine, readLogTail } from "./log.js";
 import type { JobStore } from "./store.js";
 import { isJobActive, type BackgroundJob, type JobCallbackState, type JobInput, type JobSettings, type JobStatus } from "./types.js";
+import { stopProcessTree } from "../runtime/process.js";
+import { WINDOWS_JOB_BOOTSTRAP } from "./windows-runner.js";
 
 const MAX_COMMAND_CHARS = 20_000;
 const MAX_TITLE_CHARS = 80;
@@ -33,13 +35,7 @@ function pidAlive(pid: number): boolean {
 
 /** Signals the job's whole process group, so commands it started go down with it. */
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {}
-  }
+  stopProcessTree(pid, signal);
 }
 
 /**
@@ -247,9 +243,18 @@ export class JobManager {
     const out = openSync(logPath, "a");
     try {
       // The wrapper records the exit code in a file, so it can be read even after a gateway restart
-      const child = spawn(SHELL, ["-c", `"${SHELL}" -c "$1"; echo $? > "$2"`, "pocketagent-job", job.command, exitPath], {
+      const windows = process.platform === "win32";
+      const scriptPath = `${exitPath}.ps1`;
+      if (windows) {
+        // BOM keeps non-ASCII commands intact in Windows PowerShell 5.1.
+        writeFileSync(scriptPath, "\ufeff$ErrorActionPreference = 'Stop'\n[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n$global:LASTEXITCODE = 0\n" + job.command + "\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1 }; exit $LASTEXITCODE\n");
+      }
+      const child = spawn(windows ? process.execPath : SHELL, windows
+        ? ["-e", WINDOWS_JOB_BOOTSTRAP, scriptPath, exitPath]
+        : ["-c", `"${SHELL}" -c "$1"; echo $? > "$2"`, "pocketagent-job", job.command, exitPath], {
         cwd: job.cwd,
         detached: true,
+        windowsHide: true,
         stdio: ["ignore", out, out],
         env: { ...process.env, POCKETAGENT_JOB_ID: job.id },
       });
@@ -349,6 +354,7 @@ export class JobManager {
   private deleteFiles(id: string): void {
     rmSync(this.opts.store.logPath(id), { force: true });
     rmSync(this.opts.store.exitCodePath(id), { force: true });
+    rmSync(`${this.opts.store.exitCodePath(id)}.ps1`, { force: true });
   }
 
   private persist(): void {

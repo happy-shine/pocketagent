@@ -1,3 +1,4 @@
+import { safeFileName } from "../../runtime/filenames.js";
 import { Bot, type Context, InputFile } from "grammy";
 import type { Logger } from "pino";
 import type { ChannelAdapter, OutboundMessage, MessageHandler, CommandHandler, InlineButton } from "../types.js";
@@ -375,7 +376,7 @@ export class TelegramAdapter implements ChannelAdapter {
     const baseName = fileName
       ? fileName.replace(/(\.[^.]+)$/, `_${ts}_${idSuffix}$1`).replace(/^([^.]+)$/, `$1_${ts}_${idSuffix}`)
       : `${ts}_${idSuffix}${ext}`;
-    const localPath = join(destDir, baseName);
+    const localPath = join(destDir, safeFileName(baseName));
 
     mkdirSync(destDir, { recursive: true });
     writeFileSync(localPath, buffer);

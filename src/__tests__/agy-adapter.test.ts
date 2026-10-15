@@ -73,7 +73,7 @@ describe("Antigravity adapter", () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "pa-agy-adapter-"));
-    fakeAgy = join(testDir, "agy");
+    fakeAgy = join(testDir, "agy.cjs");
     log = join(testDir, "calls.log");
     contextFile = join(testDir, "context");
     writeFileSync(fakeAgy, FAKE_AGY);

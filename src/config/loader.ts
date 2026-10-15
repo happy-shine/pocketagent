@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { parse as parseYaml, parseDocument, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, parseDocument, stringify as stringifyYaml, visit } from "yaml";
 import { configSchema } from "./schema.js";
 import type { GatewayConfig, ResolvedBotConfig, BotConfig } from "./types.js";
 
@@ -25,8 +25,23 @@ export function expandEnvVars(input: string): string {
 }
 
 export function parseConfig(yamlStr: string): GatewayConfig {
-  const expanded = expandEnvVars(yamlStr);
-  const raw = parseYaml(expanded);
+  const document = parseDocument(yamlStr);
+  if (document.errors.length) throw document.errors[0];
+  // Expand scalar values after parsing, so Windows backslashes, quotes and '#' in
+  // environment variables remain data instead of changing YAML syntax.
+  visit(document, {
+    Scalar(_key, node) {
+      if (typeof node.value !== "string" || !node.value.includes("${")) return;
+      const original = node.value;
+      const expanded = expandEnvVars(original);
+      if (node.type === "PLAIN" && /^\$\{[^}]+\}$/.test(original)) {
+        node.value = parseYaml(expanded);
+      } else {
+        node.value = expanded;
+      }
+    },
+  });
+  const raw = document.toJS();
   return configSchema.parse(raw) as GatewayConfig;
 }
 

@@ -152,10 +152,10 @@ If you are not sure it will take more than 5 minutes, it does not qualify: run i
 
 \`\`\`bash
 curl -s -X POST "${base}" -H "Content-Type: application/json" -H "X-PocketAgent-Session: $POCKETAGENT_SESSION_ID" \\
-  -d '{"bot_id":"${botId}","chat_id":"${chatId}","title":"Download the 40GB dataset","command":"cd /abs/path && wget -c -q --show-progress https://example.com/data.tar","then":"Verify the checksum, extract it and tell the user how many files it contains"}'
+  -d '{"bot_id":"${botId}","chat_id":"${chatId}","title":"Download the 40GB dataset","command":"${process.platform === "win32" ? "curl.exe -C - -o data.tar https://example.com/data.tar" : "wget -c -q --show-progress https://example.com/data.tar"}","then":"Verify the checksum, extract it and tell the user how many files it contains"}'
 \`\`\`
 
-- \`command\` runs with bash in \`cwd\` (defaults to your current workspace). Make it non-interactive and self-contained: absolute paths, \`-y\` flags, resumable downloads (\`wget -c\`, \`curl -C -\`), results written to files. Its output goes to a log file.
+- \`command\` runs with ${process.platform === "win32" ? "Windows PowerShell (-NoProfile -NonInteractive)" : "bash (or sh if bash is unavailable)"} in \`cwd\` (defaults to your current workspace). Use that shell's syntax and environment variables. Make it non-interactive and self-contained: absolute paths, non-interactive flags, resumable downloads, results written to files. Its output goes to a log file.
 - \`then\`: what you will do once it finishes. It is handed back to you with the result.
 - Optional: \`cwd\` (absolute path), \`timeout_minutes\` (default 360).
 - Keep the \`X-PocketAgent-Session\` header exactly as shown; the shell fills it in. At most 2 jobs per message.

@@ -1765,7 +1765,7 @@ export class BotInstance {
       const response = await this.collectResponse(session, promptText, tracker, { interim });
 
       if (response.isError) {
-        throw new Error(response.errorMessage || response.text || `${session.activeEngine} engine failed without an error message`);
+        throw new Error(response.errorMessage || `${session.activeEngine} engine failed without an error message`);
       }
 
       // Check for inline buttons markup: [button: Opt1 | Opt2] or <<Opt1>>

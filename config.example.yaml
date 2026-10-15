@@ -4,6 +4,13 @@
 # Global default engine (claude | codex | agy | grok), switchable in chat via /engine
 defaultEngine: "claude"
 
+# Optional Windows deployment (merge these keys into your gateway settings):
+# gateway:
+#   dataDir: 'D:\PocketAgentData'     # or D:/PocketAgentData; avoid unescaped backslashes in double quotes
+#   proxy: 'http://127.0.0.1:7897'    # optional HTTP/HTTPS proxy; loopback requests bypass it
+# Engine binary paths below can be .exe, npm .cmd, or Node scripts; quote paths containing spaces.
+# Background job command syntax: PowerShell on Windows, Bash/sh on Linux/macOS.
+
 # Bot instances list (supports multiple bots across Telegram & Discord)
 bots:
   # Telegram Bot

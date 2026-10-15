@@ -17,7 +17,7 @@ describe("Scheduled tasks HTTP API", () => {
     dataDir = mkdtempSync(join(tmpdir(), "pa-cron-api-"));
     const port = 20000 + Math.floor(Math.random() * 20000);
     base = `http://127.0.0.1:${port}/api/cron`;
-    const config = parseConfig(`gateway:\n  port: ${port}\n  dataDir: "${dataDir}"\nscheduler:\n  timezone: "Asia/Shanghai"\n`);
+    const config = parseConfig(`gateway:\n  port: ${port}\n  dataDir: ${JSON.stringify(dataDir)}\nscheduler:\n  timezone: "Asia/Shanghai"\n`);
     gateway = new Gateway(config, pino({ level: "silent" }), join(dataDir, "config.yaml"));
 
     turnSender = undefined;

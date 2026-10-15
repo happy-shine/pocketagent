@@ -212,7 +212,7 @@ out({ type: "end", stopReason: "end_turn", sessionId: sid });
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "pa-grok-adapter-"));
-    fakeGrok = join(testDir, "grok");
+    fakeGrok = join(testDir, "grok.cjs");
     argvLog = join(testDir, "argv.log");
     writeFileSync(fakeGrok, FAKE_GROK);
     chmodSync(fakeGrok, 0o755);

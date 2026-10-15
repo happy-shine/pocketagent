@@ -82,7 +82,7 @@ for await (const _line of createInterface({ input: process.stdin })) {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "pa-claude-blocks-"));
-    const fake = join(dir, "claude");
+    const fake = join(dir, "claude.mjs");
     writeFileSync(fake, FAKE_CLAUDE);
     chmodSync(fake, 0o755);
     adapter = new ClaudeEngineAdapter(

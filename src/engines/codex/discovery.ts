@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execCli as execFileAsync } from "../../runtime/process.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import type { EngineCapabilities, ModelInfo, EffortInfo } from "../types.js";
 
-const execFileAsync = promisify(execFile);
 
 let cachedCapabilities: EngineCapabilities | null = null;
 let lastFetchedAt = 0;
@@ -61,7 +60,7 @@ export async function discoverCodexCapabilities(
   } catch {
     // 2. Try reading from ~/.codex/models_cache.json
     try {
-      const codexHome = process.env.CODEX_HOME || join(process.env.HOME || "", ".codex");
+      const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
       const cachePath = join(codexHome, "models_cache.json");
       if (existsSync(cachePath)) {
         const fileData = JSON.parse(readFileSync(cachePath, "utf-8"));

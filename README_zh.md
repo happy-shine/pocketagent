@@ -99,6 +99,39 @@ npm run build
 npm link        # 注册全局 `pa` 与 `pocketagent` 命令
 ```
 
+#### Windows（PowerShell）
+
+Windows 使用 Node.js 22+ 和系统自带的 Windows PowerShell 5.1。先安装并登录要使用的引擎，满足该引擎自身的 Windows 环境要求。在项目目录执行：
+
+```powershell
+npm.cmd ci
+npm.cmd run build
+npm.cmd link
+
+# 可选：把配置与数据放到 D 盘；每次管理服务时使用相同的目录
+$env:POCKETAGENT_HOME = 'D:\PocketAgentData'
+New-Item -ItemType Directory -Force $env:POCKETAGENT_HOME | Out-Null
+# 首次部署时复制示例，然后填入自己的配置（已有配置时不要覆盖）
+Copy-Item config.example.yaml "$env:POCKETAGENT_HOME\config.yaml"
+notepad "$env:POCKETAGENT_HOME\config.yaml"
+pa.cmd doctor
+pa.cmd start
+pa.cmd status
+pa.cmd dashboard
+pa.cmd restart
+pa.cmd stop
+```
+
+不使用全局命令也可以运行 `scripts\windows.cmd start` 或 `node dist/index.js start`。前台排错用 `pa.cmd start -f`；查看日志用 `Get-Content "$env:POCKETAGENT_HOME\logs\gateway.log" -Tail 50 -Wait`。后台启动依赖 Windows WMI/CIM，在后台创建独立进程；CLI 子进程隐藏控制台窗口。它不是 Windows 系统服务，也不会自动设置开机启动。
+
+Windows 路径在 YAML 中用单引号（如 `'D:\PocketAgentData'`）或正斜杠（如 `D:/PocketAgentData`）；引擎 `binary` 可以配置完整的 `.exe`、npm `.cmd` 或 Node 脚本路径，支持带空格和中文的目录。代理通过 `gateway.proxy` 配置，例如 `http://127.0.0.1:7897`，本地网关请求绕过代理。
+
+Windows 的后台作业使用 **PowerShell**，需要按 PowerShell 语法填写 `command`；Linux/macOS 继续使用 Bash/sh。取消任务会同时终止其子进程，正常停止或重启网关会保留正在运行的后台作业。
+
+Windows 默认不自动同步技能，确认要迁移时执行 `pa.cmd skills sync`。目录连接使用无需管理员权限的 NTFS junction；同名且独立存在的技能保留原文件，并显示为未同步。内置 API 示例会使用 PowerShell 的 `Invoke-RestMethod` 和 `$env:POCKETAGENT_SESSION_ID`。
+
+开发验证：`npm.cmd test` 运行完整测试，`npm.cmd run test:windows` 在隔离配置中实测后台启动、环境变量传递、状态查询、正常重启和停止，不操作现有聊天网关。CI 覆盖 Windows、Linux、macOS 与 Node.js 22/24；CI 结果以各次运行记录为准。
+
 ### 3. 环境检测
 
 ```bash

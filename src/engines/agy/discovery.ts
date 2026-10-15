@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execCli as execFileAsync } from "../../runtime/process.js";
 import type { EngineCapabilities, ModelInfo, EffortInfo } from "../types.js";
 
-const execFileAsync = promisify(execFile);
 
 let cachedCapabilities: EngineCapabilities | null = null;
 let lastFetchedAt = 0;
@@ -13,6 +11,11 @@ const DEFAULT_AGY_EFFORTS: EffortInfo[] = [
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
 ];
+
+/** These CLI model slugs already encode a fixed effort level. */
+export function getAgyPinnedEffort(model?: string): string | undefined {
+  return model?.match(/-(low|medium|high)$/i)?.[1].toLowerCase();
+}
 
 export async function discoverAgyCapabilities(
   binary: string = "agy",
@@ -79,7 +82,14 @@ export async function discoverAgyCapabilities(
   }
 
   cachedCapabilities = {
-    models,
+    models: models.map((model) => {
+      const effort = getAgyPinnedEffort(model.id);
+      return effort ? {
+        ...model,
+        defaultEffort: effort,
+        supportedEfforts: DEFAULT_AGY_EFFORTS.filter((item) => item.id === effort),
+      } : model;
+    }),
     efforts: DEFAULT_AGY_EFFORTS,
     supportsEffort: true,
     supportsCustomModel: true,

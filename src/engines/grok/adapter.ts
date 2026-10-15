@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawnCli as spawn, stopCli } from "../../runtime/process.js";
+
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -205,6 +206,7 @@ export class GrokEngineAdapter implements EngineAdapter {
       "Spawning Grok turn process",
     );
     const proc = spawn(spawnCmd.cmd, spawnCmd.args, {
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
       cwd: ep.workspaceDir,
       env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
@@ -273,7 +275,7 @@ export class GrokEngineAdapter implements EngineAdapter {
       return "ok";
     } finally {
       rl.close();
-      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGTERM");
+      if (proc.exitCode === null && proc.signalCode === null) stopCli(proc, "SIGTERM");
       rmSync(promptFile, { force: true });
     }
   }
@@ -285,7 +287,7 @@ export class GrokEngineAdapter implements EngineAdapter {
       return false;
     }
     this.interrupted.add(sessionId);
-    return ep.process.kill("SIGINT");
+    return stopCli(ep.process, "SIGINT");
   }
 
   hasProcess(sessionId: string): boolean {
@@ -315,7 +317,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     if (!ep) return;
     this.clearIdleTimer(sessionId);
     if (ep.process && ep.process.exitCode === null && ep.process.signalCode === null) {
-      ep.process.kill("SIGTERM");
+      stopCli(ep.process, "SIGTERM");
     }
     this.processes.delete(sessionId);
   }
@@ -324,7 +326,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     for (const [id, ep] of this.processes) {
       this.clearIdleTimer(id);
       if (ep.process && ep.process.exitCode === null) {
-        ep.process.kill("SIGTERM");
+        stopCli(ep.process, "SIGTERM");
       }
     }
     this.processes.clear();

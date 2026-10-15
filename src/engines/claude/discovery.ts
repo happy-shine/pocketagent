@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineCapabilities, ModelInfo, EffortInfo } from "../types.js";
@@ -95,7 +96,7 @@ export async function discoverClaudeCapabilities(
   seenIds.add("claude-fable");
   seenIds.add("claude-haiku-4-5-20251001");
 
-  const homeDir = process.env.CLAUDE_HOME || process.env.HOME || "";
+  const homeDir = process.env.CLAUDE_HOME || homedir();
   let defaultModelId = "sonnet";
 
   // Check user settings for default model preference

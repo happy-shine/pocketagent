@@ -13,6 +13,7 @@ import {
 } from "../skills/index.js";
 import { STEER_SYSTEM_NOTE } from "../steer/steer.js";
 import type { BotIdentity } from "./types.js";
+import { platformApiExamples } from "../skills/platform-examples.js";
 
 // Agents have pasted bot tokens they found in config files straight into curl commands, which leaves them in transcripts
 const CREDENTIALS_NOTE =
@@ -57,11 +58,11 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
     // Ignore missing or unreadable SOUL.md
   }
 
-  parts.push(getTelegramFileSkill(input.apiPort, input.chatId, input.botId, input.isGroup));
-  parts.push(getSoulEditorSkill(input.apiPort, input.botId));
-  parts.push(getSchedulerSkill(input.apiPort, input.botId, input.chatId));
+  parts.push(platformApiExamples(getTelegramFileSkill(input.apiPort, input.chatId, input.botId, input.isGroup)));
+  parts.push(platformApiExamples(getSoulEditorSkill(input.apiPort, input.botId)));
+  parts.push(platformApiExamples(getSchedulerSkill(input.apiPort, input.botId, input.chatId)));
   if (input.backgroundJobs) {
-    parts.push(getBackgroundJobSkill(input.apiPort, input.botId, input.chatId));
+    parts.push(platformApiExamples(getBackgroundJobSkill(input.apiPort, input.botId, input.chatId)));
   }
   parts.push(CREDENTIALS_NOTE);
   if (input.steer) {
@@ -74,7 +75,7 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
     parts.push(getTelegramFormatSkill());
   }
   if (input.isGroup) {
-    parts.push(getChatHistorySkill(input.apiPort, input.chatId, input.botId));
+    parts.push(platformApiExamples(getChatHistorySkill(input.apiPort, input.chatId, input.botId)));
   }
 
   try {

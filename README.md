@@ -99,6 +99,37 @@ npm run build
 npm link        # Registers global `pa` and `pocketagent` commands
 ```
 
+#### Windows (PowerShell)
+
+Use Node.js 22+ and the built-in Windows PowerShell 5.1. Install and authenticate at least one engine and meet that engine's own Windows prerequisites. From the project directory:
+
+```powershell
+npm.cmd ci
+npm.cmd run build
+npm.cmd link
+
+# Optional: use the same data/config directory for all service commands
+$env:POCKETAGENT_HOME = 'D:\PocketAgentData'
+New-Item -ItemType Directory -Force $env:POCKETAGENT_HOME | Out-Null
+# First deployment only; do not overwrite an existing configuration
+Copy-Item config.example.yaml "$env:POCKETAGENT_HOME\config.yaml"
+notepad "$env:POCKETAGENT_HOME\config.yaml"
+pa.cmd doctor
+pa.cmd start
+pa.cmd status
+pa.cmd dashboard
+pa.cmd restart
+pa.cmd stop
+```
+
+Without a global link, use `scripts\windows.cmd start` or `node dist/index.js start`. Use `pa.cmd start -f` for foreground debugging and `Get-Content "$env:POCKETAGENT_HOME\logs\gateway.log" -Tail 50 -Wait` for logs. Background startup uses Windows WMI/CIM to create an independent process; CLI children hide their console windows. This is not a Windows service and does not configure startup at login.
+
+Use single-quoted Windows paths in YAML (`'D:\PocketAgentData'`) or forward slashes (`D:/PocketAgentData`). Engine `binary` supports full `.exe`, npm `.cmd`, and Node script paths, including spaces and Unicode. Set `gateway.proxy` for a proxy such as `http://127.0.0.1:7897`; local gateway calls bypass it.
+
+Background job `command` uses **PowerShell on Windows**, and Bash/sh on Linux/macOS. Cancellation stops descendants too; a graceful gateway stop/restart preserves running background jobs. Skill synchronization is opt-in on Windows: run `pa.cmd skills sync` when ready to migrate. It uses NTFS junctions without administrator privileges and preserves independent same-name skills as unsynchronized. Built-in HTTP examples use PowerShell `Invoke-RestMethod` and `$env:POCKETAGENT_SESSION_ID`.
+
+Run `npm.cmd test` for the suite, and `npm.cmd run test:windows` for isolated daemon startup, environment handoff, status, graceful restart and stop checks. The smoke check does not operate the existing chat gateway. CI is configured for Windows/Linux/macOS on Node.js 22/24; consult individual runs for their results.
+
 ### 3. Check Environment
 
 ```bash

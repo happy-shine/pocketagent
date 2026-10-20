@@ -114,6 +114,9 @@ export class DiscordAdapter implements ChannelAdapter {
   private commandHandlers = new Map<string, CommandHandler>();
   private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
   private activeSlashInteractions = new Map<string, ChatInputCommandInteraction>();
+  // A button click arrives with the interaction's id, which is not a message; replies to it go to the message that
+  // carried the buttons instead, or Discord shows them as replying to a message that cannot be loaded
+  private buttonMessageIds = new Map<string, string>();
   private stopped = false;
   private messageStore?: MessageStore;
   private botName = "PocketAgent";
@@ -560,6 +563,12 @@ export class DiscordAdapter implements ChannelAdapter {
         }).catch(async () => {
           await btnInteraction.deferUpdate().catch(() => {});
         });
+        if (btnInteraction.message?.id) {
+          this.buttonMessageIds.set(btnInteraction.id, btnInteraction.message.id);
+          if (this.buttonMessageIds.size > 500) {
+            this.buttonMessageIds.delete(this.buttonMessageIds.keys().next().value!);
+          }
+        }
         const inbound: InboundMessage = {
           channelType: "discord",
           chatId: btnInteraction.channelId,
@@ -655,7 +664,8 @@ export class DiscordAdapter implements ChannelAdapter {
       const isLast = i === chunks.length - 1;
       const payload: any = { content: chunk };
       if (isFirst && msg.replyToMessageId) {
-        payload.reply = { messageReference: msg.replyToMessageId, failIfNotExists: false };
+        const target = this.buttonMessageIds.get(msg.replyToMessageId) ?? msg.replyToMessageId;
+        payload.reply = { messageReference: target, failIfNotExists: false };
       }
       if (isLast && files.length > 0) {
         payload.files = files;

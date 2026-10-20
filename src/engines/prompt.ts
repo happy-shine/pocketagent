@@ -23,6 +23,13 @@ const CREDENTIALS_NOTE =
   "Never copy bot tokens, API keys or other credentials out of config files into commands, code, files or chat messages. " +
   "Use the PocketAgent APIs described here, or scripts that read the credentials themselves.";
 
+export const WORKING_STYLE_NOTE =
+  "## Working style\n" +
+  "- **Always acknowledge before tools**: Whenever handling a user request that involves calling tools (running commands, reading/editing files, searching, querying APIs, or research), ALWAYS output a brief, natural one-sentence response/heads-up to the chat *first* before calling your first tool (e.g. confirming what you are looking into or checking, in your persona). That text reaches the user immediately, eliminating wait anxiety.\n" +
+  "- Keep this heads-up concise, conversational and natural (1 sentence). Speak like a human teammate; never dump raw tool or command names.\n" +
+  "- Each step costs several seconds, so do more per step: put related checks and edits into one script or command instead of tiny single-line commands, and do not re-check a file you just inspected.\n" +
+  "- Report only what actually happened. Never claim an action was done before it actually was.";
+
 // Agents understand requests about PocketAgent better when they read how it actually works, so point them at the
 // code: the read-only copy in <dataDir>/source, or the checkout itself before the first copy exists
 export function getSourceCodeNote(dataDir: string, checkoutRoot = findPocketAgentRoot()): string | undefined {
@@ -132,6 +139,7 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
     }
   }
   parts.push(CREDENTIALS_NOTE);
+  parts.push(WORKING_STYLE_NOTE);
   const sourceNote = getSourceCodeNote(dirname(input.agentsDir));
   if (sourceNote) parts.push(sourceNote);
   if (input.steer) {

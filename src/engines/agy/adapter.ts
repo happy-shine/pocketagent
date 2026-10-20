@@ -25,11 +25,7 @@ export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
 
 /** How Antigravity should work, from watching it take many slow, tiny steps and lose track after compaction. */
 export const AGY_WORKING_STYLE =
-  "## Working style\n" +
-  "- Each step you take costs the user several seconds, so do more per step: put related checks and edits into one shell " +
-  "command or one script instead of one tiny command at a time, and do not re-check a file you have just inspected.\n" +
-  "- Before work that will take more than a few steps, say in one sentence what you are going to do; that text is posted to the chat.\n" +
-  "- Report only what actually happened. Never say something was done, sent or decided earlier than it was, or that you did not do something you did.\n" +
+  "## Antigravity notes\n" +
   "- Do not read Antigravity's own transcript or log files (under ~/.gemini). If your context was compacted, continue from the summary and the workspace files.";
 
 /** Adds the steer hooks to the workspace's `.agents/hooks.json`, keeping any other hooks defined there. */

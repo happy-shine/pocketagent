@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
+import { syncSourceSnapshot } from "../source/snapshot.js";
 import { ApiServer, type ApiSessionBinding, type CronApiResult, type JobApiResult } from "../api/server.js";
 import { DEFAULT_SEND_LIMITS } from "../api/send-limiter.js";
 import { BotInstance } from "../bot/bot-instance.js";
@@ -187,6 +188,13 @@ export class Gateway {
 
   async start(): Promise<void> {
     this.log.info("Starting PocketAgent Gateway...");
+
+    // Installs and updates end in a start: refresh the read-only source copy agents are pointed at
+    const snapshot = syncSourceSnapshot(this.dataDir);
+    if (snapshot.error) this.log.warn({ error: snapshot.error }, "Could not copy PocketAgent source for agents");
+    else if (snapshot.status === "created" || snapshot.status === "updated") {
+      this.log.info({ status: snapshot.status, commit: snapshot.info?.commit }, "Copied PocketAgent source for agents");
+    }
 
     this.apiServer = new ApiServer({
       port: this.config.gateway.port,

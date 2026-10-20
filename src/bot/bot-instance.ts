@@ -225,6 +225,14 @@ export class BotInstance {
     return this.turnSenders.get(chatId);
   }
 
+  /** Removes the progress card so the next progress tick posts it below any freshly sent chat message. */
+  async repostProgress(chatId: string): Promise<void> {
+    const turn = this.turnSenders.get(chatId);
+    if (turn?.tracker) {
+      await turn.tracker.repostBelow();
+    }
+  }
+
   /** The bot's adapter for a platform; without one named, the bot's only (or Telegram) adapter. */
   getChannel(channelType?: string): ChannelAdapter | undefined {
     if (channelType === "telegram") return this.telegram;

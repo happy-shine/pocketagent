@@ -199,6 +199,10 @@ export class Gateway {
     this.apiServer = new ApiServer({
       port: this.config.gateway.port,
       steerHook: (engine, event, sessionId, payload) => this.answerSteerHook(engine, event, sessionId, payload),
+      onMessageSent: async (botId, chatId) => {
+        const bot = this.bots.get(botId);
+        await bot?.repostProgress(chatId);
+      },
       getBotTelegram: (botId) => this.bots.get(botId)?.telegram,
       getBotChannel: (botId, channelType) => this.bots.get(botId)?.getChannel(channelType),
       resolveSession: (sessionId) => this.resolveApiSession(sessionId),

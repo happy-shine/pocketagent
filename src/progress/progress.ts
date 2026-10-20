@@ -172,6 +172,19 @@ export class ProgressTracker {
     return this.interimIds;
   }
 
+  /**
+   * Called when an external message has been sent to the chat (e.g. via /api/send-message),
+   * so the existing progress card is removed and the next update posts a fresh progress card below it.
+   */
+  async repostBelow(): Promise<void> {
+    if (this.messageId) {
+      const progressId = this.messageId;
+      this.messageId = null;
+      this.lastFlush = 0;
+      await this.channel.deleteMessage?.(this.chatId, progressId).catch(() => {});
+    }
+  }
+
   private async sendInterim(text: string): Promise<void> {
     this.holdProgress = true;
     try {

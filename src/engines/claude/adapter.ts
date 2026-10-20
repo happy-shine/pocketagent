@@ -197,6 +197,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
 
     const rl = createInterface({ input: ep.process.stdout!, crlfDelay: Infinity });
     const blocks = new TextBlocks();
+    let hasStreamedDeltas = false;
+    let hasStreamedTool = false;
 
     try {
       for await (const line of rl) {
@@ -216,47 +218,66 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           yield { type: "session_started", sessionId: event.session_id };
         }
 
+        // Unwrap Claude Code stream_event if present
+        let current = event;
+        if (event.type === "stream_event" && event.event && typeof event.event === "object") {
+          current = event.event as Record<string, unknown>;
+        }
+
+        const currentBlock = (current.content_block as any);
+        const currentDelta = (current.delta as any);
+
         // Map events
-        if (event.type === "thinking_start" || event.subtype === "thinking") {
+        if (current.type === "thinking_start" || current.subtype === "thinking" || (current.type === "content_block_start" && currentBlock?.type === "thinking")) {
           blocks.close();
           yield { type: "thinking_started" };
-        } else if (event.type === "stream_event" && (event.event as any)?.type === "content_block_start" && (event.event as any)?.content_block?.type === "thinking") {
+        } else if (current.type === "content_block_start" && currentBlock?.type === "tool_use") {
           blocks.close();
-          yield { type: "thinking_started" };
-        } else if (event.type === "tool_use" || (event.type === "content_block_start" && (event.content_block as any)?.type === "tool_use")) {
-          const tool = (event.content_block as any) ?? event;
+          hasStreamedTool = true;
+          yield { type: "tool_started", name: currentBlock.name ?? "tool", detail: JSON.stringify(currentBlock.input ?? {}) };
+        } else if (current.type === "tool_use") {
+          const tool = currentBlock ?? current;
           blocks.close();
-          yield { type: "tool_started", name: tool.name ?? "tool", detail: JSON.stringify(tool.input ?? {}) };
-        } else if (event.type === "content_block_start" && (event.content_block as any)?.type === "text") {
+          yield { type: "tool_started", name: (tool as any).name ?? "tool", detail: JSON.stringify((tool as any).input ?? {}) };
+        } else if (current.type === "content_block_start" && currentBlock?.type === "text") {
           // Streamed text: the deltas that follow belong to this new block
           blocks.close();
-        } else if (event.type === "text" && typeof event.text === "string") {
-          yield blocks.text(event.text, true);
-        } else if (event.type === "content_block_delta" && (event.delta as any)?.type === "text_delta") {
-          yield blocks.text((event.delta as any).text);
-        } else if (event.type === "assistant" && event.message) {
+        } else if (current.type === "text" && typeof current.text === "string") {
+          yield blocks.text(current.text, true);
+        } else if (current.type === "content_block_delta" && currentDelta?.type === "text_delta" && typeof currentDelta.text === "string") {
+          hasStreamedDeltas = true;
+          yield blocks.text(currentDelta.text);
+        } else if (current.type === "assistant" && current.message) {
           // Each content block of an assistant message is a whole block
-          const content = (event.message as any).content;
+          const content = (current.message as any).content;
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block && typeof block === "object") {
                 if (block.type === "tool_use" && typeof block.name === "string") {
-                  blocks.close();
-                  yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
+                  if (!hasStreamedTool) {
+                    blocks.close();
+                    yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
+                  }
                 }
                 if (block.type === "text" && typeof block.text === "string") {
-                  yield blocks.text(block.text, true);
+                  if (!hasStreamedDeltas) {
+                    yield blocks.text(block.text, true);
+                  }
                 }
               }
             }
           } else if (typeof content === "string") {
-            yield blocks.text(content, true);
+            if (!hasStreamedDeltas) {
+              yield blocks.text(content, true);
+            }
           }
-        } else if (event.type === "result") {
+          hasStreamedDeltas = false;
+          hasStreamedTool = false;
+        } else if (current.type === "result") {
           yield {
             type: "result",
-            result: typeof event.result === "string" ? event.result : undefined,
-            isError: Boolean(event.is_error),
+            result: typeof current.result === "string" ? current.result : undefined,
+            isError: Boolean(current.is_error),
           };
           return;
         }

@@ -76,6 +76,7 @@ export interface ApiServerConfig {
   };
   // Answers a CLI hook asking whether chat messages are waiting to join the running turn; returns the hook's stdout
   steerHook?: (engine: string, event: string, sessionId: string, payload: Record<string, unknown>) => Record<string, unknown>;
+  onMessageSent?: (botId: string, chatId: string) => Promise<void> | void;
 }
 
 /** Where a session's API calls go, and the turn running in it (whose identity scopes the send limits). */
@@ -577,7 +578,13 @@ export class ApiServer {
     }
     const deliver = async () => {
       const ids = channel.sendMessages ? await channel.sendMessages(message) : [await channel.send(message)];
-      return ids.filter(Boolean);
+      const filtered = ids.filter(Boolean);
+      if (filtered.length > 0 && botId && this.config.onMessageSent) {
+        try {
+          await this.config.onMessageSent(botId, chatId);
+        } catch {}
+      }
+      return filtered;
     };
 
     if (!session) {

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   getTelegramFileSkill,
   getSoulEditorSkill,
@@ -12,6 +12,8 @@ import {
   SkillRegistry,
 } from "../skills/index.js";
 import { STEER_SYSTEM_NOTE } from "../steer/steer.js";
+import { MemoryStore } from "../memory/store.js";
+import { getMemorySkill } from "../memory/prompt.js";
 import type { BotIdentity } from "./types.js";
 
 // Agents have pasted bot tokens they found in config files straight into curl commands, which leaves them in transcripts
@@ -31,6 +33,14 @@ export interface SystemPromptPartsInput {
   backgroundJobs?: boolean;
   // The engine relays messages sent during a turn into it
   steer?: boolean;
+  // Shared memory: rules, API and a snapshot of the indexes
+  memory?: boolean;
+  memoryMaxIndexLines?: number;
+}
+
+// Memory lives next to the agents directory: <dataDir>/memory
+export function memoryRootFor(agentsDir: string): string {
+  return join(dirname(agentsDir), "memory");
 }
 
 export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] {
@@ -62,6 +72,14 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   parts.push(getSchedulerSkill(input.apiPort, input.botId, input.chatId));
   if (input.backgroundJobs) {
     parts.push(getBackgroundJobSkill(input.apiPort, input.botId, input.chatId));
+  }
+  if (input.memory) {
+    try {
+      const store = new MemoryStore(memoryRootFor(input.agentsDir), { maxIndexLines: input.memoryMaxIndexLines });
+      parts.push(getMemorySkill(store, input.apiPort, input.botId, input.chatId || undefined));
+    } catch {
+      // A broken memory directory must not keep the session from starting
+    }
   }
   parts.push(CREDENTIALS_NOTE);
   if (input.steer) {

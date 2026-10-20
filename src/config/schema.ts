@@ -118,6 +118,12 @@ const agentMessagesSchema = z.object({
   minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
 });
 
+// Memory shared by every engine: ~/.pocketagent/memory, read through /api/memory and the system prompt
+const memorySchema = z.object({
+  enabled: z.boolean().default(true),
+  maxIndexLines: z.number().int().positive().default(150), // lines of each scope's index put in the prompt
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -206,6 +212,7 @@ export const configSchema = z.preprocess((input) => {
   scheduler: schedulerSchema.default(schedulerSchema.parse({})),
   jobs: jobsSchema.default(jobsSchema.parse({})),
   agentMessages: agentMessagesSchema.default(agentMessagesSchema.parse({})),
+  memory: memorySchema.default(memorySchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));

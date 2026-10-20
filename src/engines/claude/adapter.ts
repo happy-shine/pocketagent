@@ -5,7 +5,9 @@ import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
-import { buildSystemPromptParts } from "../prompt.js";
+import { buildSystemPromptParts, memoryRootFor } from "../prompt.js";
+import { MemoryStore } from "../../memory/store.js";
+import { linkClaudeMemory } from "../../memory/claude-link.js";
 import { TextBlocks } from "../text-blocks.js";
 import type {
   BotIdentity,
@@ -54,6 +56,19 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
+    // Claude Code's own memory for this workspace becomes the chat's shared memory
+    if (this.config.memory) {
+      try {
+        const store = new MemoryStore(memoryRootFor(this.config.agentsDir));
+        const ref = { botId, chatId: session.chatId };
+        const result = linkClaudeMemory(sessionDir, store.scopeDir("chat", ref));
+        if (result === "merged-and-linked") store.rebuildIndex("chat", ref);
+        if (result !== "already-linked") this.log.info({ sessionId: session.sessionId, result }, "Linked Claude memory to shared memory");
+      } catch (err) {
+        this.log.warn({ err, sessionId: session.sessionId }, "Could not link Claude memory; it stays per workspace");
+      }
+    }
+
     // Inject system prompt & skills into CLAUDE.md in workspace and via --append-system-prompt
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
@@ -64,6 +79,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
+      memory: this.config.memory,
+      memoryMaxIndexLines: this.config.memoryMaxIndexLines,
       steer: true,
     });
     const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";

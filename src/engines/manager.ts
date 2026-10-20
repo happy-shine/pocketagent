@@ -40,6 +40,8 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.claude.customModels,
     };
     this.adapters.set("claude", new ClaudeEngineAdapter(claudeConfig, this.log));
@@ -57,6 +59,8 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.agy.customModels,
     };
     this.adapters.set("agy", new AgyEngineAdapter(agyConfig, this.log));
@@ -74,6 +78,8 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.codex.customModels,
       codex: {
         sandbox: config.engines.codex.sandbox,
@@ -95,6 +101,8 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.grok.customModels,
     };
     this.adapters.set("grok", new GrokEngineAdapter(grokConfig, this.log));
@@ -171,6 +179,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
     });
 
     const agy = this.adapters.get("agy");
@@ -183,6 +193,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
     });
 
     const codex = this.adapters.get("codex");
@@ -195,6 +207,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
       codex: {
         sandbox: config.engines.codex.sandbox,
         approvalPolicy: config.engines.codex.approvalPolicy,
@@ -211,6 +225,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
+      memory: config.memory.enabled,
+      memoryMaxIndexLines: config.memory.maxIndexLines,
     });
   }
 

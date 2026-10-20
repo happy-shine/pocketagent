@@ -150,6 +150,8 @@ export class GrokEngineAdapter implements EngineAdapter {
         isGroup: Boolean(session.isGroup),
         identity,
         backgroundJobs: this.config.backgroundJobs,
+        memory: this.config.memory,
+        memoryMaxIndexLines: this.config.memoryMaxIndexLines,
         steer: true,
       });
       if (systemParts.length > 0) rules = systemParts.join("\n\n---\n\n");

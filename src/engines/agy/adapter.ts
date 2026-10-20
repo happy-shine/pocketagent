@@ -96,6 +96,8 @@ export class AgyEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
+      memory: this.config.memory,
+      memoryMaxIndexLines: this.config.memoryMaxIndexLines,
       steer: true,
     });
     systemParts.push(AGY_WORKING_STYLE);

@@ -63,6 +63,8 @@ export class CodexEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
+      memory: this.config.memory,
+      memoryMaxIndexLines: this.config.memoryMaxIndexLines,
     });
     if (systemParts.length > 0) {
       writeFileSync(join(sessionDir, "AGENTS.md"), systemParts.join("\n\n---\n\n"));

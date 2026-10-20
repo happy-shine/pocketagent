@@ -45,6 +45,9 @@ export interface EngineRuntimeConfig {
   customModels?: ModelInfo[];
   // Offer the background job skill to chat sessions
   backgroundJobs?: boolean;
+  // Offer the shared memory (rules, API and index snapshot) to chat sessions
+  memory?: boolean;
+  memoryMaxIndexLines?: number;
   codex?: {
     sandbox: "read-only" | "workspace-write" | "danger-full-access";
     approvalPolicy: "untrusted" | "on-request" | "never";

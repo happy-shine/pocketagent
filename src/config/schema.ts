@@ -118,6 +118,14 @@ const agentMessagesSchema = z.object({
   minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
 });
 
+// Long-term memory shared by all engines (src/memory), kept under <dataDir>/memory
+const memorySchema = z.object({
+  enabled: z.boolean().default(true),
+  // Leave the CLIs' own memory features (Claude Code auto memory, Codex memories, Grok memory) on. Off by default:
+  // with the shared memory on, the agent would keep two diverging memories
+  nativeEngineMemory: z.boolean().default(false),
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -206,6 +214,7 @@ export const configSchema = z.preprocess((input) => {
   scheduler: schedulerSchema.default(schedulerSchema.parse({})),
   jobs: jobsSchema.default(jobsSchema.parse({})),
   agentMessages: agentMessagesSchema.default(agentMessagesSchema.parse({})),
+  memory: memorySchema.default(memorySchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));

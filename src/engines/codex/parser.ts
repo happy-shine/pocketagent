@@ -10,6 +10,10 @@ export interface CodexSpawnConfig {
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   approvalPolicy: "untrusted" | "on-request" | "never";
   ephemeral?: boolean;
+  // Leave Codex's own memories feature on; by default it is turned off
+  nativeMemory?: boolean;
+  // Directories outside the workspace the agent must be able to write to, such as the shared memory
+  writableDirs?: string[];
 }
 
 export interface CodexJsonEvent {
@@ -48,8 +52,15 @@ export function buildCodexSpawnArgs(config: CodexSpawnConfig): CodexSpawnCommand
     config.approvalPolicy,
     "--sandbox",
     config.sandbox,
-    "exec",
   ];
+  if (!config.nativeMemory) {
+    args.push("--disable", "memories");
+  }
+  if (config.sandbox === "workspace-write" && config.writableDirs && config.writableDirs.length > 0) {
+    // A JSON array of strings is a valid TOML array
+    args.push("-c", `sandbox_workspace_write.writable_roots=${JSON.stringify(config.writableDirs)}`);
+  }
+  args.push("exec");
   if (config.engineSessionId) {
     args.push("resume", config.engineSessionId);
   }

@@ -19,6 +19,7 @@ import type {
 import { discoverGrokCapabilities } from "./discovery.js";
 import { buildGrokSpawnArgs, GrokEventMapper, parseGrokJsonLine } from "./parser.js";
 import { claudeStyleHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
 
 const GROK_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const MAX_STDERR_LENGTH = 4000;
@@ -141,6 +142,7 @@ export class GrokEngineAdapter implements EngineAdapter {
     let rules: string | undefined;
     if (!resumeSessionId) {
       // Grok only auto-loads AGENTS.md in trusted folders, so the system prompt goes in via --rules
+      const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
       const systemParts = buildSystemPromptParts({
         agentsDir: this.config.agentsDir,
         botId,
@@ -151,8 +153,10 @@ export class GrokEngineAdapter implements EngineAdapter {
         identity,
         backgroundJobs: this.config.backgroundJobs,
         steer: true,
+        memory,
       });
       if (systemParts.length > 0) rules = systemParts.join("\n\n---\n\n");
+      markMemorySeen(session, "grok", memory);
 
       if (session.turns && session.turns.length > 0) {
         const primer = buildContextHandoverPrimer(session, "grok", ep.workspaceDir);
@@ -168,6 +172,10 @@ export class GrokEngineAdapter implements EngineAdapter {
         );
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
+    }
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "grok");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
     }
 
     const isForeignModel = (m?: string) => {
@@ -197,6 +205,7 @@ export class GrokEngineAdapter implements EngineAdapter {
       rules,
       model: activeModel,
       effort: activeEffort,
+      nativeMemory: this.config.nativeMemory,
       extraArgs: [...this.config.extraArgs, ...(botExtraArgs ?? [])],
     });
 

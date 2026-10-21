@@ -35,8 +35,11 @@ import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
 import { buildGroupContext } from "./group-context.js";
 import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
+import { listMemoryFiles, loadMemorySnapshot, type MemoryStoreSnapshot } from "../memory/store.js";
 
 const SESSIONS_PER_PAGE = 10;
+// Index lines /memory shows per store
+const MEMORY_LINES_SHOWN = 40;
 
 // Reactions on a message sent while a turn runs; all are in Telegram's fixed reaction set
 const REACTION_STEER_PENDING = "👀";
@@ -382,6 +385,7 @@ export class BotInstance {
     channel.onCommand("queue", (msg) => this.handleMessage(msg, channel, { queue: true }));
     channel.onCommand("cron", (msg) => this.handleCron(msg, channel));
     channel.onCommand("jobs", (msg) => this.handleJobs(msg, channel));
+    channel.onCommand("memory", (msg) => this.handleMemory(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
   }
 
@@ -798,6 +802,41 @@ export class BotInstance {
     if (jobs && jobs.running + jobs.queued > 0) statusText.push(`• Background jobs: ${jobs.running} running, ${jobs.queued} queued (see /jobs)`);
 
     await channel.send({ chatId: msg.chatId, text: statusText.join("\n") });
+  }
+
+  /** Shows what the agent remembers about this chat and across the bot's chats. */
+  private async handleMemory(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+    const access = this.checkAccess(msg);
+    if (!access.allowed) return;
+    const root = this.engineManager.getMemoryDir();
+    if (!root) {
+      await channel.send({ chatId: msg.chatId, text: "Long-term memory is turned off (`memory.enabled: false`)." });
+      return;
+    }
+    const snapshot = loadMemorySnapshot(root, {
+      botId: this.botId,
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      isGroup: msg.isGroup,
+    });
+    const describe = (title: string, store: MemoryStoreSnapshot): string[] => {
+      const count = listMemoryFiles(store.dir).length;
+      const lines = store.index.text.trim() ? store.index.text.trim().split("\n") : [];
+      const shown = lines.slice(0, MEMORY_LINES_SHOWN);
+      if (lines.length > shown.length) shown.push(`_… ${lines.length - shown.length} more lines_`);
+      return [`*${title}* — ${count} ${count === 1 ? "memory" : "memories"}`, ...(shown.length > 0 ? shown : ["_(empty)_"])];
+    };
+    const text = [
+      "🧠 *Long-term memory* (shared by all engines)",
+      "",
+      ...describe("This chat", snapshot.chat),
+      "",
+      ...describe("Bot, all chats", snapshot.bot),
+      "",
+      "_Ask the agent to remember or forget something._",
+      `Files: \`${root}\``,
+    ].join("\n");
+    await channel.send({ chatId: msg.chatId, text });
   }
 
   private async handleNew(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
@@ -1532,6 +1571,7 @@ export class BotInstance {
       `• \`/stop\` — Interrupt current task`,
       `• \`/cron\` — List and manage scheduled tasks (or just ask: "every day at 8am ...")`,
       `• \`/jobs\` — Background jobs (long commands running outside the chat): progress, logs, stop`,
+      `• \`/memory\` — What the agent remembers across sessions and engines`,
       `• \`/help\` — Show this help message`,
       ``,
       `_Tip: Simply send any message, photo, or file to start coding!_`,

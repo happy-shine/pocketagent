@@ -17,6 +17,7 @@ import type {
 } from "../types.js";
 import { discoverAgyCapabilities } from "./discovery.js";
 import { agyHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
 
 // Context size (tokens) past which the next turn starts a new Antigravity conversation. Antigravity compacts its
 // context on its own near 270k tokens, mid-task, after which it loses track of the task and of its instructions;
@@ -87,6 +88,7 @@ export class AgyEngineAdapter implements EngineAdapter {
 
     // Antigravity loads AGENTS.md from its working directory as rules: part of every request, so unlike a prompt
     // they survive its context compaction. A GEMINI.md next to it would be loaded as a second copy.
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -97,6 +99,7 @@ export class AgyEngineAdapter implements EngineAdapter {
       identity,
       backgroundJobs: this.config.backgroundJobs,
       steer: true,
+      memory,
     });
     systemParts.push(AGY_WORKING_STYLE);
     const content = systemParts.join("\n\n---\n\n");
@@ -107,6 +110,8 @@ export class AgyEngineAdapter implements EngineAdapter {
       rmSync(geminiMd, { force: true });
     }
     writeFileSync(agentsMd, content);
+    // Antigravity loads the rules when it starts, resumed conversations included
+    markMemorySeen(session, "agy", memory);
     try {
       writeAgySteerHooks(sessionDir);
     } catch (err) {
@@ -118,6 +123,9 @@ export class AgyEngineAdapter implements EngineAdapter {
       "--output-format", "stream-json",
       "--input-format", "stream-json",
     ];
+    if (memory) {
+      args.push("--add-dir", memory.chat.dir, "--add-dir", memory.bot.dir);
+    }
 
     if (session.agySessionId) {
       args.push("--conversation", session.agySessionId);
@@ -209,6 +217,10 @@ export class AgyEngineAdapter implements EngineAdapter {
         );
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
+    }
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "agy");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
     }
 
     const payload = JSON.stringify({

@@ -211,6 +211,7 @@ export class Gateway {
       onReloadConfig: () => this.reloadConfig(),
       getBotsInfo: () => this.getBotsInfo(),
       getEngineManager: () => this.engineManager,
+      getMemoryDir: () => this.engineManager.getMemoryDir(),
       getPendingPairings: () => this.getPendingPairings(),
       approvePairing: (code) => this.approvePairing(code),
       getAllSessions: () => this.getAllSessions(),

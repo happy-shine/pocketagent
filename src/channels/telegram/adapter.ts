@@ -102,6 +102,7 @@ export class TelegramAdapter implements ChannelAdapter {
       { command: "stop", description: "Interrupt current task" },
       { command: "cron", description: "List and manage scheduled tasks" },
       { command: "jobs", description: "List background jobs, stop them or view logs" },
+      { command: "memory", description: "Show what the agent remembers" },
       { command: "help", description: "Show help" },
     ];
 

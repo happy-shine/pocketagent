@@ -12,6 +12,8 @@ import {
   SkillRegistry,
 } from "../skills/index.js";
 import { STEER_SYSTEM_NOTE } from "../steer/steer.js";
+import { buildMemoryPrompt } from "../memory/prompt.js";
+import type { MemorySnapshot } from "../memory/store.js";
 import type { BotIdentity } from "./types.js";
 
 // Agents have pasted bot tokens they found in config files straight into curl commands, which leaves them in transcripts
@@ -31,6 +33,8 @@ export interface SystemPromptPartsInput {
   backgroundJobs?: boolean;
   // The engine relays messages sent during a turn into it
   steer?: boolean;
+  // The shared long-term memory as of now; absent when it is turned off
+  memory?: MemorySnapshot;
 }
 
 export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] {
@@ -84,6 +88,11 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
     }
   } catch {
     // Ignore skills error
+  }
+
+  // Last, after the parts that never change, as it is the one that does
+  if (input.memory) {
+    parts.push(buildMemoryPrompt(input.memory));
   }
 
   return parts;

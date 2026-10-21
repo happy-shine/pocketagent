@@ -17,6 +17,11 @@ import type {
 } from "../types.js";
 import { discoverClaudeCapabilities } from "./discovery.js";
 import { claudeStyleHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
+
+// Claude Code's own memory: auto memory (~/.claude/projects/<cwd>/memory) and its background consolidation
+const CLAUDE_NATIVE_MEMORY_OFF_SETTINGS = { autoMemoryEnabled: false, autoDreamEnabled: false };
+const CLAUDE_NATIVE_MEMORY_OFF_ENV = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
 
 export class ClaudeEngineAdapter implements EngineAdapter {
   readonly type = "claude" as const;
@@ -55,6 +60,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     mkdirSync(sessionDir, { recursive: true });
 
     // Inject system prompt & skills into CLAUDE.md in workspace and via --append-system-prompt
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -65,11 +71,15 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       identity,
       backgroundJobs: this.config.backgroundJobs,
       steer: true,
+      memory,
     });
     const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
     if (promptContent) {
       writeFileSync(join(sessionDir, "CLAUDE.md"), promptContent);
     }
+    // Claude reads CLAUDE.md when it starts, resumed conversations included
+    markMemorySeen(session, "claude", memory);
+    const nativeMemoryOff = !this.config.nativeMemory;
 
     const args = [
       "-p",
@@ -78,8 +88,12 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       "--verbose",
       "--permission-mode", "bypassPermissions",
       // Hooks that relay messages sent during a turn into it
-      "--settings", JSON.stringify(claudeStyleHooks("claude")),
+      "--settings", JSON.stringify({ ...claudeStyleHooks("claude"), ...(nativeMemoryOff ? CLAUDE_NATIVE_MEMORY_OFF_SETTINGS : {}) }),
     ];
+    if (memory) {
+      // One directory per flag: the option is variadic and would swallow a positional argument after it
+      args.push("--add-dir", memory.chat.dir, "--add-dir", memory.bot.dir);
+    }
 
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);
@@ -112,7 +126,12 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     const proc = spawn(this.config.binary, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
+      env: {
+        ...process.env,
+        ...(nativeMemoryOff ? CLAUDE_NATIVE_MEMORY_OFF_ENV : {}),
+        POCKETAGENT_SESSION_ID: session.sessionId,
+        [STEER_URL_ENV]: steerHookUrl(this.config.apiPort),
+      },
     });
 
     const ep: EngineProcess = {
@@ -170,6 +189,10 @@ export class ClaudeEngineAdapter implements EngineAdapter {
         );
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
+    }
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "claude");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
     }
 
     const payload = JSON.stringify({

@@ -48,6 +48,8 @@ bot runs on, so write it for a reader who has never seen this conversation.
 - Things you said yourself that were not confirmed by a person or by a tool result.
 
 ### How
+- Save a correction or preference as soon as you get it, in the same turn. A background review may catch what you
+  miss, but it only writes this chat's memory and only after the chat goes quiet.
 - Before writing, check the index below for a memory on the same subject: update it rather than adding a second
   one. If a memory turns out to be wrong, fix or delete it.
 - One fact per file, a short kebab-case file name. Convert relative dates ("明天", "上周") to absolute dates.

@@ -35,6 +35,9 @@ import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
 import { buildGroupContext } from "./group-context.js";
 import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
+import type { MemoryConfig } from "../config/schema.js";
+import { MemoryStore } from "../memory/store.js";
+import { MemoryAutopilot, type SidePurpose } from "../memory/auto.js";
 
 const SESSIONS_PER_PAGE = 10;
 
@@ -135,6 +138,8 @@ export class BotInstance {
   // Scheduled runs and side questions running now, in sessions of their own that the session manager does not keep
   private sideRuns = new Map<string, { chatId: string; channelType: string }>();
   private steerMailbox?: SteerMailbox;
+  // Background memory upkeep: recall by alias, review of finished turns, daily consolidation
+  private memoryAuto?: MemoryAutopilot;
 
   constructor(opts: {
     botConfig: ResolvedBotConfig;
@@ -146,6 +151,7 @@ export class BotInstance {
     scheduler?: Scheduler;
     jobs?: JobManager;
     steerMailbox?: SteerMailbox;
+    memorySettings?: () => MemoryConfig;
   }) {
     this.config = opts.botConfig;
     this.engineManager = opts.engineManager;
@@ -161,6 +167,22 @@ export class BotInstance {
     const sessionStore = new SessionStore(join(opts.dataDir, "sessions", this.botId));
     this.sessionManager = new SessionManager(sessionStore);
     this.sessionManager.loadAll();
+
+    if (opts.memorySettings) {
+      this.memoryAuto = new MemoryAutopilot({
+        store: new MemoryStore(join(opts.dataDir, "memory")),
+        botId: this.botId,
+        log: this.log,
+        settings: opts.memorySettings,
+        timezone: () => this.scheduler?.timezone() ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        runSide: (run) => this.runMemorySide(run, opts.memorySettings!()),
+        findSession: (sessionId) => this.sessionManager.findSession(sessionId),
+        saveCursor: async (session, turnId) => {
+          session.memoryCursor = turnId;
+          await this.sessionManager.flush(session.chatId);
+        },
+      });
+    }
 
     const pairingPath = join(opts.dataDir, "credentials", this.botId, "telegram-pairing.json");
     this.pairingManager = new PairingManager(pairingPath);
@@ -370,6 +392,7 @@ export class BotInstance {
   }
 
   async stop(): Promise<void> {
+    this.memoryAuto?.stop();
     if (this.telegram) await this.telegram.stop();
     if (this.discord) await this.discord.stop();
     await this.sessionManager.flushAll();
@@ -1436,6 +1459,53 @@ export class BotInstance {
     }
   }
 
+  /**
+   * Runs a memory review or consolidation in a session of its own (see memory/auto.ts) and returns its reply.
+   * Nothing is posted: the session is not registered as a side run, so it cannot send messages either.
+   */
+  private async runMemorySide(
+    run: { chatId: string; channelType: string; isGroup: boolean; purpose: SidePurpose; prompt: string; timeoutMs: number },
+    settings: MemoryConfig,
+  ): Promise<string> {
+    const engine = settings.auto.engine ?? this.config.engine;
+    const useBotDefaults = engine === this.config.engine;
+    const model = settings.auto.model ?? (useBotDefaults ? this.config.model : undefined);
+    const effort = settings.auto.effort ?? (useBotDefaults ? this.config.effort : undefined);
+    const session: Session = {
+      sessionId: `memory-${run.chatId}`,
+      chatId: run.chatId,
+      channelType: run.channelType,
+      activeEngine: engine,
+      model,
+      effort,
+      engineModels: model ? { [engine]: model } : {},
+      engineEfforts: effort ? { [engine]: effort } : {},
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      title: `Memory ${run.purpose}`,
+      isActive: false,
+      sessionNum: 0,
+      isGroup: run.isGroup,
+      turns: [],
+    };
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }, run.timeoutMs);
+    try {
+      const response = await this.collectResponse(session, run.prompt);
+      if (timedOut) throw new Error(`memory ${run.purpose} timed out after ${Math.round(run.timeoutMs / 1000)} s`);
+      if (response.isError && response.errorMessage) throw new Error(response.errorMessage);
+      return response.finalText.trim() ? response.finalText : response.text;
+    } finally {
+      clearTimeout(timer);
+      // Every run starts from a clean context
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }
+  }
+
   private buildCronSession(job: CronJob): Session {
     const engine = job.engine ?? this.config.engine;
     // The bot's model/effort defaults belong to its default engine
@@ -1747,7 +1817,8 @@ export class BotInstance {
       session.lastContextMessageId = msg.messageId;
     }
 
-    const promptText = `${contextBlock}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
+    const recalled = this.memoryAuto?.recall(session.sessionId, msg.chatId, `${msg.text}\n${msg.replyText ?? ""}`) ?? "";
+    const promptText = `${contextBlock}${recalled}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
 
     // Record turn in session history
     this.sessionManager.addTurn(session.sessionId, {
@@ -1788,6 +1859,7 @@ export class BotInstance {
 
       session.lastEngine = session.activeEngine;
       await this.sessionManager.flush(msg.chatId);
+      this.memoryAuto?.noteTurn(session);
       // The agent may have said everything through the send-message API and ends the turn without a reply
       if (isSilentTurn(response)) {
         await tracker.discard();

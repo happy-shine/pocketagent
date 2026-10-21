@@ -47,6 +47,8 @@ export interface Session {
 
   // Track last message ID injected into session context for group chats
   lastContextMessageId?: string;
+  // Last turn the background memory review has read (see memory/auto.ts)
+  memoryCursor?: string;
 }
 
 export interface ChatSessionState {

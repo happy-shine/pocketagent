@@ -177,6 +177,7 @@ export class Gateway {
         scheduler: this.scheduler,
         jobs: this.jobManager,
         steerMailbox: this.steerMailbox,
+        memorySettings: () => this.config.memory,
       });
       this.bots.set(bot.botId, bot);
     }
@@ -377,6 +378,7 @@ export class Gateway {
             scheduler: this.scheduler,
             jobs: this.jobManager,
             steerMailbox: this.steerMailbox,
+            memorySettings: () => this.config.memory,
           });
           await newBot.start();
           this.bots.set(newBot.botId, newBot);

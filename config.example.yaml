@@ -47,3 +47,21 @@ bots:
 # agentMessages:
 #   maxPerTurn: 12              # per session and turn; further sends get HTTP 429
 #   minIntervalMs: 800          # gap between two of them; faster calls wait
+
+# Optional: memory shared by every engine (~/.pocketagent/memory, /api/memory)
+# memory:
+#   enabled: true
+#   maxIndexLines: 150          # lines of each scope's index put in the prompt
+#   auto:                       # background upkeep of each chat's memory
+#     enabled: true
+#     engine: claude            # defaults to the bot's engine
+#     model: sonnet             # defaults to the bot's model when the engine is the bot's
+#     idleSeconds: 120          # quiet time in a chat before its new turns are reviewed
+#     maxPendingTurns: 12       # review at once when this many turns are waiting
+#     timeoutMinutes: 5
+#     consolidateHours: 24      # merge duplicates and drop expired memories at most this often
+#     consolidateMinMemories: 6
+#   recall:                     # memories whose metadata.aliases appear in a message join that turn in full
+#     enabled: true
+#     maxPerTurn: 3
+#     maxChars: 1500

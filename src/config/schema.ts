@@ -118,10 +118,33 @@ const agentMessagesSchema = z.object({
   minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
 });
 
+// Background upkeep of chat memory: a side session reviews finished turns and saves what they taught, and
+// once a day tidies the chat's memories (merges duplicates, drops expired ones)
+const memoryAutoSchema = z.object({
+  enabled: z.boolean().default(true),
+  engine: EngineTypeSchema.optional(), // defaults to the bot's engine
+  model: z.string().optional(), // defaults to the bot's model when the engine is the bot's
+  effort: z.string().optional(),
+  idleSeconds: z.number().int().positive().default(120), // quiet time in a chat before its new turns are reviewed
+  maxPendingTurns: z.number().int().positive().default(12), // review at once when this many turns are waiting
+  timeoutMinutes: z.number().positive().default(5),
+  consolidateHours: z.number().positive().default(24), // tidy a chat's memories at most this often
+  consolidateMinMemories: z.number().int().positive().default(6), // and only once it has this many
+});
+
+// Memories whose metadata.aliases appear in a message are added to that turn in full
+const memoryRecallSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxPerTurn: z.number().int().positive().default(3),
+  maxChars: z.number().int().positive().default(1500), // per memory
+});
+
 // Memory shared by every engine: ~/.pocketagent/memory, read through /api/memory and the system prompt
 const memorySchema = z.object({
   enabled: z.boolean().default(true),
   maxIndexLines: z.number().int().positive().default(150), // lines of each scope's index put in the prompt
+  auto: memoryAutoSchema.default(memoryAutoSchema.parse({})),
+  recall: memoryRecallSchema.default(memoryRecallSchema.parse({})),
 });
 
 const authSchema = z.object({
@@ -223,3 +246,4 @@ export type TelegramChannelConfig = z.infer<typeof telegramChannelSchema>;
 export type DiscordChannelConfig = z.infer<typeof discordChannelSchema>;
 export type EnginesConfig = z.infer<typeof enginesSchema>;
 export type CustomModel = z.infer<typeof customModelSchema>;
+export type MemoryConfig = z.infer<typeof memorySchema>;

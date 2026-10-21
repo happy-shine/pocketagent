@@ -36,7 +36,19 @@ export interface MemoryEntry {
   description: string;
   type?: string;
   aliases: string[];
+  // metadata.expires (YYYY-MM-DD): positions and theses that go stale
+  expires?: string;
   updatedAt: number;
+}
+
+export interface Tombstone {
+  scope: MemoryScope;
+  botId: string;
+  chatId?: string;
+  file: string;
+  name?: string;
+  reason: string;
+  at: string;
 }
 
 export class MemoryError extends Error {}
@@ -64,8 +76,8 @@ export function findSecret(text: string): boolean {
   return SECRET_PATTERNS.some((re) => re.test(text));
 }
 
-export function parseFrontmatter(text: string): { name?: string; description?: string; type?: string; aliases: string[] } {
-  const out: { name?: string; description?: string; type?: string; aliases: string[] } = { aliases: [] };
+export function parseFrontmatter(text: string): { name?: string; description?: string; type?: string; aliases: string[]; expires?: string } {
+  const out: { name?: string; description?: string; type?: string; aliases: string[]; expires?: string } = { aliases: [] };
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
   if (!m) return out;
   const unquote = (v: string) => v.trim().replace(/^(["'])(.*)\1$/, "$2");
@@ -76,6 +88,7 @@ export function parseFrontmatter(text: string): { name?: string; description?: s
     if (!indent && key === "name") out.name = unquote(value);
     else if (!indent && key === "description") out.description = unquote(value);
     else if (key === "type") out.type = unquote(value);
+    else if (key === "expires") out.expires = unquote(value) || undefined;
     else if (key === "aliases") {
       const list = /^\[(.*)\]$/.exec(value.trim());
       if (list) out.aliases = list[1].split(",").map(unquote).filter(Boolean);
@@ -216,10 +229,36 @@ export class MemoryStore {
         description: fm.description || "",
         type: fm.type,
         aliases: fm.aliases,
+        expires: fm.expires,
         updatedAt: st.mtimeMs,
       });
     }
     return entries.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  /** The raw text of a memory file. */
+  readText(scope: MemoryScope, ref: ScopeRef, path: string): string {
+    return this.read(this.resolveFile(this.scopeDir(scope, ref), path), path);
+  }
+
+  /** Deletions recorded for a scope (newest last), so automatic writers do not bring a deleted memory back. */
+  tombstones(scope: MemoryScope, ref: ScopeRef): Tombstone[] {
+    const file = join(this.root, TOMBSTONES_FILE);
+    if (!existsSync(file)) return [];
+    const out: Tombstone[] = [];
+    for (const line of readFileSync(file, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const t = JSON.parse(line) as Tombstone;
+        if (t.scope !== scope) continue;
+        if (scope !== "owner" && t.botId !== ref.botId) continue;
+        if (scope === "chat" && t.chatId !== ref.chatId) continue;
+        out.push(t);
+      } catch {
+        // A damaged line must not hide the others
+      }
+    }
+    return out;
   }
 
   /** The scope's index text: one line per memory, capped. */

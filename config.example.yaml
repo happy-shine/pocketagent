@@ -43,6 +43,11 @@ bots:
 #   maxTimeoutMs: 86400000      # longest timeout the agent may ask for (24 h)
 #   historyLimit: 200           # finished jobs kept, with their logs
 
+# Optional: long-term memory shared by all engines (~/.pocketagent/memory, see /memory)
+# memory:
+#   enabled: true               # chat and bot memory in every engine's system prompt
+#   nativeEngineMemory: false   # keep Claude Code auto memory, Codex memories and Grok memory off
+
 # Optional: chat messages the agent sends itself during a turn (POST /api/send-message)
 # agentMessages:
 #   maxPerTurn: 12              # per session and turn; further sends get HTTP 429

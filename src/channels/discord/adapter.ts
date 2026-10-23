@@ -943,6 +943,9 @@ export class DiscordAdapter implements ChannelAdapter {
         .setDescription("List background jobs (long commands the agent handed off) and stop them or view their logs")
         .addStringOption((opt) => opt.setName("args").setDescription("stop|log <number>").setRequired(false)),
       new SlashCommandBuilder()
+        .setName("memory")
+        .setDescription("Show what the agent remembers across sessions and engines"),
+      new SlashCommandBuilder()
         .setName("help")
         .setDescription("Show command help message"),
     ];

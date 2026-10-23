@@ -118,8 +118,6 @@ const agentMessagesSchema = z.object({
   minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
 });
 
-// Background upkeep of chat memory: a side session reviews finished turns and saves what they taught, and
-// once a day tidies the chat's memories (merges duplicates, drops expired ones)
 const memoryAutoSchema = z.object({
   enabled: z.boolean().default(true),
   engine: EngineTypeSchema.optional(), // defaults to the bot's engine
@@ -139,10 +137,12 @@ const memoryRecallSchema = z.object({
   maxChars: z.number().int().positive().default(1500), // per memory
 });
 
-// Memory shared by every engine: ~/.pocketagent/memory, read through /api/memory and the system prompt
+// Long-term memory shared by all engines (src/memory), kept under <dataDir>/memory
 const memorySchema = z.object({
   enabled: z.boolean().default(true),
-  maxIndexLines: z.number().int().positive().default(150), // lines of each scope's index put in the prompt
+  // Leave the CLIs' own memory features (Claude Code auto memory, Codex memories, Grok memory) on. Off by default:
+  // with the shared memory on, the agent would keep two diverging memories
+  nativeEngineMemory: z.boolean().default(false),
   auto: memoryAutoSchema.default(memoryAutoSchema.parse({})),
   recall: memoryRecallSchema.default(memoryRecallSchema.parse({})),
 });

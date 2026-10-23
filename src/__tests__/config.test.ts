@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import { parseConfig, resolveBots } from "../config/loader.js";
 
 describe("PocketAgent Config Loader & Schema", () => {
+  it("turns the shared memory on and the engines' own memory off by default", () => {
+    expect(parseConfig("bots: []\n").memory).toMatchObject({ enabled: true, nativeEngineMemory: false, auto: { enabled: true }, recall: { enabled: true } });
+    expect(parseConfig("memory:\n  enabled: false\n  nativeEngineMemory: true\n").memory).toMatchObject({ enabled: false, nativeEngineMemory: true });
+  });
+
   it("parses modern PocketAgent config with 3-in-1 engines and bots", () => {
     const yaml = `
 gateway:

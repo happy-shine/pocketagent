@@ -30,8 +30,15 @@ describe("Grok stream parser", () => {
       "--rules", "SYSTEM",
       "--model", "grok-4.7",
       "--reasoning-effort", "high",
+      "--no-memory",
       "--disable-web-search",
     ]);
+  });
+
+  it("keeps Grok's own memory off unless asked to leave it on, resumed sessions included", () => {
+    const base = { binary: "grok", promptFile: "/tmp/p.md", extraArgs: [] };
+    expect(buildGrokSpawnArgs({ ...base, resumeSessionId: "abc" }).args).toContain("--no-memory");
+    expect(buildGrokSpawnArgs({ ...base, nativeMemory: true }).args).not.toContain("--no-memory");
   });
 
   it("resumes without re-sending session id or rules", () => {

@@ -11,7 +11,14 @@ import { SkillRegistry } from "../skills/index.js";
 import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 import { getDashboardHtml } from "./dashboard-html.js";
 import { DEFAULT_SEND_LIMITS, SendLimiter, type SendLimits } from "./send-limiter.js";
-import { MemoryError, MemoryStore, type MemoryScope } from "../memory/store.js";
+import {
+  deleteMemoryFile,
+  listMemoryFiles,
+  memoryDirFor,
+  readIndex,
+  readMemoryFile,
+  type MemoryScope,
+} from "../memory/store.js";
 
 export interface ApiServerConfig {
   port: number;
@@ -45,6 +52,8 @@ export interface ApiServerConfig {
     groups: Record<string, any>;
   }>;
   getEngineManager?: () => EngineManager;
+  // Root of the shared long-term memory; undefined when it is turned off
+  getMemoryDir?: () => string | undefined;
   getPendingPairings?: () => Array<{ botName: string; botId: string; req: any }>;
   approvePairing?: (code: string) => Promise<{ ok: boolean; senderId?: string; botName?: string; error?: string }>;
   getAllSessions?: () => any[];
@@ -185,8 +194,6 @@ export class ApiServer {
         await this.handleSendFile(req, res, url);
       } else if (req.method === "POST" && url.pathname === "/api/send-message") {
         await this.handleSendMessage(req, res, url);
-      } else if (url.pathname === "/api/memory") {
-        await this.handleMemory(req, res, url);
       } else if (url.pathname === "/api/soul") {
         await this.handleSoul(req, res, url);
       } else if (req.method === "GET" && url.pathname === "/api/chat-history") {
@@ -215,6 +222,8 @@ export class ApiServer {
         await this.handleDeleteWorkspace(req, res, url);
       } else if (req.method === "DELETE" && url.pathname === "/api/workspaces") {
         await this.handleDeleteWorkspace(req, res, url);
+      } else if (url.pathname === "/api/memory" || url.pathname === "/api/memory/file") {
+        await this.handleMemory(req, res, url);
       } else if (url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/")) {
         await this.handleCron(req, res, url);
       } else if (url.pathname === "/api/jobs" || url.pathname.startsWith("/api/jobs/")) {
@@ -664,6 +673,68 @@ export class ApiServer {
   }
 
   /** Called by the CLIs' steer hooks; any answer other than a delivery must be `{}` so the agent carries on. */
+  /**
+   * The shared memory, for people rather than agents (agents use their file tools):
+   * GET /api/memory lists a bot's stores, GET|DELETE /api/memory/file reads or deletes one memory.
+   * Params: bot_id, and for chat memory chat_id with channel (telegram|discord); scope=bot|chat picks the store.
+   */
+  private async handleMemory(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    };
+    const root = this.config.getMemoryDir?.();
+    if (!root) {
+      send(404, { ok: false, error: "Shared memory is turned off (memory.enabled: false)" });
+      return;
+    }
+    const params = await readParams(req, url);
+    const botId = params.get("bot_id");
+    const chatId = params.get("chat_id");
+    const channelType = params.get("channel") ?? "telegram";
+    if (!botId) {
+      send(400, { ok: false, error: "Missing bot_id" });
+      return;
+    }
+    const owner = { botId, chatId: chatId ?? "", channelType };
+    const store = (scope: MemoryScope) => {
+      const dir = memoryDirFor(root, owner, scope);
+      const index = readIndex(dir);
+      return { scope, dir, index: index.text, truncated: index.truncated, files: listMemoryFiles(dir) };
+    };
+
+    if (url.pathname === "/api/memory") {
+      if (req.method !== "GET") {
+        send(405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+      send(200, { ok: true, bot: store("bot"), chat: chatId ? store("chat") : undefined });
+      return;
+    }
+
+    const scope = params.get("scope") === "bot" ? "bot" : "chat";
+    const file = params.get("file") ?? "";
+    if (scope === "chat" && !chatId) {
+      send(400, { ok: false, error: "Missing chat_id (or use scope=bot)" });
+      return;
+    }
+    const dir = memoryDirFor(root, owner, scope);
+    if (req.method === "GET") {
+      const content = readMemoryFile(dir, file);
+      if (content === null) send(404, { ok: false, error: `No memory file "${file}"` });
+      else send(200, { ok: true, scope, file, content });
+    } else if (req.method === "DELETE") {
+      if (!deleteMemoryFile(dir, file)) {
+        send(404, { ok: false, error: `No memory file "${file}"` });
+        return;
+      }
+      this.log.info({ botId, chatId, scope, file }, "Memory file deleted");
+      send(200, { ok: true });
+    } else {
+      send(405, { ok: false, error: "Method not allowed" });
+    }
+  }
+
   private async handleSteerHook(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const header = req.headers["x-pocketagent-session"];
     const sessionId = (Array.isArray(header) ? header[0] : header)?.trim();
@@ -737,97 +808,6 @@ export class ApiServer {
       sendResult(jobs.remove(id));
     } else {
       send(404, { ok: false, error: `No such jobs endpoint: ${route}` });
-    }
-  }
-
-  /**
-   * Shared memory, with the file commands of Anthropic's memory tool:
-   *   GET    ?bot_id&chat_id&scope[&path][&view_range=a,b]                  list a scope or view a memory
-   *   POST   {bot_id, chat_id, scope, command, path, ...}                     create | str_replace | insert | rename | delete
-   *   DELETE ?bot_id&chat_id&scope&path[&reason]                             delete
-   * scope is owner | bot | chat (chat needs chat_id).
-   */
-  private async handleMemory(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const reply = (status: number, body: Record<string, unknown>) => {
-      res.writeHead(status, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(body));
-    };
-    if (this.config.getConfig?.().memory?.enabled === false) {
-      reply(404, { error: "Memory is disabled in config (memory.enabled: false)" });
-      return;
-    }
-    const store = new MemoryStore(join(this.config.dataDir, "memory"));
-
-    let params: Record<string, unknown>;
-    if (req.method === "POST") {
-      try {
-        params = JSON.parse(await readBody(req)) as Record<string, unknown>;
-      } catch {
-        reply(400, { error: "Invalid JSON body" });
-        return;
-      }
-    } else {
-      params = Object.fromEntries(url.searchParams.entries());
-    }
-    const str = (k: string) => (params[k] === undefined || params[k] === null ? undefined : String(params[k]));
-    const botId = str("bot_id");
-    const chatId = str("chat_id");
-    const scope = (str("scope") ?? "chat") as MemoryScope;
-    if (!botId) {
-      reply(400, { error: "Missing bot_id" });
-      return;
-    }
-    const ref = { botId, chatId };
-
-    try {
-      if (req.method === "GET") {
-        const range = str("view_range")?.split(",").map(Number);
-        const content = store.view(scope, ref, str("path"), range && range.length === 2 ? [range[0], range[1]] : undefined);
-        reply(200, { ok: true, scope, content });
-        return;
-      }
-      if (req.method === "DELETE") {
-        const path = str("path");
-        if (!path) throw new MemoryError("Missing path");
-        const file = store.delete(scope, ref, path, str("reason"));
-        this.log.info({ botId, chatId, scope, file }, "Memory deleted");
-        reply(200, { ok: true, scope, path: file });
-        return;
-      }
-      if (req.method === "POST") {
-        const command = str("command");
-        const path = str("path") ?? "";
-        let file: string;
-        switch (command) {
-          case "create":
-            file = store.create(scope, ref, path, str("file_text") ?? "");
-            break;
-          case "str_replace":
-            file = store.strReplace(scope, ref, path, str("old_str") ?? "", str("new_str") ?? "");
-            break;
-          case "insert":
-            file = store.insert(scope, ref, path, Number(params.insert_line), str("insert_text") ?? "");
-            break;
-          case "rename":
-            file = store.rename(scope, ref, str("old_path") ?? path, str("new_path") ?? "");
-            break;
-          case "delete":
-            file = store.delete(scope, ref, path, str("reason"));
-            break;
-          default:
-            throw new MemoryError("command must be create, str_replace, insert, rename or delete");
-        }
-        this.log.info({ botId, chatId, scope, command, file }, "Memory updated");
-        reply(200, { ok: true, scope, path: file });
-        return;
-      }
-      reply(405, { error: "Method not allowed" });
-    } catch (err) {
-      if (err instanceof MemoryError) {
-        reply(400, { error: err.message });
-        return;
-      }
-      throw err;
     }
   }
 

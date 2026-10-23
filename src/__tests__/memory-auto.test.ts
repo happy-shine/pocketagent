@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import type { MemoryConfig } from "../config/schema.js";
 import type { Session, SessionHistoryItem } from "../sessions/types.js";
-import { MemoryStore } from "../memory/store.js";
+import { MemoryWriter } from "../memory/writer.js";
 import {
   MemoryAutopilot,
   applyMemoryOps,
@@ -21,7 +21,7 @@ const memo = (name: string, description: string, extra = "", type = "reference")
 
 const settings = (over: Partial<MemoryConfig["auto"]> = {}, recall: Partial<MemoryConfig["recall"]> = {}): MemoryConfig => ({
   enabled: true,
-  maxIndexLines: 150,
+  nativeEngineMemory: false,
   auto: {
     enabled: true,
     idleSeconds: 120,
@@ -83,12 +83,12 @@ describe("parseMemoryOps", () => {
 
 describe("applyMemoryOps", () => {
   let root: string;
-  let store: MemoryStore;
-  const ref = { botId: "bot1", chatId: "chatA" };
+  let store: MemoryWriter;
+  const ref = { botId: "bot1", chatId: "chatA", channelType: "discord" };
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "pa-auto-"));
-    store = new MemoryStore(root);
+    store = new MemoryWriter(root);
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -106,7 +106,6 @@ describe("applyMemoryOps", () => {
 
   it("only writes the chat scope", () => {
     applyMemoryOps(store, ref, [{ action: "write", file: "a.md", content: memo("a", "fact") }]);
-    expect(store.list("owner", ref)).toEqual([]);
     expect(store.list("bot", ref)).toEqual([]);
   });
 
@@ -132,7 +131,25 @@ describe("applyMemoryOps", () => {
     expect(result.deleted).toEqual(["old.md"]);
     expect(result.skipped).toEqual([{ file: "never.md", why: "no such memory" }]);
     expect(store.tombstones("chat", ref)).toMatchObject([{ file: "old.md", reason: "incorrect" }]);
-    expect(store.tombstones("chat", { botId: "bot1", chatId: "chatB" })).toEqual([]);
+    expect(store.tombstones("chat", { botId: "bot1", chatId: "chatB", channelType: "discord" })).toEqual([]);
+  });
+
+  it("keeps the index lines agents wrote and updates its own", () => {
+    const dir = store.scopeDir("chat", ref);
+    store.create("chat", ref, "a.md", memo("a", "first"));
+    writeFileSync(join(dir, "MEMORY.md"), "- [Agent note](agent.md) — written by the agent\n" + readFileSync(join(dir, "MEMORY.md"), "utf-8"));
+    store.create("chat", ref, "a.md", memo("a", "second"));
+    const index = readFileSync(join(dir, "MEMORY.md"), "utf-8");
+    expect(index).toContain("- [Agent note](agent.md) — written by the agent");
+    expect(index.match(/\(a\.md\)/g)).toHaveLength(1);
+    expect(index).toContain("second");
+    store.delete("chat", ref, "a.md", "obsolete");
+    expect(readFileSync(join(dir, "MEMORY.md"), "utf-8")).not.toContain("(a.md)");
+  });
+
+  it("writes into the stores of the shared memory", () => {
+    store.create("chat", ref, "a.md", memo("a", "fact"));
+    expect(existsSync(join(root, "bot1", "chats", "discord-chatA", "a.md"))).toBe(true);
   });
 
   it("drops memories whose expires date has passed", () => {
@@ -170,8 +187,8 @@ describe("buildReviewPrompt", () => {
   it("quotes existing memories, final deletions and the conversation", () => {
     const root = mkdtempSync(join(tmpdir(), "pa-auto-"));
     try {
-      const store = new MemoryStore(root);
-      const ref = { botId: "bot1", chatId: "chatA" };
+      const store = new MemoryWriter(root);
+      const ref = { botId: "bot1", chatId: "chatA", channelType: "discord" };
       store.create("chat", ref, "koru-alias.md", memo("koru-alias", "扣肉 = KORU"));
       store.create("chat", ref, "gone.md", memo("gone", "x"));
       store.delete("chat", ref, "gone.md", "user_request");
@@ -189,13 +206,13 @@ describe("buildReviewPrompt", () => {
 
 describe("MemoryAutopilot", () => {
   let root: string;
-  let store: MemoryStore;
-  const ref = { botId: "bot1", chatId: "chatA" };
+  let store: MemoryWriter;
+  const ref = { botId: "bot1", chatId: "chatA", channelType: "discord" };
   const log = pino({ level: "silent" });
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "pa-auto-"));
-    store = new MemoryStore(root);
+    store = new MemoryWriter(root);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -221,18 +238,18 @@ describe("MemoryAutopilot", () => {
     store.create("chat", ref, "koru-alias.md", memo("koru-alias", "扣肉 = KORU", "  aliases: [扣肉]\n"));
     const s = session([]);
     const p = pilot(s, async () => "");
-    const first = p.recall("s1", "chatA", "atri帮我买点扣肉");
+    const first = p.recall("s1", "chatA", "discord", "atri帮我买点扣肉");
     expect(first).toContain('<memory scope="chat" file="koru-alias.md">');
     expect(first).toContain("Body of koru-alias.");
-    expect(p.recall("s1", "chatA", "扣肉还要吗")).toBe("");
-    expect(p.recall("s2", "chatA", "扣肉")).toContain("koru-alias.md");
-    expect(p.recall("s1", "chatA", "nothing relevant")).toBe("");
+    expect(p.recall("s1", "chatA", "discord", "扣肉还要吗")).toBe("");
+    expect(p.recall("s2", "chatA", "discord", "扣肉")).toContain("koru-alias.md");
+    expect(p.recall("s1", "chatA", "discord", "nothing relevant")).toBe("");
   });
 
   it("does not recall when recall is off", () => {
     store.create("chat", ref, "koru-alias.md", memo("koru-alias", "扣肉 = KORU", "  aliases: [扣肉]\n"));
     const p = pilot(session([]), async () => "", settings({}, { enabled: false }));
-    expect(p.recall("s1", "chatA", "扣肉")).toBe("");
+    expect(p.recall("s1", "chatA", "discord", "扣肉")).toBe("");
   });
 
   it("reviews new turns, saves what they taught and moves the cursor", async () => {

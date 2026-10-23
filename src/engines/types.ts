@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { Session, EngineType } from "../sessions/types.js";
+import type { MemorySnapshot } from "../memory/store.js";
 
 export type { EngineType };
 
@@ -45,9 +46,10 @@ export interface EngineRuntimeConfig {
   customModels?: ModelInfo[];
   // Offer the background job skill to chat sessions
   backgroundJobs?: boolean;
-  // Offer the shared memory (rules, API and index snapshot) to chat sessions
-  memory?: boolean;
-  memoryMaxIndexLines?: number;
+  // Root of the shared long-term memory (src/memory); unset when it is turned off
+  memoryDir?: string;
+  // Leave the CLI's own memory feature on (it is turned off by default)
+  nativeMemory?: boolean;
   codex?: {
     sandbox: "read-only" | "workspace-write" | "danger-full-access";
     approvalPolicy: "untrusted" | "on-request" | "never";
@@ -72,6 +74,8 @@ export interface EngineProcess {
   lastActiveAt: number;
   idleTimer?: ReturnType<typeof setTimeout>;
   workspaceDir: string;
+  // The shared memory as written into the workspace's instruction file when the process was set up
+  promptMemory?: MemorySnapshot;
 }
 
 export interface EngineAdapter {

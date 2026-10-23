@@ -3,7 +3,8 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { MemoryConfig } from "../config/schema.js";
 import type { Session, SessionHistoryItem } from "../sessions/types.js";
-import { MemoryError, MemoryStore, parseFrontmatter, type MemoryScope, type ScopeRef } from "./store.js";
+import type { MemoryScope } from "./store.js";
+import { MemoryError, MemoryWriter, parseMemoryMeta, type ScopeRef } from "./writer.js";
 
 /**
  * Automatic upkeep of shared memory, so it no longer depends on the chat agent remembering to save things:
@@ -11,8 +12,8 @@ import { MemoryError, MemoryStore, parseFrontmatter, type MemoryScope, type Scop
  *   review       once a chat goes quiet, a side session reads its new turns and saves what they taught
  *   consolidate  at most once a day, expired memories are dropped and a side session merges duplicates
  *
- * Automatic writers only touch the chat scope: anyone in a group can talk, and the owner's preferences and the
- * bot's lessons should not be set by whoever happens to speak. The agent can still write any scope itself.
+ * Automatic writers only touch the chat store: anyone in a group can talk, and the bot's lessons should not be
+ * set by whoever happens to speak. The agent can still write either store itself.
  */
 
 export type MemoryOp =
@@ -80,7 +81,7 @@ export function parseMemoryOps(output: string): MemoryOp[] | null {
 }
 
 /** Applies a side session's operations to the chat scope, skipping anything malformed or deleted for good. */
-export function applyMemoryOps(store: MemoryStore, ref: ScopeRef, ops: MemoryOp[]): ApplyResult {
+export function applyMemoryOps(store: MemoryWriter, ref: ScopeRef, ops: MemoryOp[]): ApplyResult {
   const result: ApplyResult = { written: [], deleted: [], skipped: [] };
   const existing = new Set(store.list("chat", ref).map((e) => e.file));
   const final = new Set(store.tombstones("chat", ref).filter((t) => FINAL_TOMBSTONES.has(t.reason)).map((t) => t.file));
@@ -109,7 +110,7 @@ export function applyMemoryOps(store: MemoryStore, ref: ScopeRef, ops: MemoryOp[
       result.skipped.push({ file: op.file, why: "deleted earlier for good" });
       continue;
     }
-    const fm = parseFrontmatter(op.content);
+    const fm = parseMemoryMeta(op.content);
     if (!fm.name || !fm.description || !fm.type || !MEMORY_TYPES.has(fm.type)) {
       result.skipped.push({ file: op.file, why: "frontmatter needs name, description and a known metadata.type" });
       continue;
@@ -154,7 +155,7 @@ function localTime(tz: string, ms: number): string {
 }
 
 /** Deletes memories whose metadata.expires date has passed. */
-export function dropExpired(store: MemoryStore, ref: ScopeRef, today: string): string[] {
+export function dropExpired(store: MemoryWriter, ref: ScopeRef, today: string): string[] {
   const dropped: string[] = [];
   for (const e of store.list("chat", ref)) {
     if (e.expires && /^\d{4}-\d{2}-\d{2}$/.test(e.expires) && e.expires < today) {
@@ -200,7 +201,7 @@ export function transcriptSince(
   };
 }
 
-function quoteScope(store: MemoryStore, ref: ScopeRef): string {
+function quoteScope(store: MemoryWriter, ref: ScopeRef): string {
   const entries = store.list("chat", ref);
   if (entries.length === 0) return "(none yet)";
   const out: string[] = [];
@@ -222,7 +223,7 @@ function quoteScope(store: MemoryStore, ref: ScopeRef): string {
   return out.join("\n\n");
 }
 
-function indexLines(store: MemoryStore, scope: MemoryScope, ref: ScopeRef): string {
+function indexLines(store: MemoryWriter, scope: MemoryScope, ref: ScopeRef): string {
   try {
     return store.indexText(scope, ref) || "(empty)";
   } catch {
@@ -252,7 +253,7 @@ const SIDE_RULE =
   "tools, run commands, use any API or send messages.";
 
 export function buildReviewPrompt(input: {
-  store: MemoryStore;
+  store: MemoryWriter;
   ref: ScopeRef;
   today: string;
   tz: string;
@@ -284,7 +285,6 @@ When the conversation adds to or corrects one of these, write that file again in
 ${quoteScope(store, ref)}
 
 Saved elsewhere already (read-only; do not copy these into the chat):
-${indexLines(store, "owner", ref)}
 ${indexLines(store, "bot", ref)}
 ${tombstones.length ? `\nDeleted for good; do not write these again:\n${tombstones.join("\n")}\n` : ""}
 ## File format
@@ -298,7 +298,7 @@ ${input.transcript}
 `;
 }
 
-export function buildConsolidationPrompt(input: { store: MemoryStore; ref: ScopeRef; today: string; tz: string }): string {
+export function buildConsolidationPrompt(input: { store: MemoryWriter; ref: ScopeRef; today: string; tz: string }): string {
   return `# Memory consolidation
 You tidy the long-term memory of a chat assistant. ${SIDE_RULE}
 
@@ -352,7 +352,7 @@ interface AutoState {
 }
 
 export interface MemoryAutopilotOptions {
-  store: MemoryStore;
+  store: MemoryWriter;
   botId: string;
   log: Logger;
   settings: () => MemoryConfig;
@@ -385,13 +385,12 @@ export class MemoryAutopilot {
   }
 
   /** Memories called up by words in a message, not yet shown in this session. */
-  recall(sessionId: string, chatId: string, text: string): string {
+  recall(sessionId: string, chatId: string, channelType: string, text: string): string {
     const s = this.opts.settings();
     if (!s.enabled || !s.recall.enabled || !text.trim()) return "";
-    const ref = { botId: this.opts.botId, chatId };
+    const ref = { botId: this.opts.botId, chatId, channelType };
     const scopes: Array<[MemoryScope, ScopeRef]> = [
       ["chat", ref],
-      ["owner", ref],
       ["bot", ref],
     ];
     let hits;
@@ -460,7 +459,7 @@ export class MemoryAutopilot {
     const tz = this.opts.timezone();
     const { text, lastId, userTurns } = transcriptSince(session.turns, session.memoryCursor, tz);
     if (userTurns === 0 || !lastId) return;
-    const ref = { botId: this.opts.botId, chatId: session.chatId };
+    const ref = { botId: this.opts.botId, chatId: session.chatId, channelType: session.channelType };
     const prompt = buildReviewPrompt({ store: this.opts.store, ref, today: localDate(tz), tz, transcript: text });
 
     // An engine failure leaves the cursor where it was, so the next turn retries these
@@ -487,7 +486,7 @@ export class MemoryAutopilot {
   private async consolidateIfDue(session: Session): Promise<void> {
     const auto = this.opts.settings().auto;
     const tz = this.opts.timezone();
-    const ref = { botId: this.opts.botId, chatId: session.chatId };
+    const ref = { botId: this.opts.botId, chatId: session.chatId, channelType: session.channelType };
     const dir = this.opts.store.scopeDir("chat", ref);
     const statePath = join(dir, STATE_FILE);
     const state = readState(statePath);

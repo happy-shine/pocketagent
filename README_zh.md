@@ -57,6 +57,7 @@
 
 - **跨端随行，随地交互**：直接以本地真实进程运行 CLI，拥有完整的系统权限与网络访问。不只是写代码改 Bug，还能随时随地读文档读截图、生成图片、检索实时新闻、排查服务日志与跑数据分析。
 - **四引擎无缝切换 (`/engine`)**：在同一个会话中随时切换 Claude Code、Codex、Antigravity 或 Grok。PocketAgent 会自动打包过往对话脉络与修改过的文件列表，在切换时无缝移交上下文，无需重复交代背景。
+- **四引擎共享长期记忆 (`/memory`)**：agent 记住的关于你和项目的事，以纯 Markdown 文件保存，Claude、Codex、Antigravity 与 Grok 共同读写，跨会话保留。各 CLI 自带的记忆功能已关闭，不会出现重复或互相矛盾的记忆。
 - **4-CLI 技能互通中心**：统一管理自定义技能（位于 `~/.pocketagent/skills/`）。写好的技能会自动软链分发给 Claude、Codex、AGY 和 Grok，四端都能用，避免重复开发维护。
 - **多 Bot、群聊协同与多渠道支持**：单实例支持同时挂载多个 Telegram 和 Discord Bot，支持私聊与群组。群成员可实时共享会话上下文与宿主机 CLI 账号配额；每个 Bot 可单独指定默认引擎、模型、推理强度（effort）及专属 System Prompt（`SOUL.md`）。
 - **本地 Web 管理后台**：内置极简风格的 Web 控制台（`http://127.0.0.1:18790`），支持配置热重载（`Cmd+S`）、会话与工作区文件树浏览、历史轮次追溯以及技能在线编辑与同步。
@@ -177,6 +178,7 @@ pa pairing approve 123456
 | `/stop` | 立即中断当前正在运行的 CLI 轮次 |
 | `/jobs` | 查看后台任务（最新输出、停止 / 日志按钮）；`/jobs log\|stop <序号>` |
 | `/cron` | 列出定时任务，附带“立即运行 / 暂停 / 恢复”按钮；`/cron rm <序号>` 删除 |
+| `/memory` | 查看 agent 记住的内容：本聊天的记忆和 bot 跨聊天的记忆 |
 | `/help` | 显示指令帮助菜单 |
 
 ---
@@ -213,6 +215,17 @@ pa pairing approve 123456
 - **静默结束**：任何聊天轮次中，最终回复恰好是 `[SILENT]`（或最后一行是 `[SILENT]`）时不再推送任何内容，agent 可以全部通过自己发的消息来表达。
 - **中间文本**：agent 在调用工具前写下的文字（如“先建 worktree。”）会立即作为单独一条消息发出，并回复你的消息，而不是等整轮结束再一起发。3 秒内到达的多段会合并成一条，进度消息会移到它们下方。最终回复只包含最后一次工具调用之后的文字；不调用工具的轮次与以前一样。若想让某个 bot 把所有文字都留到最终回复，在该 bot 上设置 `interimText: final`。两种模式下，不同的文字段之间都以空行分隔。
 - **防刷屏**：每个会话每轮最多 12 条，间隔至少 800 ms（太快的调用会等待而不是失败）；超出上限返回 429。长文本按最终回复的同样规则拆分。可在 `config.yaml` 的 `agentMessages:` 段调整（见 `config.example.yaml`）。
+
+## 长期记忆
+
+所有引擎共用同一份长期记忆：今天 Claude Code 记下的事，明天换成 Codex、Antigravity 或 Grok、开了新会话也都知道。各 CLI 自带的记忆功能会被关闭，只保留这一份。
+
+- **纯文件**：记忆是 `~/.pocketagent/memory/<bot>/` 下的 Markdown 文件，一个文件一条事实，带简短的 frontmatter（`name`、`description`、`type`：`user` / `feedback` / `project` / `reference`），另有一个索引 `MEMORY.md`，每条记忆一行。可以像普通文件一样查看和修改。
+- **两个存储**：*聊天记忆*（`chats/<平台>-<聊天 id>/`）只属于一个聊天，默认存这里；*bot 记忆*（`bot/`）存放对该 bot 所有聊天都适用的内容，在群聊中只读，群里的人改不了 bot 在别处记住的东西。
+- **agent 如何使用**：两个索引都会放进每个引擎的系统提示（各最多 200 行 / 25 KB）；索引行看起来相关时 agent 再打开对应的记忆文件，并用自己的文件工具写入记忆。提示要求它只保存以后的会话需要、而文件和历史里又查不到的内容（你是谁、希望它怎么做事、截止日期和决定、东西在哪里），绝不保存凭据，并把记忆当作写入时的快照，使用前先核实。索引里混入的 token 会在进入提示前被打码。
+- **保持最新**：会话进行中记忆发生变化（其他会话或引擎存了新内容）时，该会话的下一条消息会附带最新的索引。
+- **查看**：聊天中发 `/memory`，或 `GET /api/memory?bot_id=…&chat_id=…&channel=telegram`（单条记忆用 `GET`/`DELETE /api/memory/file?…&scope=chat|bot&file=…`）。
+- **关闭的引擎自带记忆**：Claude Code 的 auto memory 与 auto dream（`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`、`autoMemoryEnabled: false`）、Codex memories（`--disable memories`）、Grok memory（`--no-memory`）。Antigravity 的 knowledge items 没有开关，由提示要求它改用这份记忆。设置 `memory.nativeEngineMemory: true` 可保留它们，`memory.enabled: false` 可关闭共享记忆（见 `config.example.yaml`）。
 
 ## 命令行 CLI 管理
 

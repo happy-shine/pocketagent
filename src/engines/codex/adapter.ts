@@ -17,6 +17,7 @@ import type {
 import { discoverCodexCapabilities } from "./discovery.js";
 import { buildCodexSpawnArgs, mapCodexEvent, parseCodexJsonLine } from "./parser.js";
 import { TextBlocks } from "../text-blocks.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
 
 export class CodexEngineAdapter implements EngineAdapter {
   readonly type = "codex" as const;
@@ -54,6 +55,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     mkdirSync(sessionDir, { recursive: true });
 
     // Inject system prompt & skills into AGENTS.md in workspace
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -63,8 +65,7 @@ export class CodexEngineAdapter implements EngineAdapter {
       isGroup: Boolean(session.isGroup),
       identity,
       backgroundJobs: this.config.backgroundJobs,
-      memory: this.config.memory,
-      memoryMaxIndexLines: this.config.memoryMaxIndexLines,
+      memory,
     });
     if (systemParts.length > 0) {
       writeFileSync(join(sessionDir, "AGENTS.md"), systemParts.join("\n\n---\n\n"));
@@ -77,6 +78,7 @@ export class CodexEngineAdapter implements EngineAdapter {
       busy: false,
       lastActiveAt: Date.now(),
       workspaceDir: sessionDir,
+      promptMemory: memory,
     };
 
     this.processes.set(session.sessionId, ep);
@@ -113,6 +115,7 @@ export class CodexEngineAdapter implements EngineAdapter {
 
       if (agentsMdContent) {
         fullPrompt = `<pocketagent-system>\n${agentsMdContent}\n</pocketagent-system>\n\n${fullPrompt}`;
+        markMemorySeen(session, "codex", ep.promptMemory);
       }
     } else if (session.codexSessionId && session.lastEngine && session.lastEngine !== "codex") {
       const deltaTurns = getDeltaTurnsForEngine(session, "codex");
@@ -122,6 +125,11 @@ export class CodexEngineAdapter implements EngineAdapter {
         );
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
+    }
+
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "codex");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
     }
 
     const finalPrompt = fullPrompt;
@@ -151,6 +159,8 @@ export class CodexEngineAdapter implements EngineAdapter {
       extraArgs,
       sandbox: this.config.codex?.sandbox ?? "danger-full-access",
       approvalPolicy: this.config.codex?.approvalPolicy ?? "never",
+      nativeMemory: this.config.nativeMemory,
+      writableDirs: ep.promptMemory ? [ep.promptMemory.chat.dir, ep.promptMemory.bot.dir] : undefined,
     });
 
     this.log.info({ sessionId: session.sessionId, args: spawnCmd.args }, "Spawning Codex turn process");

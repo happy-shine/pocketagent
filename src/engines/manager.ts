@@ -17,6 +17,8 @@ import type { GatewayConfig } from "../config/types.js";
 export class EngineManager {
   private adapters = new Map<EngineType, EngineAdapter>();
   private log: Logger;
+  private memoryRoot: string;
+  private memoryEnabled = false;
 
   constructor(config: GatewayConfig, log: Logger, apiPort: number, dataDir: string) {
     this.log = log.child({ module: "engine-manager" });
@@ -26,6 +28,8 @@ export class EngineManager {
     const backgroundJobs = config.jobs.enabled;
     const workspaceDir = `${dataDir}/workspaces`;
     const agentsDir = `${dataDir}/agents`;
+    this.memoryRoot = `${dataDir}/memory`;
+    const { memoryDir, nativeMemory } = this.memorySettings(config);
 
     // Initialize Claude adapter
     const claudeConfig: EngineRuntimeConfig = {
@@ -40,9 +44,9 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.claude.customModels,
+      memoryDir,
+      nativeMemory,
     };
     this.adapters.set("claude", new ClaudeEngineAdapter(claudeConfig, this.log));
 
@@ -59,9 +63,9 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.agy.customModels,
+      memoryDir,
+      nativeMemory,
     };
     this.adapters.set("agy", new AgyEngineAdapter(agyConfig, this.log));
 
@@ -78,9 +82,9 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.codex.customModels,
+      memoryDir,
+      nativeMemory,
       codex: {
         sandbox: config.engines.codex.sandbox,
         approvalPolicy: config.engines.codex.approvalPolicy,
@@ -101,11 +105,24 @@ export class EngineManager {
       apiPort,
       agentsDir,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
       customModels: config.engines.grok.customModels,
+      memoryDir,
+      nativeMemory,
     };
     this.adapters.set("grok", new GrokEngineAdapter(grokConfig, this.log));
+  }
+
+  /** Where the shared memory lives, or undefined when it is turned off. */
+  getMemoryDir(): string | undefined {
+    return this.memoryEnabled ? this.memoryRoot : undefined;
+  }
+
+  private memorySettings(config: GatewayConfig): { memoryDir?: string; nativeMemory: boolean } {
+    this.memoryEnabled = config.memory?.enabled ?? true;
+    return {
+      memoryDir: this.memoryEnabled ? this.memoryRoot : undefined,
+      nativeMemory: config.memory?.nativeEngineMemory ?? false,
+    };
   }
 
   getAdapter(type: EngineType): EngineAdapter {
@@ -168,6 +185,7 @@ export class EngineManager {
     const maxProcesses = config.engines.maxProcesses;
     const idleTimeoutMs = config.engines.idleTimeoutMs;
     const backgroundJobs = config.jobs.enabled;
+    const { memoryDir, nativeMemory } = this.memorySettings(config);
 
     const claude = this.adapters.get("claude");
     claude?.updateConfig({
@@ -179,8 +197,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
+      memoryDir,
+      nativeMemory,
     });
 
     const agy = this.adapters.get("agy");
@@ -193,8 +211,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
+      memoryDir,
+      nativeMemory,
     });
 
     const codex = this.adapters.get("codex");
@@ -207,8 +225,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
+      memoryDir,
+      nativeMemory,
       codex: {
         sandbox: config.engines.codex.sandbox,
         approvalPolicy: config.engines.codex.approvalPolicy,
@@ -225,8 +243,8 @@ export class EngineManager {
       maxProcesses,
       idleTimeoutMs,
       backgroundJobs,
-      memory: config.memory.enabled,
-      memoryMaxIndexLines: config.memory.maxIndexLines,
+      memoryDir,
+      nativeMemory,
     });
   }
 

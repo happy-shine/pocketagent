@@ -49,6 +49,9 @@ export interface Session {
   lastContextMessageId?: string;
   // Last turn the background memory review has read (see memory/auto.ts)
   memoryCursor?: string;
+
+  // Per engine, the shared memory (src/memory) its conversation last saw, so a change can be passed on
+  memorySeen?: Partial<Record<EngineType, string>>;
 }
 
 export interface ChatSessionState {

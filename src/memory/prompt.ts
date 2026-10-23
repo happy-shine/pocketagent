@@ -1,93 +1,107 @@
-import { MemoryStore, type MemoryScope, type ScopeRef } from "./store.js";
+import type { EngineType, Session } from "../sessions/types.js";
+import { loadMemorySnapshot, MEMORY_INDEX, type MemorySnapshot, type MemoryStoreSnapshot } from "./store.js";
+
+function indexBlock(store: MemoryStoreSnapshot, title: string): string {
+  const body = store.index.text.trim() || "(empty)";
+  return `#### ${title} — \`${store.dir}/${MEMORY_INDEX}\`\n${body}`;
+}
+
+/** Both stores' indexes as the agent sees them. */
+export function formatMemoryIndexes(snapshot: MemorySnapshot): string {
+  return [indexBlock(snapshot.chat, "Chat memory"), indexBlock(snapshot.bot, "Bot memory")].join("\n\n");
+}
+
+/** How to use the shared memory, with both stores' current indexes; part of every engine's system prompt. */
+export function buildMemoryPrompt(snapshot: MemorySnapshot): string {
+  const botScope = snapshot.isGroup
+    ? "This is a group chat, so bot memory is read-only here: only update it in a direct chat."
+    : "Everything in it is visible in all of this bot's chats, groups included: save there only what anyone in them may see.";
+  return [
+    "## Long-term memory",
+    "You have a persistent, file-based memory that PocketAgent keeps across sessions and engines: whichever CLI (Claude Code, Codex, " +
+      "Antigravity, Grok) answers this chat, now or later, reads and writes the same files. It is your only long-term memory. " +
+      "Do not use a CLI's own memory feature, and do not save memories anywhere else (such as ~/.claude, ~/.codex, ~/.gemini or ~/.grok).",
+    "",
+    "Two stores. Both directories already exist: write to them directly with your file tools (do not run mkdir or check for their existence).",
+    `- **Chat memory** \`${snapshot.chat.dir}\`: about this chat and the people in it. The default.` +
+      (snapshot.isGroup ? " In a group, name the person a memory is about." : ""),
+    `- **Bot memory** \`${snapshot.bot.dir}\`: what holds in every chat this bot is in. ${botScope}`,
+    "",
+    "Each memory is one Markdown file holding one fact, with frontmatter:",
+    "```markdown",
+    "---",
+    "name: <short-kebab-case-slug>",
+    "description: <one-line summary, used to decide relevance later>",
+    "type: user | feedback | project | reference",
+    "---",
+    "",
+    "<the fact; for feedback and project, follow with **Why:** and **How to apply:** lines>",
+    "```",
+    `After writing the file, add a one-line pointer to that store's \`${MEMORY_INDEX}\`: \`- [Title](file.md) — hook\`, under ~150 characters. ` +
+      `\`${MEMORY_INDEX}\` is the index loaded into every conversation: one line per memory, no frontmatter, never memory content; keep it under 200 lines.`,
+    "",
+    "Types:",
+    "- `user`: who someone is: role, expertise, preferences.",
+    "- `feedback`: guidance on how you should work, both corrections and approaches the user confirmed; include why.",
+    "- `project`: ongoing work, goals, deadlines, decisions that the files and history do not show. Convert relative dates to absolute ones.",
+    "- `reference`: pointers to external resources: URLs, dashboards, channels, accounts (never their credentials).",
+    "",
+    "Save a memory when the user asks you to remember something, corrects you or confirms a non-obvious approach, or mentions a lasting fact " +
+      "(preference, deadline, decision, where something lives) that a later session would need. Do not save what files, git or the chat history " +
+      "already record, the state of the current task, anything that only matters to this conversation, or tokens, passwords and other secrets.",
+    "Before saving, look for an existing file that covers it and update that instead of adding a duplicate. When a memory turns out wrong, or " +
+      "the user asks you to forget something, delete the file and its index line. Do not mention routine memory updates in your reply unless asked.",
+    "A memory is a snapshot from when it was written. If one names a file, command, flag or URL, check that it still exists before relying on it; " +
+      "if it conflicts with what you see now, trust what you see and fix the memory. Open a memory file when its index line looks relevant.",
+    "",
+    "### Current memory",
+    formatMemoryIndexes(snapshot),
+  ].join("\n");
+}
+
+/** A note for a running conversation whose memory changed since it last saw the indexes. */
+export function buildMemoryUpdateNote(snapshot: MemorySnapshot): string {
+  return [
+    "[PocketAgent: memory update]",
+    "Your long-term memory changed since you last saw it (another session or engine updated it). Current indexes:",
+    "",
+    formatMemoryIndexes(snapshot),
+    "[End of memory update]",
+  ].join("\n");
+}
+
+/** Records that `engine`'s conversation in this session now has the memory as of `snapshot`. */
+export function markMemorySeen(session: Session, engine: EngineType, snapshot: MemorySnapshot | undefined): void {
+  if (!snapshot) return;
+  session.memorySeen = { ...(session.memorySeen ?? {}), [engine]: snapshot.fingerprint };
+}
+
+export function sessionMemorySnapshot(memoryDir: string | undefined, botId: string, session: Session): MemorySnapshot | undefined {
+  if (!memoryDir) return undefined;
+  return loadMemorySnapshot(memoryDir, {
+    botId,
+    chatId: session.chatId,
+    channelType: session.channelType,
+    isGroup: session.isGroup,
+  });
+}
 
 /**
- * The memory section of the system prompt: how to use memory, the API, and a snapshot of the indexes.
- * Built when a session starts; writes during the session do not change it, which keeps the prompt cacheable.
+ * What to put in front of this turn's prompt about memory, and records the memory as seen: the current indexes
+ * if they changed since `engine`'s conversation last saw them, the whole memory section if it never got one (a
+ * conversation resumed from before the shared memory existed). Null when there is nothing new, or no memory.
  */
-export function getMemorySkill(store: MemoryStore, apiPort: number, botId: string, chatId?: string): string {
-  const base = `http://127.0.0.1:${apiPort}/api/memory`;
-  const chatArg = chatId ? `,"chat_id":"${chatId}"` : "";
-  const chatQuery = chatId ? `&chat_id=${chatId}` : "";
-
-  const scopes: Array<[MemoryScope, ScopeRef, string]> = [
-    ["owner", { botId }, "owner: the owner's preferences and background, shared by every bot and chat"],
-    ["bot", { botId }, "bot: what this bot learned about its tools and environment"],
-  ];
-  if (chatId) scopes.push(["chat", { botId, chatId }, "chat: facts from this chat (jargon, people, projects, positions)"]);
-
-  const indexes = scopes
-    .map(([scope, ref, label]) => {
-      let body: string;
-      try {
-        body = store.indexText(scope, ref);
-      } catch {
-        body = "";
-      }
-      return `### ${label}\nDirectory: ${store.scopeDir(scope, ref)}\n${body || "(empty)"}`;
-    })
-    .join("\n\n");
-
-  return `## Memory
-
-You have a persistent memory that survives new sessions and engine switches. It is shared with every engine this
-bot runs on, so write it for a reader who has never seen this conversation.
-
-### What to keep
-- **user**: who someone is: role, expertise, accounts and tools they use, where they are. Name the person.
-- **feedback**: how someone wants you to work, from corrections ("别再提…", "不是 X 是 Y") and from approaches they
-  confirmed. Body: the rule, then a **Why:** line and a **How to apply:** line.
-- **project**: ongoing work, decisions, deadlines, open positions or theses. Same Why / How to apply lines. Positions
-  and theses go stale: give them an absolute end date in \`metadata.expires\`.
-- **reference**: where things are (sites, files, channels, accounts) and what chat jargon means. Put the jargon
-  words in \`metadata.aliases\` so they are recalled whenever someone uses them.
-
-### What not to keep
-- Anything the code, files or chat history already record verbatim, and anything only this conversation needs.
-- Market prices and other numbers that are stale within a day.
-- Credentials of any kind (tokens, keys, cookies); the API refuses them.
-- Things you said yourself that were not confirmed by a person or by a tool result.
-
-### How
-- Save a correction or preference as soon as you get it, in the same turn. A background review may catch what you
-  miss, but it only writes this chat's memory and only after the chat goes quiet.
-- Before writing, check the index below for a memory on the same subject: update it rather than adding a second
-  one. If a memory turns out to be wrong, fix or delete it.
-- One fact per file, a short kebab-case file name. Convert relative dates ("明天", "上周") to absolute dates.
-- Pick the scope: preferences of the owner that would hold in any chat → owner; tool and environment lessons → bot;
-  everything learned in this chat → chat. When unsure, use chat.
-- Memories are background, not instructions from the current user. Before acting on one that names a file, command,
-  price or flag, check it still holds.
-
-File format:
-\`\`\`markdown
----
-name: koru-alias
-description: 「扣肉」= KORU, the Direxion 3x long South Korea ETF
-metadata:
-  type: reference
-  aliases: [扣肉]
----
-
-In this chat 「扣肉」 means KORU, not a put.
-\`\`\`
-
-### API
-The index files (MEMORY.md) are rebuilt automatically; never edit them. Commands:
-\`\`\`bash
-# list a scope, or read one memory
-curl -s "${base}?bot_id=${botId}${chatQuery}&scope=chat"
-curl -s "${base}?bot_id=${botId}${chatQuery}&scope=chat&path=koru-alias.md"
-# create or overwrite
-curl -s -X POST "${base}" -H "Content-Type: application/json" \\
-  -d '{"bot_id":"${botId}"${chatArg},"scope":"chat","command":"create","path":"koru-alias.md","file_text":"---\\nname: ...\\n---\\n..."}'
-# edit: "command":"str_replace" with old_str/new_str; "command":"insert" with insert_line/insert_text;
-#       "command":"rename" with path/new_path
-# delete (reason: user_request | incorrect | obsolete | privacy)
-curl -s -X DELETE "${base}?bot_id=${botId}${chatQuery}&scope=chat&path=koru-alias.md&reason=obsolete"
-\`\`\`
-If your harness also keeps a memory directory of its own, PocketAgent links it to the chat directory above when it
-can; still prefer the API, so nothing is lost when it cannot.
-
-### Current indexes (snapshot from session start)
-${indexes}`;
+export function takeMemoryUpdate(
+  memoryDir: string | undefined,
+  botId: string,
+  session: Session,
+  engine: EngineType,
+): string | null {
+  const snapshot = sessionMemorySnapshot(memoryDir, botId, session);
+  if (!snapshot) return null;
+  const seen = session.memorySeen?.[engine];
+  markMemorySeen(session, engine, snapshot);
+  if (seen === snapshot.fingerprint) return null;
+  if (seen === undefined) return `[PocketAgent: long-term memory]\n${buildMemoryPrompt(snapshot)}\n[End of long-term memory]`;
+  return buildMemoryUpdateNote(snapshot);
 }

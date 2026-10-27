@@ -1,6 +1,8 @@
 import type { EngineEvent } from "../types.js";
 
 const MAX_DETAIL_LENGTH = 500;
+// Codex CLI defaults project_doc_max_bytes to 32,768 (32 KiB) and truncates AGENTS.md past that budget.
+export const CODEX_MAX_PROJECT_DOC_BYTES = 65_536;
 
 export interface CodexSpawnConfig {
   binary: string;
@@ -52,6 +54,8 @@ export function buildCodexSpawnArgs(config: CodexSpawnConfig): CodexSpawnCommand
     config.approvalPolicy,
     "--sandbox",
     config.sandbox,
+    "-c",
+    `project_doc_max_bytes=${CODEX_MAX_PROJECT_DOC_BYTES}`,
   ];
   if (!config.nativeMemory) {
     args.push("--disable", "memories");

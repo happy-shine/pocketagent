@@ -1887,15 +1887,7 @@ export class BotInstance {
       session.lastContextMessageId = msg.messageId;
     }
 
-    const engineConv =
-      session.activeEngine === "agy"
-        ? session.agySessionId
-        : session.activeEngine === "claude"
-          ? session.claudeSessionId
-          : session.activeEngine === "codex"
-            ? session.codexSessionId
-            : session.grokSessionId;
-    const engineScope = `${session.activeEngine}:${engineConv ?? "init"}`;
+    const engineScope = `${session.activeEngine}:${session.usage?.compactions ?? 0}`;
     const recalled = this.memoryAuto?.recall(session.sessionId, msg.chatId, msg.channelType, `${msg.text}\n${msg.replyText ?? ""}`, engineScope) ?? "";
     const promptText = `${contextBlock}${recalled}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
 

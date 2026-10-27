@@ -24,6 +24,7 @@ import { buildCodexSpawnArgs } from "../engines/codex/parser.js";
 import { ClaudeEngineAdapter } from "../engines/claude/adapter.js";
 import { CodexEngineAdapter } from "../engines/codex/adapter.js";
 import { AgyEngineAdapter } from "../engines/agy/adapter.js";
+import { GrokEngineAdapter } from "../engines/grok/adapter.js";
 import { ApiServer } from "../api/server.js";
 import type { EngineEvent, EngineRuntimeConfig } from "../engines/types.js";
 import type { Session } from "../sessions/types.js";
@@ -297,14 +298,26 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
       // Another engine or session saves a memory while this process keeps running
       writeFileSync(join(chatDir, "MEMORY.md"), "- [Role](role.md) — the user trades futures\n");
+      writeFileSync(join(chatDir, "role.md"), memoryFile("role", "user", "Trades SOXS and NQ futures."));
       await drain(adapter.sendMessage(session, "next", "bot1"));
       const second = calls()[1].prompt as string;
       expect(second).toMatch(/^\[PocketAgent: memory update\]/);
       expect(second).toContain("the user trades futures");
+      expect(second).toContain("Trades SOXS and NQ futures.");
       expect(second.endsWith("next")).toBe(true);
+      // CLAUDE.md on disk is also refreshed while the process is running, with Long-term memory prioritized near the top
+      const updatedClaudeMd = readFileSync(join(adapter.getWorkspaceDir("s1")!, "CLAUDE.md"), "utf-8");
+      expect(updatedClaudeMd).toContain("Trades SOXS and NQ futures.");
+      expect(updatedClaudeMd.indexOf("## Long-term memory")).toBeLessThan(updatedClaudeMd.indexOf("## File Transfer"));
 
+      // If the Claude process times out/is released and respawns with --resume after another memory change,
+      // the resumed conversation still receives [PocketAgent: memory update] in the turn prompt
+      adapter.release("s1");
+      writeFileSync(join(chatDir, "role.md"), memoryFile("role", "user", "Never mention 3x ETF decay."));
       await drain(adapter.sendMessage(session, "third", "bot1"));
-      expect(calls()[2].prompt).toBe("third");
+      expect(calls()[2].args).toEqual(expect.arrayContaining(["--resume", "claude-1"]));
+      expect(calls()[2].prompt).toMatch(/^\[PocketAgent: memory update\]/);
+      expect(calls()[2].prompt).toContain("Never mention 3x ETF decay.");
     } finally {
       await adapter.shutdown();
     }
@@ -355,8 +368,14 @@ out({ type: "turn.completed" });
       expect(calls()[1].prompt).toBe("again");
 
       writeFileSync(join(botMemoryDir(memoryDir, "bot1"), "MEMORY.md"), "- [Grafana](grafana.md) — dashboards live at grafana.internal\n");
+      writeFileSync(join(botMemoryDir(memoryDir, "bot1"), "grafana.md"), memoryFile("grafana", "reference", "https://grafana.internal:3000"));
       await drain(adapter.sendMessage(session, "third", "bot1"));
       expect(calls()[2].prompt).toContain("dashboards live at grafana.internal");
+      expect(calls()[2].prompt).toContain("https://grafana.internal:3000");
+      expect(calls()[2].args).toEqual(expect.arrayContaining(["-c", "project_doc_max_bytes=65536"]));
+      const agentsMd = readFileSync(join(adapter.getWorkspaceDir("s1")!, "AGENTS.md"), "utf-8");
+      expect(agentsMd).toContain("https://grafana.internal:3000");
+      expect(agentsMd.indexOf("## Long-term memory")).toBeLessThan(agentsMd.indexOf("## File Transfer"));
     } finally {
       await adapter.shutdown();
     }
@@ -399,6 +418,46 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       expect(rules).toContain(chatDir);
       expect(calls()[0].args).toEqual(expect.arrayContaining(["--add-dir", chatDir]));
       expect(calls()[0].prompt).toBe("hello");
+    } finally {
+      await adapter.shutdown();
+    }
+  });
+
+  const FAKE_GROK = String.raw`#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const val = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : undefined; };
+const prompt = fs.readFileSync(val("--prompt-file"), "utf-8");
+fs.appendFileSync(process.env.FAKE_CLI_LOG, JSON.stringify({ args, prompt }) + "\n");
+const resume = val("--resume");
+const sid = resume || val("--session-id");
+const out = (e) => process.stdout.write(JSON.stringify(e) + "\n");
+out({ type: "text", data: "ok" });
+out({ type: "end", stopReason: "end_turn", sessionId: sid });
+`;
+
+  it("Grok: prioritizes memory in --rules and workspace AGENTS.md, and passes updates on resume", async () => {
+    const adapter = new GrokEngineAdapter(runtime("grok", fake("grok", FAKE_GROK)), log);
+    const session = makeSession({ chatId: "42", activeEngine: "grok", channelType: "discord" });
+    try {
+      const chatDir = chatMemoryDir(memoryDir, "bot1", "discord", "42");
+      mkdirSync(chatDir, { recursive: true });
+      writeFileSync(join(chatDir, "MEMORY.md"), "- [Rule](rule.md) — no decay lecture\n");
+      writeFileSync(join(chatDir, "rule.md"), memoryFile("rule", "feedback", "Do not lecture about 3x ETF decay."));
+
+      await drain(adapter.sendMessage(session, "hello", "bot1"));
+      const [first] = calls();
+      const rulesArg = first.args[first.args.indexOf("--rules") + 1] as string;
+      expect(rulesArg).toContain("Do not lecture about 3x ETF decay.");
+      expect(rulesArg.indexOf("## Long-term memory")).toBeLessThan(rulesArg.indexOf("## File Transfer"));
+      const wsAgents = readFileSync(join(adapter.getWorkspaceDir("s1")!, "AGENTS.md"), "utf-8");
+      expect(wsAgents).toContain("Do not lecture about 3x ETF decay.");
+
+      writeFileSync(join(chatDir, "rule.md"), memoryFile("rule", "feedback", "Updated: never mention SOXS decay."));
+      await drain(adapter.sendMessage(session, "next", "bot1"));
+      const second = calls()[1].prompt as string;
+      expect(second).toMatch(/^\[PocketAgent: memory update\]/);
+      expect(second).toContain("Updated: never mention SOXS decay.");
     } finally {
       await adapter.shutdown();
     }

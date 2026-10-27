@@ -157,3 +157,76 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
 
   return parts;
 }
+
+/**
+ * Reorders system prompt sections so core identity, soul, long-term memory, working style, and credentials appear
+ * first (before large API reference and custom skill catalogs). This keeps user corrections and memories in the
+ * highest-attention region across all CLIs and prevents tail truncation when an engine caps instruction file size.
+ */
+export function prioritizeSystemPromptParts(parts: string[]): string[] {
+  const fileSkillIdx = parts.findIndex((p) => p.startsWith("## File Transfer"));
+  const isIdentityOrSoul = (p: string, idx: number) =>
+    fileSkillIdx >= 0 ? idx < fileSkillIdx : idx <= 1 && (p.startsWith("你是 ") || p.startsWith("# "));
+  const isHighPriorityRule = (p: string) =>
+    p.startsWith("## Long-term memory") ||
+    p.startsWith("## Working style") ||
+    p.startsWith("## Credentials") ||
+    p.startsWith("## Antigravity notes");
+
+  return [
+    ...parts.filter((p, i) => isIdentityOrSoul(p, i)),
+    ...parts.filter((p, i) => !isIdentityOrSoul(p, i) && isHighPriorityRule(p)),
+    ...parts.filter((p, i) => !isIdentityOrSoul(p, i) && !isHighPriorityRule(p)),
+  ];
+}
+
+/**
+ * Splits prioritized system prompt parts on paragraph boundaries into chunks where chunk 0 fits in `maxBytes`
+ * and overflow chunks `1..N` fit in `maxBytes` including `overflowHeader`.
+ */
+export function splitRuleChunks(parts: string[], maxBytes: number, overflowHeader = ""): string[] {
+  const ordered = prioritizeSystemPromptParts(parts);
+  const full = ordered.join("\n\n---\n\n");
+  if (Buffer.byteLength(full, "utf-8") <= maxBytes) {
+    return [full];
+  }
+
+  const headerBytes = Buffer.byteLength(overflowHeader, "utf-8");
+  const sep = "\n\n---\n\n";
+
+  const segments: string[] = [];
+  const segLimit = maxBytes - headerBytes - 200;
+  for (const part of ordered) {
+    if (Buffer.byteLength(part, "utf-8") <= segLimit) {
+      segments.push(part);
+      continue;
+    }
+    const blocks = part.split("\n\n");
+    let cur = "";
+    for (const b of blocks) {
+      const candidate = cur ? `${cur}\n\n${b}` : b;
+      if (Buffer.byteLength(candidate, "utf-8") <= segLimit) {
+        cur = candidate;
+      } else {
+        if (cur) segments.push(cur);
+        cur = b;
+      }
+    }
+    if (cur) segments.push(cur);
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const seg of segments) {
+    const budget = chunks.length === 0 ? maxBytes : maxBytes - headerBytes;
+    const candidate = current ? `${current}${sep}${seg}` : seg;
+    if (Buffer.byteLength(candidate, "utf-8") <= budget) {
+      current = candidate;
+    } else {
+      if (current) chunks.push(current);
+      current = seg;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}

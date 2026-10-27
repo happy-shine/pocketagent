@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
-import { buildSystemPromptParts } from "../prompt.js";
+import { buildSystemPromptParts, splitRuleChunks } from "../prompt.js";
 import { TextBlocks } from "../text-blocks.js";
 import type {
   BotIdentity,
@@ -39,65 +39,7 @@ export const AGY_WORKING_STYLE =
  * (<= maxBytes) and subsequent chunks fit in .agents/rules/pa-overflow-*.md (<= maxBytes including frontmatter).
  */
 export function splitAgyRuleChunks(parts: string[], maxBytes = AGY_MAX_RULE_FILE_BYTES): string[] {
-  const full = parts.join("\n\n---\n\n");
-  if (Buffer.byteLength(full, "utf-8") <= maxBytes) {
-    return [full];
-  }
-
-  // Prioritize identity, soul, credentials, working style, Antigravity notes, and Long-term memory in AGENTS.md
-  // so behavioral rules and memory are never pushed to the tail of a full file.
-  const isPriorityPart = (p: string, idx: number) =>
-    idx <= 1 ||
-    p.startsWith("## Long-term memory") ||
-    p.startsWith("## Working style") ||
-    p.startsWith("## Credentials") ||
-    p.startsWith("## Antigravity notes");
-
-  const ordered = [
-    ...parts.filter((p, i) => isPriorityPart(p, i)),
-    ...parts.filter((p, i) => !isPriorityPart(p, i)),
-  ];
-
-  const headerBytes = Buffer.byteLength(AGY_ALWAYS_ON_HEADER, "utf-8");
-  const sep = "\n\n---\n\n";
-  const sepBytes = Buffer.byteLength(sep, "utf-8");
-
-  // Break any single part that exceeds a chunk budget along double-newline boundaries
-  const segments: string[] = [];
-  const segLimit = maxBytes - headerBytes - 200;
-  for (const part of ordered) {
-    if (Buffer.byteLength(part, "utf-8") <= segLimit) {
-      segments.push(part);
-      continue;
-    }
-    const blocks = part.split("\n\n");
-    let cur = "";
-    for (const b of blocks) {
-      const candidate = cur ? `${cur}\n\n${b}` : b;
-      if (Buffer.byteLength(candidate, "utf-8") <= segLimit) {
-        cur = candidate;
-      } else {
-        if (cur) segments.push(cur);
-        cur = b;
-      }
-    }
-    if (cur) segments.push(cur);
-  }
-
-  const chunks: string[] = [];
-  let current = "";
-  for (const seg of segments) {
-    const budget = chunks.length === 0 ? maxBytes : maxBytes - headerBytes;
-    const candidate = current ? `${current}${sep}${seg}` : seg;
-    if (Buffer.byteLength(candidate, "utf-8") <= budget) {
-      current = candidate;
-    } else {
-      if (current) chunks.push(current);
-      current = seg;
-    }
-  }
-  if (current) chunks.push(current);
-  return chunks;
+  return splitRuleChunks(parts, maxBytes, AGY_ALWAYS_ON_HEADER);
 }
 
 function writeAgyWorkspaceRules(sessionDir: string, systemParts: string[]): void {
@@ -203,8 +145,11 @@ export class AgyEngineAdapter implements EngineAdapter {
     // Antigravity loads AGENTS.md (and .agents/rules/*.md) from its working directory as rules: part of every request,
     // so unlike a prompt they survive its context compaction.
     const memory = this.refreshWorkspaceRules(sessionDir, session, botId, identity);
-    // Antigravity loads the rules when it starts, resumed conversations included
-    markMemorySeen(session, "agy", memory);
+    // Only seed memorySeen for a brand-new conversation (or one that never recorded memory); if resuming an existing
+    // conversation after an idle timeout, let takeMemoryUpdate() in sendMessage() surface any memory changes in-turn.
+    if (!session.agySessionId || !session.memorySeen?.agy) {
+      markMemorySeen(session, "agy", memory);
+    }
     try {
       writeAgySteerHooks(sessionDir);
     } catch (err) {

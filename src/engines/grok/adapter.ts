@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
-import { buildSystemPromptParts } from "../prompt.js";
+import { buildSystemPromptParts, prioritizeSystemPromptParts } from "../prompt.js";
 import type {
   BotIdentity,
   EngineAdapter,
@@ -140,22 +140,29 @@ export class GrokEngineAdapter implements EngineAdapter {
     // Context Handover check
     let fullPrompt = text;
     let rules: string | undefined;
+    const prevMemorySeen = session.memorySeen?.grok;
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
+    const systemParts = buildSystemPromptParts({
+      agentsDir: this.config.agentsDir,
+      botId,
+      apiPort: this.config.apiPort,
+      chatId: session.chatId,
+      channelType: session.channelType,
+      isGroup: Boolean(session.isGroup),
+      identity,
+      backgroundJobs: this.config.backgroundJobs,
+      steer: true,
+      memory,
+    });
+    const prioritizedRules = systemParts.length > 0 ? prioritizeSystemPromptParts(systemParts).join("\n\n---\n\n") : undefined;
+    if (prioritizedRules) {
+      // Keep AGENTS.md in the workspace up to date too (used when the directory is trusted or read by tools/subagents)
+      writeFileSync(join(ep.workspaceDir, "AGENTS.md"), prioritizedRules);
+    }
+
     if (!resumeSessionId) {
       // Grok only auto-loads AGENTS.md in trusted folders, so the system prompt goes in via --rules
-      const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
-      const systemParts = buildSystemPromptParts({
-        agentsDir: this.config.agentsDir,
-        botId,
-        apiPort: this.config.apiPort,
-        chatId: session.chatId,
-        channelType: session.channelType,
-        isGroup: Boolean(session.isGroup),
-        identity,
-        backgroundJobs: this.config.backgroundJobs,
-        steer: true,
-        memory,
-      });
-      if (systemParts.length > 0) rules = systemParts.join("\n\n---\n\n");
+      rules = prioritizedRules;
       markMemorySeen(session, "grok", memory);
 
       if (session.turns && session.turns.length > 0) {
@@ -268,10 +275,18 @@ export class GrokEngineAdapter implements EngineAdapter {
 
       const errText = stderr.trim();
       if (resumeSessionId && !sawEvent && code !== 0 && /not found|404/i.test(errText)) {
+        if (session.memorySeen) {
+          if (prevMemorySeen === undefined) delete session.memorySeen.grok;
+          else session.memorySeen.grok = prevMemorySeen;
+        }
         return "resume_failed";
       }
 
       if (spawnError || code !== 0) {
+        if (!resumeSessionId && !session.grokSessionId && session.memorySeen) {
+          if (prevMemorySeen === undefined) delete session.memorySeen.grok;
+          else session.memorySeen.grok = prevMemorySeen;
+        }
         const detail = spawnError ? spawnError.message : errText.split("\n").slice(-3).join("\n");
         const message = `Grok exited${code !== null ? ` with code ${code}` : ""}${detail ? `: ${detail}` : ""}`;
         yield { type: "error", message };

@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
-import { buildSystemPromptParts } from "../prompt.js";
+import { buildSystemPromptParts, splitRuleChunks } from "../prompt.js";
 import { TextBlocks } from "../text-blocks.js";
 import type {
   BotIdentity,
@@ -22,6 +22,31 @@ import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../m
 // Claude Code's own memory: auto memory (~/.claude/projects/<cwd>/memory) and its background consolidation
 const CLAUDE_NATIVE_MEMORY_OFF_SETTINGS = { autoMemoryEnabled: false, autoDreamEnabled: false };
 const CLAUDE_NATIVE_MEMORY_OFF_ENV = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
+// Claude Code warns and degrades past 40,000 chars per instruction file; spill excess into .claude/rules/pa-overflow-*.md.
+export const CLAUDE_MAX_RULE_FILE_BYTES = 38_000;
+
+function writeClaudeWorkspaceRules(sessionDir: string, systemParts: string[]): void {
+  const claudeMd = join(sessionDir, "CLAUDE.md");
+  const chunks = splitRuleChunks(systemParts, CLAUDE_MAX_RULE_FILE_BYTES);
+  if (chunks[0]) {
+    writeFileSync(claudeMd, chunks[0]);
+  }
+  const rulesDir = join(sessionDir, ".claude", "rules");
+  if (chunks.length > 1) {
+    mkdirSync(rulesDir, { recursive: true });
+    for (let i = 1; i < chunks.length; i++) {
+      writeFileSync(join(rulesDir, `pa-overflow-${i}.md`), `${chunks[i]}\n`);
+    }
+  }
+  if (existsSync(rulesDir)) {
+    for (const f of readdirSync(rulesDir)) {
+      const m = /^pa-overflow-(\d+)\.md$/.exec(f);
+      if (m && Number(m[1]) >= chunks.length) {
+        rmSync(join(rulesDir, f), { force: true });
+      }
+    }
+  }
+}
 
 export class ClaudeEngineAdapter implements EngineAdapter {
   readonly type = "claude" as const;
@@ -40,9 +65,30 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     return discoverClaudeCapabilities(this.config.binary, this.config.customModels, forceRefresh);
   }
 
+  private refreshWorkspaceRules(sessionDir: string, session: Session, botId: string, identity?: BotIdentity) {
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
+    const systemParts = buildSystemPromptParts({
+      agentsDir: this.config.agentsDir,
+      botId,
+      apiPort: this.config.apiPort,
+      chatId: session.chatId,
+      channelType: session.channelType,
+      isGroup: Boolean(session.isGroup),
+      identity,
+      backgroundJobs: this.config.backgroundJobs,
+      steer: true,
+      memory,
+    });
+    if (systemParts.length > 0) {
+      writeClaudeWorkspaceRules(sessionDir, systemParts);
+    }
+    return memory;
+  }
+
   acquire(session: Session, botId: string, botExtraArgs?: string[], identity?: BotIdentity): EngineProcess {
     const existing = this.processes.get(session.sessionId);
     if (existing && existing.process && !existing.process.killed) {
+      this.refreshWorkspaceRules(existing.workspaceDir, session, botId, identity);
       this.resetIdleTimer(session.sessionId);
       return existing;
     }
@@ -59,26 +105,13 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
-    // Inject system prompt & skills into CLAUDE.md in workspace and via --append-system-prompt
-    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
-    const systemParts = buildSystemPromptParts({
-      agentsDir: this.config.agentsDir,
-      botId,
-      apiPort: this.config.apiPort,
-      chatId: session.chatId,
-      channelType: session.channelType,
-      isGroup: Boolean(session.isGroup),
-      identity,
-      backgroundJobs: this.config.backgroundJobs,
-      steer: true,
-      memory,
-    });
-    const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
-    if (promptContent) {
-      writeFileSync(join(sessionDir, "CLAUDE.md"), promptContent);
+    // Inject prioritized system prompt & skills into CLAUDE.md (and .claude/rules/ if oversized) in workspace
+    const memory = this.refreshWorkspaceRules(sessionDir, session, botId, identity);
+    // Only seed memorySeen for a new conversation (or one that never recorded memory); if resuming an existing
+    // conversation after an idle timeout, let takeMemoryUpdate() in sendMessage() surface any memory changes in-turn.
+    if (!session.claudeSessionId || !session.memorySeen?.claude) {
+      markMemorySeen(session, "claude", memory);
     }
-    // Claude reads CLAUDE.md when it starts, resumed conversations included
-    markMemorySeen(session, "claude", memory);
     const nativeMemoryOff = !this.config.nativeMemory;
 
     const args = [
@@ -245,6 +278,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           if (typeof meta.trigger === "string") {
             session.usage.lastCompactionTrigger = meta.trigger;
           }
+          if (session.memorySeen) delete session.memorySeen.claude;
         } else if (current.type === "thinking_start" || current.subtype === "thinking" || (current.type === "content_block_start" && currentBlock?.type === "thinking")) {
           blocks.close();
           yield { type: "thinking_started" };

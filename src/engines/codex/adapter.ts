@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { Session } from "../../sessions/types.js";
 import { buildContextHandoverPrimer, getDeltaTurnsForEngine } from "../../sessions/handover.js";
-import { buildSystemPromptParts } from "../prompt.js";
+import { buildSystemPromptParts, prioritizeSystemPromptParts } from "../prompt.js";
 import type {
   BotIdentity,
   EngineAdapter,
@@ -35,9 +35,30 @@ export class CodexEngineAdapter implements EngineAdapter {
     return discoverCodexCapabilities(this.config.binary, this.config.customModels, forceRefresh);
   }
 
+  private refreshWorkspaceRules(sessionDir: string, session: Session, botId: string, identity?: BotIdentity) {
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
+    const systemParts = buildSystemPromptParts({
+      agentsDir: this.config.agentsDir,
+      botId,
+      apiPort: this.config.apiPort,
+      chatId: session.chatId,
+      channelType: session.channelType,
+      isGroup: Boolean(session.isGroup),
+      identity,
+      backgroundJobs: this.config.backgroundJobs,
+      memory,
+    });
+    if (systemParts.length > 0) {
+      const ordered = prioritizeSystemPromptParts(systemParts);
+      writeFileSync(join(sessionDir, "AGENTS.md"), ordered.join("\n\n---\n\n"));
+    }
+    return memory;
+  }
+
   acquire(session: Session, botId: string, botExtraArgs?: string[], identity?: BotIdentity): EngineProcess {
     const existing = this.processes.get(session.sessionId);
     if (existing) {
+      existing.promptMemory = this.refreshWorkspaceRules(existing.workspaceDir, session, botId, identity);
       this.resetIdleTimer(session.sessionId);
       return existing;
     }
@@ -54,22 +75,8 @@ export class CodexEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
-    // Inject system prompt & skills into AGENTS.md in workspace
-    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
-    const systemParts = buildSystemPromptParts({
-      agentsDir: this.config.agentsDir,
-      botId,
-      apiPort: this.config.apiPort,
-      chatId: session.chatId,
-      channelType: session.channelType,
-      isGroup: Boolean(session.isGroup),
-      identity,
-      backgroundJobs: this.config.backgroundJobs,
-      memory,
-    });
-    if (systemParts.length > 0) {
-      writeFileSync(join(sessionDir, "AGENTS.md"), systemParts.join("\n\n---\n\n"));
-    }
+    // Inject prioritized system prompt & skills into AGENTS.md in workspace on every turn
+    const memory = this.refreshWorkspaceRules(sessionDir, session, botId, identity);
 
     const ep: EngineProcess = {
       sessionId: session.sessionId,

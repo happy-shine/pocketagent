@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "pino";
@@ -23,6 +23,10 @@ import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../m
 // context on its own near 270k tokens, mid-task, after which it loses track of the task and of its instructions;
 // starting over between turns, with a handover of the recent conversation, avoids that.
 export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
+// Antigravity truncates any single rule file (AGENTS.md or .agents/rules/*.md) past 24,000 bytes.
+// Keep each generated rule file under 23,000 bytes and spill excess sections into .agents/rules/pa-overflow-*.md.
+export const AGY_MAX_RULE_FILE_BYTES = 23_000;
+const AGY_ALWAYS_ON_HEADER = "---\ntrigger: always_on\n---\n\n";
 
 /** How Antigravity should work, from watching it take many slow, tiny steps and lose track after compaction. */
 export const AGY_WORKING_STYLE =
@@ -30,6 +34,100 @@ export const AGY_WORKING_STYLE =
   "- Do not read Antigravity's own transcript or log files (under ~/.gemini). If your context was compacted, continue from the summary and the workspace files.";
 
 /** Adds the steer hooks to the workspace's `.agents/hooks.json`, keeping any other hooks defined there. */
+/**
+ * Splits oversized parts on paragraph boundaries and packs them into chunks where the first chunk fits in AGENTS.md
+ * (<= maxBytes) and subsequent chunks fit in .agents/rules/pa-overflow-*.md (<= maxBytes including frontmatter).
+ */
+export function splitAgyRuleChunks(parts: string[], maxBytes = AGY_MAX_RULE_FILE_BYTES): string[] {
+  const full = parts.join("\n\n---\n\n");
+  if (Buffer.byteLength(full, "utf-8") <= maxBytes) {
+    return [full];
+  }
+
+  // Prioritize identity, soul, credentials, working style, Antigravity notes, and Long-term memory in AGENTS.md
+  // so behavioral rules and memory are never pushed to the tail of a full file.
+  const isPriorityPart = (p: string, idx: number) =>
+    idx <= 1 ||
+    p.startsWith("## Long-term memory") ||
+    p.startsWith("## Working style") ||
+    p.startsWith("## Credentials") ||
+    p.startsWith("## Antigravity notes");
+
+  const ordered = [
+    ...parts.filter((p, i) => isPriorityPart(p, i)),
+    ...parts.filter((p, i) => !isPriorityPart(p, i)),
+  ];
+
+  const headerBytes = Buffer.byteLength(AGY_ALWAYS_ON_HEADER, "utf-8");
+  const sep = "\n\n---\n\n";
+  const sepBytes = Buffer.byteLength(sep, "utf-8");
+
+  // Break any single part that exceeds a chunk budget along double-newline boundaries
+  const segments: string[] = [];
+  const segLimit = maxBytes - headerBytes - 200;
+  for (const part of ordered) {
+    if (Buffer.byteLength(part, "utf-8") <= segLimit) {
+      segments.push(part);
+      continue;
+    }
+    const blocks = part.split("\n\n");
+    let cur = "";
+    for (const b of blocks) {
+      const candidate = cur ? `${cur}\n\n${b}` : b;
+      if (Buffer.byteLength(candidate, "utf-8") <= segLimit) {
+        cur = candidate;
+      } else {
+        if (cur) segments.push(cur);
+        cur = b;
+      }
+    }
+    if (cur) segments.push(cur);
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const seg of segments) {
+    const budget = chunks.length === 0 ? maxBytes : maxBytes - headerBytes;
+    const candidate = current ? `${current}${sep}${seg}` : seg;
+    if (Buffer.byteLength(candidate, "utf-8") <= budget) {
+      current = candidate;
+    } else {
+      if (current) chunks.push(current);
+      current = seg;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function writeAgyWorkspaceRules(sessionDir: string, systemParts: string[]): void {
+  const agentsMd = join(sessionDir, "AGENTS.md");
+  const geminiMd = join(sessionDir, "GEMINI.md");
+  // Earlier versions wrote the same rules to GEMINI.md too; drop that copy, not a GEMINI.md someone else wrote
+  if (existsSync(geminiMd) && existsSync(agentsMd) && readFileSync(geminiMd, "utf-8") === readFileSync(agentsMd, "utf-8")) {
+    rmSync(geminiMd, { force: true });
+  }
+
+  const chunks = splitAgyRuleChunks(systemParts);
+  writeFileSync(agentsMd, chunks[0] ?? "");
+
+  const rulesDir = join(sessionDir, ".agents", "rules");
+  if (chunks.length > 1) {
+    mkdirSync(rulesDir, { recursive: true });
+    for (let i = 1; i < chunks.length; i++) {
+      writeFileSync(join(rulesDir, `pa-overflow-${i}.md`), `${AGY_ALWAYS_ON_HEADER}${chunks[i]}\n`);
+    }
+  }
+  if (existsSync(rulesDir)) {
+    for (const f of readdirSync(rulesDir)) {
+      const m = /^pa-overflow-(\d+)\.md$/.exec(f);
+      if (m && Number(m[1]) >= chunks.length) {
+        rmSync(join(rulesDir, f), { force: true });
+      }
+    }
+  }
+}
+
 function writeAgySteerHooks(sessionDir: string): void {
   const dir = join(sessionDir, ".agents");
   const file = join(dir, "hooks.json");
@@ -63,9 +161,29 @@ export class AgyEngineAdapter implements EngineAdapter {
     return discoverAgyCapabilities(this.config.binary, this.config.customModels, forceRefresh);
   }
 
+  private refreshWorkspaceRules(sessionDir: string, session: Session, botId: string, identity?: BotIdentity) {
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
+    const systemParts = buildSystemPromptParts({
+      agentsDir: this.config.agentsDir,
+      botId,
+      apiPort: this.config.apiPort,
+      chatId: session.chatId,
+      channelType: session.channelType,
+      isGroup: Boolean(session.isGroup),
+      identity,
+      backgroundJobs: this.config.backgroundJobs,
+      steer: true,
+      memory,
+    });
+    systemParts.push(AGY_WORKING_STYLE);
+    writeAgyWorkspaceRules(sessionDir, systemParts);
+    return memory;
+  }
+
   acquire(session: Session, botId: string, botExtraArgs?: string[], identity?: BotIdentity): EngineProcess {
     const existing = this.processes.get(session.sessionId);
     if (existing && existing.process && !existing.process.killed) {
+      this.refreshWorkspaceRules(existing.workspaceDir, session, botId, identity);
       this.resetIdleTimer(session.sessionId);
       return existing;
     }
@@ -82,30 +200,9 @@ export class AgyEngineAdapter implements EngineAdapter {
     );
     mkdirSync(sessionDir, { recursive: true });
 
-    // Antigravity loads AGENTS.md from its working directory as rules: part of every request, so unlike a prompt
-    // they survive its context compaction. A GEMINI.md next to it would be loaded as a second copy.
-    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
-    const systemParts = buildSystemPromptParts({
-      agentsDir: this.config.agentsDir,
-      botId,
-      apiPort: this.config.apiPort,
-      chatId: session.chatId,
-      channelType: session.channelType,
-      isGroup: Boolean(session.isGroup),
-      identity,
-      backgroundJobs: this.config.backgroundJobs,
-      steer: true,
-      memory,
-    });
-    systemParts.push(AGY_WORKING_STYLE);
-    const content = systemParts.join("\n\n---\n\n");
-    const agentsMd = join(sessionDir, "AGENTS.md");
-    const geminiMd = join(sessionDir, "GEMINI.md");
-    // Earlier versions wrote the same rules to GEMINI.md too; drop that copy, not a GEMINI.md someone else wrote
-    if (existsSync(geminiMd) && existsSync(agentsMd) && readFileSync(geminiMd, "utf-8") === readFileSync(agentsMd, "utf-8")) {
-      rmSync(geminiMd, { force: true });
-    }
-    writeFileSync(agentsMd, content);
+    // Antigravity loads AGENTS.md (and .agents/rules/*.md) from its working directory as rules: part of every request,
+    // so unlike a prompt they survive its context compaction.
+    const memory = this.refreshWorkspaceRules(sessionDir, session, botId, identity);
     // Antigravity loads the rules when it starts, resumed conversations included
     markMemorySeen(session, "agy", memory);
     try {
@@ -352,6 +449,7 @@ export class AgyEngineAdapter implements EngineAdapter {
         session.agySessionId = undefined;
         // The new conversation gets the recent chat again, not just what was said since this turn
         session.lastContextMessageId = undefined;
+        if (session.memorySeen) delete session.memorySeen.agy;
         this.release(session.sessionId);
       }
     }

@@ -244,6 +244,10 @@ describe("MemoryAutopilot", () => {
     expect(p.recall("s1", "chatA", "discord", "扣肉还要吗")).toBe("");
     expect(p.recall("s2", "chatA", "discord", "扣肉")).toContain("koru-alias.md");
     expect(p.recall("s1", "chatA", "discord", "nothing relevant")).toBe("");
+    // Switching engine or rotating conversation within the same session recalls again for the new engine conversation
+    expect(p.recall("s1", "chatA", "discord", "扣肉", "agy:conv-1")).toContain("koru-alias.md");
+    expect(p.recall("s1", "chatA", "discord", "扣肉", "agy:conv-1")).toBe("");
+    expect(p.recall("s1", "chatA", "discord", "扣肉", "agy:conv-2")).toContain("koru-alias.md");
   });
 
   it("does not recall when recall is off", () => {

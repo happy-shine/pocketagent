@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
-import { AGY_ROTATE_CONTEXT_TOKENS, AgyEngineAdapter } from "../engines/agy/adapter.js";
+import { AGY_MAX_RULE_FILE_BYTES, AGY_ROTATE_CONTEXT_TOKENS, AgyEngineAdapter, splitAgyRuleChunks } from "../engines/agy/adapter.js";
 import type { EngineEvent } from "../engines/types.js";
 import type { Session } from "../sessions/types.js";
 
@@ -193,5 +193,22 @@ describe("Antigravity adapter", () => {
     } finally {
       delete process.env.FAKE_AGY_RESULT_ERROR;
     }
+  });
+
+  it("prioritizes Long-term memory in AGENTS.md and spills excess rules into .agents/rules/pa-overflow-*.md under 23KB", () => {
+    const identity = "你是 Atri（@atri）。";
+    const soul = "# Soul\nBe concise.";
+    const bigSkills = "## Available Custom Skills\n" + "x".repeat(18_000);
+    const memoryPart = "## Long-term memory\n### Current memory\n- [no-decay](no-decay.md) — Never mention decay\n" + "m".repeat(8_000);
+    const notes = "## Antigravity notes\n- Stay focused.";
+
+    const chunks = splitAgyRuleChunks([identity, soul, bigSkills, memoryPart, notes]);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(Buffer.byteLength(chunk, "utf-8")).toBeLessThanOrEqual(AGY_MAX_RULE_FILE_BYTES);
+    }
+    expect(chunks[0]).toContain("## Long-term memory");
+    expect(chunks[0]).toContain("Never mention decay");
+    expect(chunks.slice(1).join("\n")).toContain("## Available Custom Skills");
   });
 });

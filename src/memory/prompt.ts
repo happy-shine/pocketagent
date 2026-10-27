@@ -3,7 +3,21 @@ import { loadMemorySnapshot, MEMORY_INDEX, type MemorySnapshot, type MemoryStore
 
 function indexBlock(store: MemoryStoreSnapshot, title: string): string {
   const body = store.index.text.trim() || "(empty)";
-  return `#### ${title} — \`${store.dir}/${MEMORY_INDEX}\`\n${body}`;
+  const lines = [`#### ${title} — \`${store.dir}/${MEMORY_INDEX}\``, body];
+  if (store.files && store.files.length > 0) {
+    lines.push("", `##### Loaded ${store.scope} memory files (active — already read into context)`);
+    for (const f of store.files) {
+      const attrs = [`scope="${store.scope}"`, `file="${f.file}"`];
+      if (f.type) attrs.push(`type="${f.type}"`);
+      const label = f.name && f.name !== f.file.replace(/\.md$/, "") ? `${f.name} (${f.file})` : f.file;
+      const header = f.description ? `# ${label} — ${f.description}` : `# ${label}`;
+      lines.push(`<memory ${attrs.join(" ")}>\n${header}\n${f.body}\n</memory>`);
+    }
+  }
+  if (store.omittedFiles && store.omittedFiles.length > 0) {
+    lines.push("", `Additional memory files not inlined above (open with your file tool when relevant): ${store.omittedFiles.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 /** Both stores' indexes as the agent sees them. */
@@ -53,6 +67,9 @@ export function buildMemoryPrompt(snapshot: MemorySnapshot): string {
       "the user asks you to forget something, delete the file and its index line. Do not mention routine memory updates in your reply unless asked.",
     "A memory is a snapshot from when it was written. If one names a file, command, flag or URL, check that it still exists before relying on it; " +
       "if it conflicts with what you see now, trust what you see and fix the memory. Open a memory file when its index line looks relevant.",
+    "Active memory files are already pre-loaded below inside `<memory>` tags so you do not need to call a file-read tool just to inspect them. " +
+      "Memories with `type=\"feedback\"` or `type=\"user\"` are standing user corrections and preferences: follow them on EVERY turn, and when a " +
+      "`feedback` memory conflicts with default persona or style instructions (such as SOUL.md), the `feedback` memory ALWAYS takes precedence.",
     "",
     "### Current memory",
     formatMemoryIndexes(snapshot),

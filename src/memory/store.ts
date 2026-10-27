@@ -14,6 +14,8 @@ export const MEMORY_INDEX = "MEMORY.md";
 // The index is part of every system prompt; past these limits only its beginning is loaded
 export const MAX_INDEX_LINES = 200;
 export const MAX_INDEX_BYTES = 25_000;
+// Total body bytes of memory files inlined directly into a store snapshot so the agent does not have to open each file
+export const MAX_INLINED_MEMORY_BYTES = 20_000;
 // Frontmatter is read from the top of a file only
 const FRONTMATTER_SCAN_BYTES = 4096;
 
@@ -38,10 +40,16 @@ export interface MemoryIndex {
   bytes: number;
 }
 
+export interface MemoryLoadedFile extends MemoryFileInfo {
+  body: string;
+}
+
 export interface MemoryStoreSnapshot {
   scope: MemoryScope;
   dir: string;
   index: MemoryIndex;
+  files?: MemoryLoadedFile[];
+  omittedFiles?: string[];
 }
 
 /** The memory a session sees: both stores' indexes as they are now. */
@@ -221,10 +229,73 @@ export function ensureMemoryDirs(rootDir: string, owner: MemoryOwner): { chatDir
   return { chatDir, botDir };
 }
 
+/** Body of a memory file without its leading YAML frontmatter block. */
+export function stripFrontmatter(content: string): string {
+  return content.replace(/^\uFEFF/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
+}
+
+const TYPE_PRIORITY: Record<string, number> = {
+  feedback: 0,
+  user: 1,
+  reference: 2,
+  project: 3,
+};
+
+/**
+ * Loads the store's memory files in priority order (feedback and user rules first, then reference and project,
+ * newest first within each tier) up to `maxBytes` so standing rules and context are already in the prompt without
+ * depending on the model proactively calling a file-read tool.
+ */
+export function loadInlinedMemories(
+  dir: string,
+  maxBytes = MAX_INLINED_MEMORY_BYTES,
+): { files: MemoryLoadedFile[]; omittedFiles: string[] } {
+  const infos = listMemoryFiles(dir).sort((a, b) => {
+    const pa = TYPE_PRIORITY[a.type ?? ""] ?? 4;
+    const pb = TYPE_PRIORITY[b.type ?? ""] ?? 4;
+    return pa !== pb ? pa - pb : b.mtime - a.mtime;
+  });
+  const files: MemoryLoadedFile[] = [];
+  const omittedFiles: string[] = [];
+  let usedBytes = 0;
+  for (const info of infos) {
+    const raw = readMemoryFile(dir, info.file);
+    if (!raw) continue;
+    const body = stripFrontmatter(raw);
+    if (!body) continue;
+    const bytes = Buffer.byteLength(body, "utf-8");
+    if (usedBytes + bytes <= maxBytes) {
+      files.push({ ...info, body });
+      usedBytes += bytes;
+    } else {
+      omittedFiles.push(info.file);
+    }
+  }
+  return { files, omittedFiles };
+}
+
 export function loadMemorySnapshot(rootDir: string, owner: MemoryOwner): MemorySnapshot {
   const { chatDir, botDir } = ensureMemoryDirs(rootDir, owner);
-  const chat: MemoryStoreSnapshot = { scope: "chat", dir: chatDir, index: readIndex(chatDir) };
-  const bot: MemoryStoreSnapshot = { scope: "bot", dir: botDir, index: readIndex(botDir) };
-  const fingerprint = createHash("sha1").update(chat.index.text).update("\0").update(bot.index.text).digest("hex").slice(0, 16);
+  const chatInlined = loadInlinedMemories(chatDir);
+  const botInlined = loadInlinedMemories(botDir);
+  const chat: MemoryStoreSnapshot = {
+    scope: "chat",
+    dir: chatDir,
+    index: readIndex(chatDir),
+    files: chatInlined.files,
+    omittedFiles: chatInlined.omittedFiles,
+  };
+  const bot: MemoryStoreSnapshot = {
+    scope: "bot",
+    dir: botDir,
+    index: readIndex(botDir),
+    files: botInlined.files,
+    omittedFiles: botInlined.omittedFiles,
+  };
+  const hash = createHash("sha1").update(chat.index.text).update("\0").update(bot.index.text);
+  for (const f of [...chatInlined.files, ...botInlined.files]) {
+    hash.update("\0").update(`${f.file}:${f.type ?? ""}:${f.body}`);
+  }
+  const fingerprint = hash.digest("hex").slice(0, 16);
   return { chat, bot, isGroup: Boolean(owner.isGroup), fingerprint };
 }

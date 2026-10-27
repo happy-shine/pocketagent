@@ -175,6 +175,26 @@ describe("memory prompt", () => {
     expect(group).toContain("bot memory is read-only here");
   });
 
+  it("preloads memory file bodies in priority order (feedback/user first) and updates fingerprint when a file body changes", () => {
+    const owner = { botId: "bot1", chatId: "42", channelType: "discord", isGroup: true };
+    const snap0 = loadMemorySnapshot(root, owner);
+    writeFileSync(join(snap0.chat.dir, "MEMORY.md"), "- [Proj](proj.md) — project\n- [NoDecay](no-decay.md) — no decay\n");
+    writeFileSync(join(snap0.chat.dir, "proj.md"), memoryFile("proj", "project", "Project details here."));
+    writeFileSync(join(snap0.chat.dir, "no-decay.md"), memoryFile("no-decay", "feedback", "Never lecture about 3x ETF decay."));
+
+    const snap1 = loadMemorySnapshot(root, owner);
+    expect(snap1.chat.files?.map((f) => f.file)).toEqual(["no-decay.md", "proj.md"]);
+    const prompt = buildMemoryPrompt(snap1);
+    expect(prompt).toContain("Never lecture about 3x ETF decay.");
+    expect(prompt).toContain("Project details here.");
+    expect(prompt.indexOf("Never lecture about 3x ETF decay.")).toBeLessThan(prompt.indexOf("Project details here."));
+
+    // Editing a memory file body without touching MEMORY.md still changes the snapshot fingerprint
+    writeFileSync(join(snap0.chat.dir, "no-decay.md"), memoryFile("no-decay", "feedback", "Updated rule: never mention SOXS decay."));
+    const snap2 = loadMemorySnapshot(root, owner);
+    expect(snap2.fingerprint).not.toBe(snap1.fingerprint);
+  });
+
   it("goes last in the system prompt, and only when memory is on", () => {
     const base = { agentsDir: join(root, "agents"), botId: "bot1", apiPort: 1, chatId: "42", isGroup: false };
     const memory = loadMemorySnapshot(root, { botId: "bot1", chatId: "42", channelType: "telegram" });

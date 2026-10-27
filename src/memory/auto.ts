@@ -273,7 +273,7 @@ Today is ${input.today} (${input.tz}).
 ## What to save
 Only what will still matter later and cannot be found again by reading files or the chat history:
 - **user**: who someone is: role, expertise, accounts and tools they use. Name the person.
-- **feedback**: how someone wants the assistant to work: corrections ("别再提…", "不是 X 是 Y", "that's counted wrong") and approaches they confirmed. Write the rule, then **Why:** and **How to apply:** lines.
+- **feedback**: how someone wants the assistant to work: corrections ("别再提…", "不是 X 是 Y", "that's counted wrong") and approaches they confirmed. Write the rule, then **Why:** and **How to apply:** lines (put trigger words or tickers in metadata.aliases).
 - **project**: ongoing work, decisions, deadlines, open positions or theses, with **Why:** and **How to apply:** lines and metadata.expires.
 - **reference**: where things are, and what chat jargon or nicknames mean (put the words in metadata.aliases).
 
@@ -384,8 +384,8 @@ export class MemoryAutopilot {
     return s.enabled && s.auto.enabled && !this.stopped;
   }
 
-  /** Memories called up by words in a message, not yet shown in this session. */
-  recall(sessionId: string, chatId: string, channelType: string, text: string): string {
+  /** Memories called up by words in a message, not yet shown in this session (or engine conversation). */
+  recall(sessionId: string, chatId: string, channelType: string, text: string, engineScope?: string): string {
     const s = this.opts.settings();
     if (!s.enabled || !s.recall.enabled || !text.trim()) return "";
     const ref = { botId: this.opts.botId, chatId, channelType };
@@ -399,11 +399,12 @@ export class MemoryAutopilot {
     } catch {
       return "";
     }
-    const seen = this.recalled.get(sessionId) ?? new Set<string>();
+    const key = engineScope ? `${sessionId}:${engineScope}` : sessionId;
+    const seen = this.recalled.get(key) ?? new Set<string>();
     const fresh = hits.filter((h) => !seen.has(`${h.path}@${h.entry.updatedAt}`)).slice(0, s.recall.maxPerTurn);
     if (fresh.length === 0) return "";
     for (const h of fresh) seen.add(`${h.path}@${h.entry.updatedAt}`);
-    this.recalled.set(sessionId, seen);
+    this.recalled.set(key, seen);
     return buildRecallBlock(fresh, s.recall.maxChars);
   }
 

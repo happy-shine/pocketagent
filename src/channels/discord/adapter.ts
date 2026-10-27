@@ -32,14 +32,32 @@ export function extractEmbedText(embeds?: readonly any[]): string {
   if (!embeds || embeds.length === 0) return "";
   const parts: string[] = [];
   for (const emb of embeds) {
-    if (emb.title) parts.push(emb.title);
-    if (emb.description) parts.push(emb.description);
+    if (!emb) continue;
+    const embParts: string[] = [];
+    if (emb.author?.name) {
+      embParts.push(emb.author.url ? `${emb.author.name} (${emb.author.url})` : emb.author.name);
+    }
+    if (emb.title) {
+      embParts.push(emb.url ? `${emb.title} (${emb.url})` : emb.title);
+    } else if (emb.url) {
+      embParts.push(emb.url);
+    }
+    if (emb.description) embParts.push(emb.description);
     if (emb.fields && emb.fields.length > 0) {
       for (const field of emb.fields) {
         if (field.name || field.value) {
-          parts.push(`${field.name}: ${field.value}`);
+          embParts.push(`${field.name}: ${field.value}`);
         }
       }
+    }
+    if (emb.footer?.text) {
+      embParts.push(emb.footer.text);
+    }
+    if (embParts.length === 0 && (emb.image?.url || emb.thumbnail?.url)) {
+      embParts.push(`[Embed Image: ${emb.image?.url || emb.thumbnail?.url}]`);
+    }
+    if (embParts.length > 0) {
+      parts.push(embParts.join("\n\n"));
     }
   }
   return parts.join("\n\n").trim();
@@ -81,6 +99,23 @@ export function extractSnapshotDetails(snapshots?: any): { text: string; attachm
   const attachments: Attachment[] = [];
 
   for (const snap of list as any[]) {
+    const authorName =
+      snap.member?.displayName ||
+      snap.author?.displayName ||
+      snap.author?.globalName ||
+      snap.author?.username;
+    let timeStr = "";
+    const rawTs = snap.createdTimestamp ?? snap.createdAt ?? snap.timestamp;
+    if (rawTs) {
+      const dt = rawTs instanceof Date ? rawTs : new Date(typeof rawTs === "number" && rawTs < 1e12 ? rawTs * 1000 : rawTs);
+      if (!isNaN(dt.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        timeStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+      }
+    }
+    const headerParts = [authorName, timeStr].filter(Boolean);
+    const header = headerParts.length > 0 ? `[${headerParts.join(" | ")}]` : "";
+
     let snapText = (snap.content || "").trim();
     const embedText = snap.embeds ? extractEmbedText(snap.embeds) : "";
     if (embedText) {
@@ -90,10 +125,10 @@ export function extractSnapshotDetails(snapshots?: any): { text: string; attachm
     attachments.push(...snapAttachments);
 
     if (snapText) {
-      texts.push(snapText);
+      texts.push(header ? `${header}\n${snapText}` : snapText);
     } else if (snapAttachments.length > 0) {
       const attDesc = snapAttachments.map((a) => `[${a.type}: ${a.fileName || a.type}]`).join(" ");
-      texts.push(attDesc);
+      texts.push(header ? `${header}\n${attDesc}` : attDesc);
     }
   }
 

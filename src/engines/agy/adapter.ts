@@ -139,9 +139,12 @@ export class AgyEngineAdapter implements EngineAdapter {
       args.push("--model", activeModel);
     }
 
+    // Tiered Agy model IDs (e.g. gemini-4-argon-medium, gemini-3.8-flash-high) already encode their effort tier
+    // and reject a conflicting --effort flag with exit code 1.
+    const modelTierMatch = activeModel?.match(/-(low|medium|high)$/i);
     const rawEffort = session.engineEfforts?.agy ?? session.effort;
     const activeEffort = rawEffort ?? this.config.effort;
-    if (activeEffort && ["low", "medium", "high"].includes(activeEffort.toLowerCase())) {
+    if (!modelTierMatch && activeEffort && ["low", "medium", "high"].includes(activeEffort.toLowerCase())) {
       args.push("--effort", activeEffort.toLowerCase());
     }
 
@@ -230,6 +233,9 @@ export class AgyEngineAdapter implements EngineAdapter {
     let textStepKey: unknown;
     // Tokens the latest model call was given, i.e. how large the conversation has grown
     let contextTokens = 0;
+    let turnOutputTokens = 0;
+    let lastUsageStepKey: unknown;
+    let hasStreamedText = false;
 
     try {
       for await (const line of rl) {
@@ -269,15 +275,24 @@ export class AgyEngineAdapter implements EngineAdapter {
         if (eventType === "step_update" && event.step_update && typeof event.step_update === "object") {
           const step = event.step_update as Record<string, unknown>;
           if (step.step_type === "agent_response") {
+            const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
             const usage = step.usage as Record<string, unknown> | undefined;
             if (usage && typeof usage.input_tokens === "number") {
               contextTokens = usage.input_tokens + (typeof usage.cache_read_tokens === "number" ? usage.cache_read_tokens : 0);
+              session.usage = session.usage ?? {};
+              session.usage.contextTokens = contextTokens;
+              if (typeof usage.output_tokens === "number" && usage.output_tokens > 0 && stepKey !== lastUsageStepKey) {
+                lastUsageStepKey = stepKey;
+                turnOutputTokens += usage.output_tokens;
+                session.usage.lastOutputTokens = turnOutputTokens;
+                session.usage.outputTokens = (session.usage.outputTokens ?? 0) + usage.output_tokens;
+              }
             }
             if (typeof step.text_delta === "string" && step.text_delta) {
               // Deltas of one response step form one block; a different step starts a new one
-              const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
               const newStep = stepKey !== undefined && textStepKey !== undefined && stepKey !== textStepKey;
               if (stepKey !== undefined) textStepKey = stepKey;
+              hasStreamedText = true;
               yield blocks.text(step.text_delta, newStep);
             }
             if (step.state === "ACTIVE" && !step.text_delta) {
@@ -300,15 +315,16 @@ export class AgyEngineAdapter implements EngineAdapter {
           const resObj = (event.result ?? {}) as Record<string, unknown>;
           const responseText = typeof resObj.response === "string" ? resObj.response : undefined;
           const errorText = typeof resObj.error === "string" && resObj.error.trim() ? resObj.error.trim() : undefined;
+          const hasOutput = Boolean(responseText && responseText.trim()) || hasStreamedText;
 
-          if (errorText) {
+          // Agy populates result.error and result.status="ERROR" on every subsequent turn once any step in the
+          // conversation trajectory has recorded an ERROR_MESSAGE (e.g. a transient HTTP retry on an earlier turn),
+          // even when the turn succeeded and produced a full response. Only emit an error when no output was produced.
+          if (!hasOutput && errorText) {
             yield { type: "error", message: errorText };
           }
 
-          // Agy may mark status="ERROR" if any intermediate tool or API retry had an issue during the turn,
-          // even if it successfully recovered and generated the full response.
-          // Only treat as error if there is an explicit error message or if no response was produced.
-          const isError = Boolean(errorText) || (resObj.status === "ERROR" && !responseText);
+          const isError = !hasOutput && (Boolean(errorText) || resObj.status === "ERROR");
 
           yield {
             type: "result",
@@ -328,6 +344,11 @@ export class AgyEngineAdapter implements EngineAdapter {
           { sessionId: session.sessionId, conversation: session.agySessionId, contextTokens },
           "Agy conversation is large; the next turn starts a new one",
         );
+        session.usage = session.usage ?? {};
+        session.usage.compactions = (session.usage.compactions ?? 0) + 1;
+        session.usage.lastCompactionAt = Date.now();
+        session.usage.lastCompactionPreTokens = contextTokens;
+        session.usage.lastCompactionTrigger = "auto-rotate";
         session.agySessionId = undefined;
         // The new conversation gets the recent chat again, not just what was said since this turn
         session.lastContextMessageId = undefined;

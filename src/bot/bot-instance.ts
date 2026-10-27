@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -438,6 +439,7 @@ export class BotInstance {
 
       this.sessionManager.setEngine(session.sessionId, engine);
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       try {
         await ctx.editMessageText(`Active engine switched to *${engine.toUpperCase()}*\nContext from previous turns is preserved.`, {
@@ -478,6 +480,7 @@ export class BotInstance {
       } catch {}
 
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       try {
         await ctx.editMessageText(`Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})${effortAdjustNote}`, {
@@ -502,6 +505,7 @@ export class BotInstance {
 
       this.sessionManager.setEffort(session.sessionId, effort);
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       const activeModel = session.engineModels?.[session.activeEngine] || session.model || "default";
       try {
@@ -583,6 +587,7 @@ export class BotInstance {
     if (["claude", "codex", "agy", "grok"].includes(input)) {
       this.sessionManager.setEngine(session.sessionId, input as EngineType);
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Engine switched to *${input.toUpperCase()}*. Historical context is retained for handover.`,
@@ -661,6 +666,7 @@ export class BotInstance {
       }
 
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${resolvedModel}\`${effortAdjustNote}`,
@@ -771,6 +777,7 @@ export class BotInstance {
       const targetEffort = matched ? matched.id : input;
       this.sessionManager.setEffort(session.sessionId, targetEffort);
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Effort for *${session.activeEngine.toUpperCase()}* (${activeModel?.label || "active model"}) set to: \`${targetEffort}\``,
@@ -829,6 +836,29 @@ export class BotInstance {
       `• Context Turns: ${session.turns?.length ?? 0}`,
       `• Workspace: \`${this.engineManager.getWorkspaceDir(session.sessionId, session.activeEngine) || "Shared"}\``,
     ];
+    if (session.usage) {
+      const u = session.usage;
+      const usageParts: string[] = [];
+      if (typeof u.contextTokens === "number" && u.contextTokens > 0) {
+        usageParts.push(`Context ${(u.contextTokens / 1000).toFixed(1)}k`);
+      }
+      if (typeof u.outputTokens === "number" && u.outputTokens > 0) {
+        usageParts.push(`Out ${(u.outputTokens / 1000).toFixed(1)}k`);
+      }
+      if (typeof u.totalCostUsd === "number" && u.totalCostUsd > 0) {
+        usageParts.push(`$${u.totalCostUsd.toFixed(2)}`);
+      }
+      if (usageParts.length > 0) {
+        statusText.push(`• Token Usage: ${usageParts.join(" | ")}`);
+      }
+      if (typeof u.compactions === "number" && u.compactions > 0) {
+        const preStr = u.lastCompactionPreTokens ? ` (from ${(u.lastCompactionPreTokens / 1000).toFixed(1)}k)` : "";
+        const timeStr = u.lastCompactionAt
+          ? ` at ${new Date(u.lastCompactionAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}`
+          : "";
+        statusText.push(`• Compactions: ${u.compactions}${preStr}${timeStr}`);
+      }
+    }
     const jobs = this.jobManager?.counts(this.botId, msg.chatId);
     if (jobs && jobs.running + jobs.queued > 0) statusText.push(`• Background jobs: ${jobs.running} running, ${jobs.queued} queued (see /jobs)`);
 
@@ -1943,5 +1973,15 @@ export class BotInstance {
       username: this.telegram?.username ?? this.discord?.username ?? this.name,
       peerBots: this.peerBots,
     };
+  }
+
+  private triggerBioSync(): void {
+    const script = "/Users/shine/proj/atri-bio/update_bio.py";
+    if (!existsSync(script)) return;
+    execFile("python3", [script, "--apply"], { timeout: 15000 }, (err) => {
+      if (err) {
+        this.log.debug({ error: err.message }, "Bio sync skipped or failed");
+      }
+    });
   }
 }

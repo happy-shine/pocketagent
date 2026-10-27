@@ -234,7 +234,18 @@ export class ClaudeEngineAdapter implements EngineAdapter {
         const currentDelta = (current.delta as any);
 
         // Map events
-        if (current.type === "thinking_start" || current.subtype === "thinking" || (current.type === "content_block_start" && currentBlock?.type === "thinking")) {
+        if (current.type === "system" && current.subtype === "compact_boundary") {
+          const meta = (current.compact_metadata ?? {}) as Record<string, unknown>;
+          session.usage = session.usage ?? {};
+          session.usage.compactions = (session.usage.compactions ?? 0) + 1;
+          session.usage.lastCompactionAt = Date.now();
+          if (typeof meta.pre_tokens === "number") {
+            session.usage.lastCompactionPreTokens = meta.pre_tokens;
+          }
+          if (typeof meta.trigger === "string") {
+            session.usage.lastCompactionTrigger = meta.trigger;
+          }
+        } else if (current.type === "thinking_start" || current.subtype === "thinking" || (current.type === "content_block_start" && currentBlock?.type === "thinking")) {
           blocks.close();
           yield { type: "thinking_started" };
         } else if (current.type === "content_block_start" && currentBlock?.type === "tool_use") {
@@ -254,6 +265,17 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           hasStreamedDeltas = true;
           yield blocks.text(currentDelta.text);
         } else if (current.type === "assistant" && current.message) {
+          const msgUsage = (current.message as any).usage as Record<string, unknown> | undefined;
+          if (msgUsage) {
+            const ctxTokens =
+              (typeof msgUsage.input_tokens === "number" ? msgUsage.input_tokens : 0) +
+              (typeof msgUsage.cache_read_input_tokens === "number" ? msgUsage.cache_read_input_tokens : 0) +
+              (typeof msgUsage.cache_creation_input_tokens === "number" ? msgUsage.cache_creation_input_tokens : 0);
+            if (ctxTokens > 0) {
+              session.usage = session.usage ?? {};
+              session.usage.contextTokens = ctxTokens;
+            }
+          }
           // Each content block of an assistant message is a whole block
           const content = (current.message as any).content;
           if (Array.isArray(content)) {
@@ -280,6 +302,17 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           hasStreamedDeltas = false;
           hasStreamedTool = false;
         } else if (current.type === "result") {
+          const resUsage = current.usage as Record<string, unknown> | undefined;
+          if (resUsage || typeof current.total_cost_usd === "number") {
+            session.usage = session.usage ?? {};
+            if (resUsage && typeof resUsage.output_tokens === "number") {
+              session.usage.lastOutputTokens = resUsage.output_tokens;
+              session.usage.outputTokens = (session.usage.outputTokens ?? 0) + resUsage.output_tokens;
+            }
+            if (typeof current.total_cost_usd === "number") {
+              session.usage.totalCostUsd = (session.usage.totalCostUsd ?? 0) + current.total_cost_usd;
+            }
+          }
           yield {
             type: "result",
             result: typeof current.result === "string" ? current.result : undefined,

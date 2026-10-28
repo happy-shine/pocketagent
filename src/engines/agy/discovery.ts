@@ -31,9 +31,9 @@ export async function discoverAgyCapabilities(
 
   try {
     const { stdout } = await execFileAsync(binary, ["models"], { timeout: 8000 });
-    const lines = stdout.split("\n");
+    const lines = stdout.split(/[\r\n]+/);
     for (const rawLine of lines) {
-      const line = rawLine.trim();
+      const line = rawLine.replace(/^[^\w]+/, "").trim();
       if (!line || line.startsWith("Fetching") || line.startsWith("Listing")) continue;
 
       // Format is typically: model-id\tModel Label or model-id  Model Label
@@ -42,20 +42,24 @@ export async function discoverAgyCapabilities(
         const id = parts[0].trim();
         const label = parts[1].trim();
         if (id && label) {
+          const tier = id.match(/-(low|medium|high)$/i)?.[1]?.toLowerCase() ?? "medium";
           models.push({
             id,
             label,
-            defaultEffort: "medium",
+            defaultEffort: tier,
             supportedEfforts: DEFAULT_AGY_EFFORTS,
           });
         }
       } else {
         const match = line.match(/^([a-zA-Z0-9._-]+)\s{2,}(.+)$/);
         if (match) {
+          const id = match[1].trim();
+          const label = match[2].trim();
+          const tier = id.match(/-(low|medium|high)$/i)?.[1]?.toLowerCase() ?? "medium";
           models.push({
-            id: match[1].trim(),
-            label: match[2].trim(),
-            defaultEffort: "medium",
+            id,
+            label,
+            defaultEffort: tier,
             supportedEfforts: DEFAULT_AGY_EFFORTS,
           });
         }
@@ -65,11 +69,13 @@ export async function discoverAgyCapabilities(
     // If CLI models command fails, fall back to known models
     if (models.length === 0) {
       models.push(
+        { id: "gemini-4-argon-high", label: "Gemini 4 Argon (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "gemini-4-argon-medium", label: "Gemini 4 Argon (Medium)", defaultEffort: "medium", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "gemini-4-argon-low", label: "Gemini 4 Argon (Low)", defaultEffort: "low", supportedEfforts: DEFAULT_AGY_EFFORTS },
         { id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
         { id: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)", defaultEffort: "medium", supportedEfforts: DEFAULT_AGY_EFFORTS },
-        { id: "gemini-3.7-flash-high", label: "Gemini 3.7 Flash (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
-        { id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
-        { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Thinking)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
+        { id: "claude-opus-4-6-thinking", label: "Claude Opus 4.6 (Thinking)", defaultEffort: "high", supportedEfforts: DEFAULT_AGY_EFFORTS },
       );
     }
   }

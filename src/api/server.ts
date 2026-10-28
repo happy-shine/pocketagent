@@ -11,6 +11,14 @@ import { SkillRegistry } from "../skills/index.js";
 import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
 import { getDashboardHtml } from "./dashboard-html.js";
 import { DEFAULT_SEND_LIMITS, SendLimiter, type SendLimits } from "./send-limiter.js";
+import {
+  deleteMemoryFile,
+  listMemoryFiles,
+  memoryDirFor,
+  readIndex,
+  readMemoryFile,
+  type MemoryScope,
+} from "../memory/store.js";
 
 export interface ApiServerConfig {
   port: number;
@@ -44,6 +52,8 @@ export interface ApiServerConfig {
     groups: Record<string, any>;
   }>;
   getEngineManager?: () => EngineManager;
+  // Root of the shared long-term memory; undefined when it is turned off
+  getMemoryDir?: () => string | undefined;
   getPendingPairings?: () => Array<{ botName: string; botId: string; req: any }>;
   approvePairing?: (code: string) => Promise<{ ok: boolean; senderId?: string; botName?: string; error?: string }>;
   getAllSessions?: () => any[];
@@ -75,6 +85,7 @@ export interface ApiServerConfig {
   };
   // Answers a CLI hook asking whether chat messages are waiting to join the running turn; returns the hook's stdout
   steerHook?: (engine: string, event: string, sessionId: string, payload: Record<string, unknown>) => Record<string, unknown>;
+  onMessageSent?: (botId: string, chatId: string) => Promise<void> | void;
 }
 
 /** Where a session's API calls go, and the turn running in it (whose identity scopes the send limits). */
@@ -211,6 +222,8 @@ export class ApiServer {
         await this.handleDeleteWorkspace(req, res, url);
       } else if (req.method === "DELETE" && url.pathname === "/api/workspaces") {
         await this.handleDeleteWorkspace(req, res, url);
+      } else if (url.pathname === "/api/memory" || url.pathname === "/api/memory/file") {
+        await this.handleMemory(req, res, url);
       } else if (url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/")) {
         await this.handleCron(req, res, url);
       } else if (url.pathname === "/api/jobs" || url.pathname.startsWith("/api/jobs/")) {
@@ -574,7 +587,13 @@ export class ApiServer {
     }
     const deliver = async () => {
       const ids = channel.sendMessages ? await channel.sendMessages(message) : [await channel.send(message)];
-      return ids.filter(Boolean);
+      const filtered = ids.filter(Boolean);
+      if (filtered.length > 0 && botId && this.config.onMessageSent) {
+        try {
+          await this.config.onMessageSent(botId, chatId);
+        } catch {}
+      }
+      return filtered;
     };
 
     if (!session) {
@@ -654,6 +673,68 @@ export class ApiServer {
   }
 
   /** Called by the CLIs' steer hooks; any answer other than a delivery must be `{}` so the agent carries on. */
+  /**
+   * The shared memory, for people rather than agents (agents use their file tools):
+   * GET /api/memory lists a bot's stores, GET|DELETE /api/memory/file reads or deletes one memory.
+   * Params: bot_id, and for chat memory chat_id with channel (telegram|discord); scope=bot|chat picks the store.
+   */
+  private async handleMemory(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    };
+    const root = this.config.getMemoryDir?.();
+    if (!root) {
+      send(404, { ok: false, error: "Shared memory is turned off (memory.enabled: false)" });
+      return;
+    }
+    const params = await readParams(req, url);
+    const botId = params.get("bot_id");
+    const chatId = params.get("chat_id");
+    const channelType = params.get("channel") ?? "telegram";
+    if (!botId) {
+      send(400, { ok: false, error: "Missing bot_id" });
+      return;
+    }
+    const owner = { botId, chatId: chatId ?? "", channelType };
+    const store = (scope: MemoryScope) => {
+      const dir = memoryDirFor(root, owner, scope);
+      const index = readIndex(dir);
+      return { scope, dir, index: index.text, truncated: index.truncated, files: listMemoryFiles(dir) };
+    };
+
+    if (url.pathname === "/api/memory") {
+      if (req.method !== "GET") {
+        send(405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+      send(200, { ok: true, bot: store("bot"), chat: chatId ? store("chat") : undefined });
+      return;
+    }
+
+    const scope = params.get("scope") === "bot" ? "bot" : "chat";
+    const file = params.get("file") ?? "";
+    if (scope === "chat" && !chatId) {
+      send(400, { ok: false, error: "Missing chat_id (or use scope=bot)" });
+      return;
+    }
+    const dir = memoryDirFor(root, owner, scope);
+    if (req.method === "GET") {
+      const content = readMemoryFile(dir, file);
+      if (content === null) send(404, { ok: false, error: `No memory file "${file}"` });
+      else send(200, { ok: true, scope, file, content });
+    } else if (req.method === "DELETE") {
+      if (!deleteMemoryFile(dir, file)) {
+        send(404, { ok: false, error: `No memory file "${file}"` });
+        return;
+      }
+      this.log.info({ botId, chatId, scope, file }, "Memory file deleted");
+      send(200, { ok: true });
+    } else {
+      send(405, { ok: false, error: "Method not allowed" });
+    }
+  }
+
   private async handleSteerHook(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const header = req.headers["x-pocketagent-session"];
     const sessionId = (Array.isArray(header) ? header[0] : header)?.trim();

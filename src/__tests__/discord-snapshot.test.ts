@@ -30,6 +30,24 @@ describe("extractEmbedText", () => {
     ];
     expect(extractEmbedText(embeds)).toBe("Market Report\n\nTarget: IWM\n\nSignal: Long");
   });
+
+  it("extracts author, url, footer, and image-only embeds", () => {
+    const tweetEmbed = [
+      {
+        author: { name: "Nick Timiraos (@NickTimiraos)", url: "https://x.com/NickTimiraos" },
+        title: "Fed Preview",
+        url: "https://x.com/NickTimiraos/status/123",
+        description: "Rates expected to hold",
+        footer: { text: "Twitter • Today" },
+      },
+    ];
+    expect(extractEmbedText(tweetEmbed)).toBe(
+      "Nick Timiraos (@NickTimiraos) (https://x.com/NickTimiraos)\n\nFed Preview (https://x.com/NickTimiraos/status/123)\n\nRates expected to hold\n\nTwitter • Today",
+    );
+
+    const imageOnlyEmbed = [{ image: { url: "https://cdn.discordapp.com/attachments/1/chart.png" } }];
+    expect(extractEmbedText(imageOnlyEmbed)).toBe("[Embed Image: https://cdn.discordapp.com/attachments/1/chart.png]");
+  });
 });
 
 describe("extractDiscordAttachments", () => {
@@ -185,5 +203,20 @@ describe("extractSnapshotDetails", () => {
 
     const result = extractSnapshotDetails(snapshots);
     expect(result.text).toBe("First forwarded message\n\n---\n\nSecond forwarded message");
+  });
+
+  it("includes author and timestamp header when present on snapshot", () => {
+    const ts = new Date(2026, 9, 27, 6, 30).getTime();
+    const snapshots = [
+      {
+        author: { displayName: "Trader Frank", username: "frank" },
+        createdTimestamp: ts,
+        content: "Watching 6450 support",
+        embeds: [],
+        attachments: [],
+      },
+    ];
+    const result = extractSnapshotDetails(snapshots);
+    expect(result.text).toBe("[Trader Frank | 2026-10-27 06:30]\nWatching 6450 support");
   });
 });

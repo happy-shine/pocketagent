@@ -18,6 +18,7 @@ import type {
 } from "../types.js";
 import { discoverAgyCapabilities, getAgyPinnedEffort } from "./discovery.js";
 import { agyHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
 
 // Context size (tokens) past which the next turn starts a new Antigravity conversation. Antigravity compacts its
 // context on its own near 270k tokens, mid-task, after which it loses track of the task and of its instructions;
@@ -26,11 +27,7 @@ export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
 
 /** How Antigravity should work, from watching it take many slow, tiny steps and lose track after compaction. */
 export const AGY_WORKING_STYLE =
-  "## Working style\n" +
-  "- Each step you take costs the user several seconds, so do more per step: put related checks and edits into one shell " +
-  "command or one script instead of one tiny command at a time, and do not re-check a file you have just inspected.\n" +
-  "- Before work that will take more than a few steps, say in one sentence what you are going to do; that text is posted to the chat.\n" +
-  "- Report only what actually happened. Never say something was done, sent or decided earlier than it was, or that you did not do something you did.\n" +
+  "## Antigravity notes\n" +
   "- Do not read Antigravity's own transcript or log files (under ~/.gemini). If your context was compacted, continue from the summary and the workspace files.";
 
 /** Adds the steer hooks to the workspace's `.agents/hooks.json`, keeping any other hooks defined there. */
@@ -88,6 +85,7 @@ export class AgyEngineAdapter implements EngineAdapter {
 
     // Antigravity loads AGENTS.md from its working directory as rules: part of every request, so unlike a prompt
     // they survive its context compaction. A GEMINI.md next to it would be loaded as a second copy.
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -98,6 +96,7 @@ export class AgyEngineAdapter implements EngineAdapter {
       identity,
       backgroundJobs: this.config.backgroundJobs,
       steer: true,
+      memory,
     });
     systemParts.push(AGY_WORKING_STYLE);
     const content = systemParts.join("\n\n---\n\n");
@@ -108,6 +107,8 @@ export class AgyEngineAdapter implements EngineAdapter {
       rmSync(geminiMd, { force: true });
     }
     writeFileSync(agentsMd, content);
+    // Antigravity loads the rules when it starts, resumed conversations included
+    markMemorySeen(session, "agy", memory);
     try {
       writeAgySteerHooks(sessionDir);
     } catch (err) {
@@ -119,6 +120,9 @@ export class AgyEngineAdapter implements EngineAdapter {
       "--output-format", "stream-json",
       "--input-format", "stream-json",
     ];
+    if (memory) {
+      args.push("--add-dir", memory.chat.dir, "--add-dir", memory.bot.dir);
+    }
 
     if (session.agySessionId) {
       args.push("--conversation", session.agySessionId);
@@ -136,15 +140,16 @@ export class AgyEngineAdapter implements EngineAdapter {
       args.push("--model", activeModel);
     }
 
-    const rawEffort = session.engineEfforts?.agy ?? session.effort;
-    // A persisted effort from another model must not contradict the model slug.
+    // Tiered Agy model IDs (e.g. gemini-4-argon-medium, gemini-3.8-flash-high) already encode their effort tier
+    // and reject a conflicting --effort flag with exit code 1.
     const pinnedEffort = getAgyPinnedEffort(activeModel);
+    const rawEffort = session.engineEfforts?.agy ?? session.effort;
     const activeEffort = pinnedEffort ?? rawEffort ?? this.config.effort;
     if (pinnedEffort && session.activeEngine === "agy") {
       session.effort = pinnedEffort;
       (session.engineEfforts ??= {}).agy = pinnedEffort;
     }
-    if (activeEffort && ["low", "medium", "high"].includes(activeEffort.toLowerCase())) {
+    if (!pinnedEffort && activeEffort && ["low", "medium", "high"].includes(activeEffort.toLowerCase())) {
       args.push("--effort", activeEffort.toLowerCase());
     }
 
@@ -218,6 +223,10 @@ export class AgyEngineAdapter implements EngineAdapter {
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
     }
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "agy");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
+    }
 
     const payload = JSON.stringify({
       event: "user",
@@ -230,10 +239,13 @@ export class AgyEngineAdapter implements EngineAdapter {
     let textStepKey: unknown;
     // Tokens the latest model call was given, i.e. how large the conversation has grown
     let contextTokens = 0;
-    // API-attempt errors can be followed by an internal retry and a successful final response.
+// API-attempt errors can be followed by an internal retry and a successful final response.
     let pendingRetryError: string | undefined;
     let responseAfterRetryError = false;
     const isRetryError = (message: string) => /^API error \(attempt \d+\):/i.test(message);
+    let turnOutputTokens = 0;
+    let lastUsageStepKey: unknown;
+    let hasStreamedText = false;
 
     try {
       for await (const line of rl) {
@@ -278,16 +290,25 @@ export class AgyEngineAdapter implements EngineAdapter {
         if (eventType === "step_update" && event.step_update && typeof event.step_update === "object") {
           const step = event.step_update as Record<string, unknown>;
           if (step.step_type === "agent_response") {
+            const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
             const usage = step.usage as Record<string, unknown> | undefined;
             if (usage && typeof usage.input_tokens === "number") {
               contextTokens = usage.input_tokens + (typeof usage.cache_read_tokens === "number" ? usage.cache_read_tokens : 0);
+              session.usage = session.usage ?? {};
+              session.usage.contextTokens = contextTokens;
+              if (typeof usage.output_tokens === "number" && usage.output_tokens > 0 && stepKey !== lastUsageStepKey) {
+                lastUsageStepKey = stepKey;
+                turnOutputTokens += usage.output_tokens;
+                session.usage.lastOutputTokens = turnOutputTokens;
+                session.usage.outputTokens = (session.usage.outputTokens ?? 0) + usage.output_tokens;
+              }
             }
             if (typeof step.text_delta === "string" && step.text_delta) {
               if (pendingRetryError) responseAfterRetryError = true;
               // Deltas of one response step form one block; a different step starts a new one
-              const stepKey = step.step_index ?? step.stepIndex ?? step.step_id ?? step.id;
               const newStep = stepKey !== undefined && textStepKey !== undefined && stepKey !== textStepKey;
               if (stepKey !== undefined) textStepKey = stepKey;
+              hasStreamedText = true;
               yield blocks.text(step.text_delta, newStep);
             }
             if (step.state === "ACTIVE" && !step.text_delta) {
@@ -311,28 +332,25 @@ export class AgyEngineAdapter implements EngineAdapter {
           const resObj = (event.result ?? {}) as Record<string, unknown>;
           const responseText = typeof resObj.response === "string" ? resObj.response : undefined;
           const errorText = typeof resObj.error === "string" && resObj.error.trim() ? resObj.error.trim() : undefined;
-          const hasResponse = Boolean(responseText?.trim());
+const hasOutput = Boolean(responseText && responseText.trim()) || hasStreamedText;
           const canceled = String(resObj.status) === "CANCELED";
           const interrupted = ["INTERRUPTED", "INVALID"].includes(String(resObj.status));
           const retryRecovered = Boolean(pendingRetryError ? responseAfterRetryError : !errorText || isRetryError(errorText));
-          const recovered = hasResponse && !canceled && (
+          const recovered = hasOutput && !canceled && (
             resObj.status === "SUCCESS" ||
             retryRecovered
           );
-          const finalError = errorText && !(recovered && isRetryError(errorText))
+          const finalError = !hasOutput && errorText
             ? errorText
             : (!recovered && pendingRetryError ? pendingRetryError : (canceled ? "Turn was canceled" : undefined));
 
-          if (finalError) yield { type: "error", message: finalError };
-          else if (pendingRetryError && responseAfterRetryError) {
+          if (finalError) {
+            yield { type: "error", message: finalError };
+          } else if (pendingRetryError && responseAfterRetryError) {
             this.log.info({ sessionId: session.sessionId }, "Agy API retry recovered; delivering final response");
           }
 
-          // Agy may mark status="ERROR" if any intermediate tool or API retry had an issue during the turn,
-          // even if it successfully recovered and generated the full response.
-          // A retained API-attempt error must not hide an answer produced after recovery.
-          // Canceled turns and empty responses remain failures; an interrupted turn that produced a response is delivered.
-          const isError = Boolean(finalError) || canceled || (interrupted && !hasResponse) || (resObj.status === "ERROR" && !hasResponse);
+          const isError = Boolean(finalError) || canceled || (interrupted && !hasOutput) || (!hasOutput && (Boolean(errorText) || resObj.status === "ERROR"));
 
           yield {
             type: "result",
@@ -357,6 +375,11 @@ export class AgyEngineAdapter implements EngineAdapter {
           { sessionId: session.sessionId, conversation: session.agySessionId, contextTokens },
           "Agy conversation is large; the next turn starts a new one",
         );
+        session.usage = session.usage ?? {};
+        session.usage.compactions = (session.usage.compactions ?? 0) + 1;
+        session.usage.lastCompactionAt = Date.now();
+        session.usage.lastCompactionPreTokens = contextTokens;
+        session.usage.lastCompactionTrigger = "auto-rotate";
         session.agySessionId = undefined;
         // The new conversation gets the recent chat again, not just what was said since this turn
         session.lastContextMessageId = undefined;

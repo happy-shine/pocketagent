@@ -21,7 +21,7 @@ curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-file" \\
 
 ### 2. Send chat messages
 
-Your final reply is posted to the chat automatically. To post more during your turn (a short heads-up before a long step, separate answers to separate questions) or to answer a specific message, send it yourself:
+Your final reply is posted to the chat automatically. A short heads-up before tools should simply be output directly as regular text at the start of your turn (which reaches the chat immediately and keeps progress messages neatly ordered). To post extra messages (such as separate answers to specific messages via \`reply_to\`), send them yourself:
 
 \`\`\`bash
 curl -s -X POST "http://127.0.0.1:${apiPort}/api/send-message" \\

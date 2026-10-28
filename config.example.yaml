@@ -50,6 +50,24 @@ bots:
 #   maxTimeoutMs: 86400000      # longest timeout the agent may ask for (24 h)
 #   historyLimit: 200           # finished jobs kept, with their logs
 
+# Optional: long-term memory shared by all engines (~/.pocketagent/memory, see /memory)
+# memory:
+#   enabled: true               # chat and bot memory in every engine's system prompt
+#   nativeEngineMemory: false   # keep Claude Code auto memory, Codex memories and Grok memory off
+#   auto:                       # background upkeep of each chat's memory
+#     enabled: true
+#     engine: claude            # defaults to the bot's engine
+#     model: sonnet             # defaults to the bot's model when the engine is the bot's
+#     idleSeconds: 120          # quiet time in a chat before its new turns are reviewed
+#     maxPendingTurns: 12       # review at once when this many turns are waiting
+#     timeoutMinutes: 5
+#     consolidateHours: 24      # merge duplicates and drop expired memories at most this often
+#     consolidateMinMemories: 6
+#   recall:                     # memories whose metadata.aliases appear in a message join that turn in full
+#     enabled: true
+#     maxPerTurn: 3
+#     maxChars: 1500
+
 # Optional: chat messages the agent sends itself during a turn (POST /api/send-message)
 # agentMessages:
 #   maxPerTurn: 12              # per session and turn; further sends get HTTP 429

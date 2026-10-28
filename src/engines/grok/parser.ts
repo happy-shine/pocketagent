@@ -14,6 +14,8 @@ export interface GrokSpawnConfig {
   rules?: string;
   model?: string;
   effort?: string;
+  /** Leave Grok's own cross-session memory on; by default it is turned off. */
+  nativeMemory?: boolean;
   extraArgs: string[];
 }
 
@@ -59,6 +61,7 @@ export function buildGrokSpawnArgs(config: GrokSpawnConfig): GrokSpawnCommand {
 
   if (config.model) args.push("--model", config.model);
   if (config.effort) args.push("--reasoning-effort", config.effort);
+  if (!config.nativeMemory) args.push("--no-memory");
 
   args.push(...config.extraArgs);
   return { cmd: config.binary, args };

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -35,8 +36,14 @@ import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
 import { buildGroupContext } from "./group-context.js";
 import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
+import { listMemoryFiles, loadMemorySnapshot, type MemoryStoreSnapshot } from "../memory/store.js";
+import { MemoryWriter } from "../memory/writer.js";
+import { MemoryAutopilot, type SidePurpose } from "../memory/auto.js";
+import type { MemoryConfig } from "../config/schema.js";
 
 const SESSIONS_PER_PAGE = 10;
+// Index lines /memory shows per store
+const MEMORY_LINES_SHOWN = 40;
 
 // Reactions on a message sent while a turn runs; all are in Telegram's fixed reaction set
 const REACTION_STEER_PENDING = "👀";
@@ -135,6 +142,8 @@ export class BotInstance {
   // Scheduled runs and side questions running now, in sessions of their own that the session manager does not keep
   private sideRuns = new Map<string, { chatId: string; channelType: string }>();
   private steerMailbox?: SteerMailbox;
+  // Background memory upkeep: recall by alias, review of finished turns, daily consolidation
+  private memoryAuto?: MemoryAutopilot;
 
   constructor(opts: {
     botConfig: ResolvedBotConfig;
@@ -146,6 +155,7 @@ export class BotInstance {
     scheduler?: Scheduler;
     jobs?: JobManager;
     steerMailbox?: SteerMailbox;
+    memorySettings?: () => MemoryConfig;
   }) {
     this.config = opts.botConfig;
     this.engineManager = opts.engineManager;
@@ -161,6 +171,22 @@ export class BotInstance {
     const sessionStore = new SessionStore(join(opts.dataDir, "sessions", this.botId));
     this.sessionManager = new SessionManager(sessionStore);
     this.sessionManager.loadAll();
+
+    if (opts.memorySettings) {
+      this.memoryAuto = new MemoryAutopilot({
+        store: new MemoryWriter(join(opts.dataDir, "memory")),
+        botId: this.botId,
+        log: this.log,
+        settings: opts.memorySettings,
+        timezone: () => this.scheduler?.timezone() ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        runSide: (run) => this.runMemorySide(run, opts.memorySettings!()),
+        findSession: (sessionId) => this.sessionManager.findSession(sessionId),
+        saveCursor: async (session, turnId) => {
+          session.memoryCursor = turnId;
+          await this.sessionManager.flush(session.chatId);
+        },
+      });
+    }
 
     const pairingPath = join(opts.dataDir, "credentials", this.botId, "telegram-pairing.json");
     this.pairingManager = new PairingManager(pairingPath);
@@ -223,6 +249,14 @@ export class BotInstance {
 
   getTurnSender(chatId: string): TurnInfo | undefined {
     return this.turnSenders.get(chatId);
+  }
+
+  /** Removes the progress card so the next progress tick posts it below any freshly sent chat message. */
+  async repostProgress(chatId: string): Promise<void> {
+    const turn = this.turnSenders.get(chatId);
+    if (turn?.tracker) {
+      await turn.tracker.repostBelow();
+    }
   }
 
   /** The bot's adapter for a platform; without one named, the bot's only (or Telegram) adapter. */
@@ -362,6 +396,7 @@ export class BotInstance {
   }
 
   async stop(): Promise<void> {
+    this.memoryAuto?.stop();
     if (this.telegram) await this.telegram.stop();
     if (this.discord) await this.discord.stop();
     await this.sessionManager.flushAll();
@@ -382,6 +417,7 @@ export class BotInstance {
     channel.onCommand("queue", (msg) => this.handleMessage(msg, channel, { queue: true }));
     channel.onCommand("cron", (msg) => this.handleCron(msg, channel));
     channel.onCommand("jobs", (msg) => this.handleJobs(msg, channel));
+    channel.onCommand("memory", (msg) => this.handleMemory(msg, channel));
     channel.onCommand("help", (msg) => this.handleHelp(msg, channel));
   }
 
@@ -403,6 +439,7 @@ export class BotInstance {
 
       this.sessionManager.setEngine(session.sessionId, engine);
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       try {
         await ctx.editMessageText(`Active engine switched to *${engine.toUpperCase()}*\nContext from previous turns is preserved.`, {
@@ -443,6 +480,7 @@ export class BotInstance {
       } catch {}
 
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       try {
         await ctx.editMessageText(`Model set to: \`${model}\` (${session.activeEngine.toUpperCase()})${effortAdjustNote}`, {
@@ -467,6 +505,7 @@ export class BotInstance {
 
       this.sessionManager.setEffort(session.sessionId, effort);
       await this.sessionManager.flush(chatId);
+      this.triggerBioSync();
 
       const activeModel = session.engineModels?.[session.activeEngine] || session.model || "default";
       try {
@@ -548,6 +587,7 @@ export class BotInstance {
     if (["claude", "codex", "agy", "grok"].includes(input)) {
       this.sessionManager.setEngine(session.sessionId, input as EngineType);
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Engine switched to *${input.toUpperCase()}*. Historical context is retained for handover.`,
@@ -626,6 +666,7 @@ export class BotInstance {
       }
 
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Model for ${session.activeEngine.toUpperCase()} set to: \`${resolvedModel}\`${effortAdjustNote}`,
@@ -736,6 +777,7 @@ export class BotInstance {
       const targetEffort = matched ? matched.id : input;
       this.sessionManager.setEffort(session.sessionId, targetEffort);
       await this.sessionManager.flush(msg.chatId);
+      this.triggerBioSync();
       await channel.send({
         chatId: msg.chatId,
         text: `Effort for *${session.activeEngine.toUpperCase()}* (${activeModel?.label || "active model"}) set to: \`${targetEffort}\``,
@@ -794,10 +836,68 @@ export class BotInstance {
       `• Context Turns: ${session.turns?.length ?? 0}`,
       `• Workspace: \`${this.engineManager.getWorkspaceDir(session.sessionId, session.activeEngine) || "Shared"}\``,
     ];
+    if (session.usage) {
+      const u = session.usage;
+      const usageParts: string[] = [];
+      if (typeof u.contextTokens === "number" && u.contextTokens > 0) {
+        usageParts.push(`Context ${(u.contextTokens / 1000).toFixed(1)}k`);
+      }
+      if (typeof u.outputTokens === "number" && u.outputTokens > 0) {
+        usageParts.push(`Out ${(u.outputTokens / 1000).toFixed(1)}k`);
+      }
+      if (typeof u.totalCostUsd === "number" && u.totalCostUsd > 0) {
+        usageParts.push(`$${u.totalCostUsd.toFixed(2)}`);
+      }
+      if (usageParts.length > 0) {
+        statusText.push(`• Token Usage: ${usageParts.join(" | ")}`);
+      }
+      if (typeof u.compactions === "number" && u.compactions > 0) {
+        const preStr = u.lastCompactionPreTokens ? ` (from ${(u.lastCompactionPreTokens / 1000).toFixed(1)}k)` : "";
+        const timeStr = u.lastCompactionAt
+          ? ` at ${new Date(u.lastCompactionAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}`
+          : "";
+        statusText.push(`• Compactions: ${u.compactions}${preStr}${timeStr}`);
+      }
+    }
     const jobs = this.jobManager?.counts(this.botId, msg.chatId);
     if (jobs && jobs.running + jobs.queued > 0) statusText.push(`• Background jobs: ${jobs.running} running, ${jobs.queued} queued (see /jobs)`);
 
     await channel.send({ chatId: msg.chatId, text: statusText.join("\n") });
+  }
+
+  /** Shows what the agent remembers about this chat and across the bot's chats. */
+  private async handleMemory(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
+    const access = this.checkAccess(msg);
+    if (!access.allowed) return;
+    const root = this.engineManager.getMemoryDir();
+    if (!root) {
+      await channel.send({ chatId: msg.chatId, text: "Long-term memory is turned off (`memory.enabled: false`)." });
+      return;
+    }
+    const snapshot = loadMemorySnapshot(root, {
+      botId: this.botId,
+      chatId: msg.chatId,
+      channelType: msg.channelType,
+      isGroup: msg.isGroup,
+    });
+    const describe = (title: string, store: MemoryStoreSnapshot): string[] => {
+      const count = listMemoryFiles(store.dir).length;
+      const lines = store.index.text.trim() ? store.index.text.trim().split("\n") : [];
+      const shown = lines.slice(0, MEMORY_LINES_SHOWN);
+      if (lines.length > shown.length) shown.push(`_… ${lines.length - shown.length} more lines_`);
+      return [`*${title}* — ${count} ${count === 1 ? "memory" : "memories"}`, ...(shown.length > 0 ? shown : ["_(empty)_"])];
+    };
+    const text = [
+      "🧠 *Long-term memory* (shared by all engines)",
+      "",
+      ...describe("This chat", snapshot.chat),
+      "",
+      ...describe("Bot, all chats", snapshot.bot),
+      "",
+      "_Ask the agent to remember or forget something._",
+      `Files: \`${root}\``,
+    ].join("\n");
+    await channel.send({ chatId: msg.chatId, text });
   }
 
   private async handleNew(msg: InboundMessage, channel: ChannelAdapter): Promise<void> {
@@ -1428,6 +1528,53 @@ export class BotInstance {
     }
   }
 
+  /**
+   * Runs a memory review or consolidation in a session of its own (see memory/auto.ts) and returns its reply.
+   * Nothing is posted: the session is not registered as a side run, so it cannot send messages either.
+   */
+  private async runMemorySide(
+    run: { chatId: string; channelType: string; isGroup: boolean; purpose: SidePurpose; prompt: string; timeoutMs: number },
+    settings: MemoryConfig,
+  ): Promise<string> {
+    const engine = settings.auto.engine ?? this.config.engine;
+    const useBotDefaults = engine === this.config.engine;
+    const model = settings.auto.model ?? (useBotDefaults ? this.config.model : undefined);
+    const effort = settings.auto.effort ?? (useBotDefaults ? this.config.effort : undefined);
+    const session: Session = {
+      sessionId: `memory-${run.chatId}`,
+      chatId: run.chatId,
+      channelType: run.channelType,
+      activeEngine: engine,
+      model,
+      effort,
+      engineModels: model ? { [engine]: model } : {},
+      engineEfforts: effort ? { [engine]: effort } : {},
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      title: `Memory ${run.purpose}`,
+      isActive: false,
+      sessionNum: 0,
+      isGroup: run.isGroup,
+      turns: [],
+    };
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }, run.timeoutMs);
+    try {
+      const response = await this.collectResponse(session, run.prompt);
+      if (timedOut) throw new Error(`memory ${run.purpose} timed out after ${Math.round(run.timeoutMs / 1000)} s`);
+      if (response.isError && response.errorMessage) throw new Error(response.errorMessage);
+      return response.finalText.trim() ? response.finalText : response.text;
+    } finally {
+      clearTimeout(timer);
+      // Every run starts from a clean context
+      this.engineManager.release(session.sessionId, session.activeEngine);
+    }
+  }
+
   private buildCronSession(job: CronJob): Session {
     const engine = job.engine ?? this.config.engine;
     // The bot's model/effort defaults belong to its default engine
@@ -1532,6 +1679,7 @@ export class BotInstance {
       `• \`/stop\` — Interrupt current task`,
       `• \`/cron\` — List and manage scheduled tasks (or just ask: "every day at 8am ...")`,
       `• \`/jobs\` — Background jobs (long commands running outside the chat): progress, logs, stop`,
+      `• \`/memory\` — What the agent remembers across sessions and engines`,
       `• \`/help\` — Show this help message`,
       ``,
       `_Tip: Simply send any message, photo, or file to start coding!_`,
@@ -1739,7 +1887,8 @@ export class BotInstance {
       session.lastContextMessageId = msg.messageId;
     }
 
-    const promptText = `${contextBlock}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
+    const recalled = this.memoryAuto?.recall(session.sessionId, msg.chatId, msg.channelType, `${msg.text}\n${msg.replyText ?? ""}`) ?? "";
+    const promptText = `${contextBlock}${recalled}${formatMessageIds(msg.messageId, msg.senderId)}\n${await this.formatMessage(msg)}`;
 
     // Record turn in session history
     this.sessionManager.addTurn(session.sessionId, {
@@ -1780,6 +1929,7 @@ export class BotInstance {
 
       session.lastEngine = session.activeEngine;
       await this.sessionManager.flush(msg.chatId);
+      this.memoryAuto?.noteTurn(session);
       // The agent may have said everything through the send-message API and ends the turn without a reply
       if (isSilentTurn(response)) {
         await tracker.discard();
@@ -1823,5 +1973,15 @@ export class BotInstance {
       username: this.telegram?.username ?? this.discord?.username ?? this.name,
       peerBots: this.peerBots,
     };
+  }
+
+  private triggerBioSync(): void {
+    const script = "/Users/shine/proj/atri-bio/update_bio.py";
+    if (!existsSync(script)) return;
+    execFile("python3", [script, "--apply"], { timeout: 15000 }, (err) => {
+      if (err) {
+        this.log.debug({ error: err.message }, "Bio sync skipped or failed");
+      }
+    });
   }
 }

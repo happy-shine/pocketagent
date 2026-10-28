@@ -57,6 +57,7 @@ While some tools offer official remote features or web interfaces, they come wit
 
 - **Ubiquitous Terminal Access Across Devices**: Runs real CLI processes on your machine with native shell, git, and filesystem permissions. Beyond writing code, you can analyze documents and screenshots, generate images, search live news, inspect server logs, and review diffs from any chat client.
 - **Mid-Conversation Engine Switching (`/engine`)**: Switch between Claude Code, OpenAI Codex, Antigravity, and Grok anytime within the same conversation. PocketAgent automatically extracts conversation history, modified files, and task goals to hand over context without losing track.
+- **One Long-Term Memory for All Engines (`/memory`)**: What the agent learns about you and your projects is kept in plain Markdown files that Claude, Codex, Antigravity and Grok all read and write, across sessions. The CLIs' own memory features are turned off, so nothing is remembered twice or differently.
 - **4-CLI Unified Skill Hub**: Manage custom extension skills centrally in `~/.pocketagent/skills/`. Skills are automatically symlinked across Claude, Codex, AGY, and Grok, eliminating the need to maintain separate tool definitions for each engine.
 - **Multi-Bot, Group Collaboration & Multi-Channel**: Run multiple Telegram and Discord bots concurrently on a single gateway across DMs and group channels. Group members share conversation context and host CLI subscriptions; each bot can be configured with its own default engine, model, reasoning effort, and custom system prompt (`SOUL.md`).
 - **Local Web Dashboard**: Built-in minimalist console at `http://127.0.0.1:18790` for live status monitoring, configuration hot reload (`Cmd+S`), workspace and file inspection, turn-by-turn dialogue logs, and online skill editing.
@@ -208,6 +209,7 @@ pa pairing approve 123456
 | `/stop` | Abort the current running CLI turn |
 | `/cron` | List scheduled tasks with Run / Pause / Resume buttons; `/cron rm <n>` deletes one |
 | `/jobs` | List background jobs with their latest output and Stop / Log buttons; `/jobs log\|stop <n>` |
+| `/memory` | Show what the agent remembers about this chat and across the bot's chats |
 | `/help` | Display command help |
 
 ---
@@ -244,6 +246,17 @@ Besides its final reply, the agent can post chat messages itself during a turn t
 - **Silent endings**: in any chat turn, a final reply of exactly `[SILENT]` (or ending with a `[SILENT]` line) posts nothing more, so the agent can say everything through its own messages.
 - **Interim text**: what the agent writes before a tool call ("Creating the worktree first.") is posted right away as its own message, replying to your message, instead of waiting for the end of the turn. Blocks arriving within 3 s are combined into one message, and the progress message moves below them. The final reply then holds only the text after the last tool call; turns without tool calls look as before. Set `interimText: final` on a bot to keep everything for the final reply instead. Either way, separate text blocks are separated by a blank line.
 - **Anti-spam**: per session and turn, at most 12 messages, at least 800 ms apart (faster calls wait); beyond that the API answers 429. Long texts are split like final replies. Tune it in an `agentMessages:` block in `config.yaml` (see `config.example.yaml`).
+
+## Long-Term Memory
+
+The agent keeps one long-term memory that every engine shares: what Claude Code saves today, Codex, Antigravity and Grok know tomorrow, in new sessions too. The CLIs' own memory features are turned off so there is only one.
+
+- **Plain files**: memories are Markdown files under `~/.pocketagent/memory/<bot>/`, one fact per file with a short frontmatter (`name`, `description`, `type`: `user`, `feedback`, `project` or `reference`), plus an index, `MEMORY.md`, with one line per memory. You can read and edit them like any other file.
+- **Two stores**: *chat memory* (`chats/<platform>-<chat id>/`) is private to one chat and is where things go by default. *Bot memory* (`bot/`) holds what applies in all of the bot's chats; in group chats it is read-only, so a group cannot change what the bot remembers elsewhere.
+- **How the agent uses it**: both indexes are part of every engine's system prompt (up to 200 lines / 25 KB each); the agent opens a memory file when its index line looks relevant and writes memories with its own file tools. It is told to save only what later sessions need and cannot get from the files or history (who you are, how you want it to work, deadlines and decisions, where things live), never credentials, and to treat a memory as a snapshot to check before relying on it. Tokens that slip into an index are redacted before it reaches a prompt.
+- **Kept current**: when the memory changes while a conversation is open (another session or engine saved something), that conversation gets the new indexes with its next message.
+- **Inspect it**: `/memory` in chat, or `GET /api/memory?bot_id=…&chat_id=…&channel=telegram` (`GET`/`DELETE /api/memory/file?…&scope=chat|bot&file=…` for one memory).
+- **Engines' own memory, turned off**: Claude Code auto memory and auto dream (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `autoMemoryEnabled: false`), Codex memories (`--disable memories`), Grok memory (`--no-memory`). Antigravity has no switch for its knowledge items; the prompt tells it to use this memory instead. Set `memory.nativeEngineMemory: true` to leave them on, or `memory.enabled: false` to turn the shared memory off (see `config.example.yaml`).
 
 ## CLI Commands
 

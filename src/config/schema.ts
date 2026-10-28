@@ -118,6 +118,35 @@ const agentMessagesSchema = z.object({
   minIntervalMs: z.number().int().nonnegative().default(800), // gap between two of them; faster calls wait
 });
 
+const memoryAutoSchema = z.object({
+  enabled: z.boolean().default(true),
+  engine: EngineTypeSchema.optional(), // defaults to the bot's engine
+  model: z.string().optional(), // defaults to the bot's model when the engine is the bot's
+  effort: z.string().optional(),
+  idleSeconds: z.number().int().positive().default(120), // quiet time in a chat before its new turns are reviewed
+  maxPendingTurns: z.number().int().positive().default(12), // review at once when this many turns are waiting
+  timeoutMinutes: z.number().positive().default(5),
+  consolidateHours: z.number().positive().default(24), // tidy a chat's memories at most this often
+  consolidateMinMemories: z.number().int().positive().default(6), // and only once it has this many
+});
+
+// Memories whose metadata.aliases appear in a message are added to that turn in full
+const memoryRecallSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxPerTurn: z.number().int().positive().default(3),
+  maxChars: z.number().int().positive().default(1500), // per memory
+});
+
+// Long-term memory shared by all engines (src/memory), kept under <dataDir>/memory
+const memorySchema = z.object({
+  enabled: z.boolean().default(true),
+  // Leave the CLIs' own memory features (Claude Code auto memory, Codex memories, Grok memory) on. Off by default:
+  // with the shared memory on, the agent would keep two diverging memories
+  nativeEngineMemory: z.boolean().default(false),
+  auto: memoryAutoSchema.default(memoryAutoSchema.parse({})),
+  recall: memoryRecallSchema.default(memoryRecallSchema.parse({})),
+});
+
 const authSchema = z.object({
   defaultPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
 });
@@ -206,6 +235,7 @@ export const configSchema = z.preprocess((input) => {
   scheduler: schedulerSchema.default(schedulerSchema.parse({})),
   jobs: jobsSchema.default(jobsSchema.parse({})),
   agentMessages: agentMessagesSchema.default(agentMessagesSchema.parse({})),
+  memory: memorySchema.default(memorySchema.parse({})),
   channels: channelsSchema.optional(),
   bots: z.array(botSchema).optional(),
 }));
@@ -216,3 +246,4 @@ export type TelegramChannelConfig = z.infer<typeof telegramChannelSchema>;
 export type DiscordChannelConfig = z.infer<typeof discordChannelSchema>;
 export type EnginesConfig = z.infer<typeof enginesSchema>;
 export type CustomModel = z.infer<typeof customModelSchema>;
+export type MemoryConfig = z.infer<typeof memorySchema>;

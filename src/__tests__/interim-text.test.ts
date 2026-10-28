@@ -126,6 +126,61 @@ for await (const _line of createInterface({ input: process.stdin })) {
       { type: "text", text: "done." },
     ]);
   });
+
+  it("unwraps stream_event and does not duplicate text or tool_use when assistant block follows", async () => {
+    const streamScript = join(dir, "claude-stream");
+    const fakeStream = String.raw`#!/usr/bin/env node
+import { createInterface } from "node:readline";
+const out = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+for await (const _line of createInterface({ input: process.stdin })) {
+  out({ type: "system", subtype: "init", session_id: "fake-stream-sess" });
+  out({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "text" } } });
+  out({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Starting " } } });
+  out({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "stream." } } });
+  out({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "Bash", input: { command: "git status" } } } });
+  out({ type: "assistant", message: { content: [{ type: "text", text: "Starting stream." }, { type: "tool_use", name: "Bash", input: { command: "git status" } }] } });
+  out({ type: "result", result: "Done", is_error: false });
+}
+`;
+    writeFileSync(streamScript, fakeStream);
+    chmodSync(streamScript, 0o755);
+    const streamAdapter = new ClaudeEngineAdapter(
+      {
+        type: "claude",
+        binary: streamScript,
+        extraArgs: [],
+        maxProcesses: 2,
+        idleTimeoutMs: 60_000,
+        workspaceDir: join(dir, "workspaces"),
+        apiPort: 0,
+        agentsDir: join(dir, "agents"),
+      },
+      log,
+    );
+
+    const session: Session = {
+      sessionId: "s2",
+      chatId: "43",
+      channelType: "telegram",
+      activeEngine: "claude",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      isActive: true,
+      sessionNum: 1,
+      turns: [],
+    };
+    const events: EngineEvent[] = [];
+    for await (const ev of streamAdapter.sendMessage(session, "go", "bot1")) events.push(ev);
+    await streamAdapter.shutdown();
+
+    expect(events.filter((e) => e.type === "text")).toEqual([
+      { type: "text", text: "Starting " },
+      { type: "text", text: "stream." },
+    ]);
+    expect(events.filter((e) => e.type === "tool_started")).toEqual([
+      { type: "tool_started", name: "Bash", detail: '{"command":"git status"}' },
+    ]);
+  });
 });
 
 describe("chat turns with interim text", () => {
@@ -370,6 +425,24 @@ describe("ProgressTracker interim posts", () => {
     await tracker.finish("Final answer.");
     expect(channel.editMessage).toHaveBeenLastCalledWith("42", "m3", "Final answer.", undefined, undefined, undefined);
     expect(channel.send).toHaveBeenCalledTimes(3);
+  });
+
+  it("reposts the progress message below external messages sent via repostBelow", async () => {
+    vi.useFakeTimers();
+    const { channel, tracker } = makeTracker();
+    tracker.start();
+    tracker.toolStart("Bash", "ls");
+    await vi.advanceTimersByTimeAsync(3100);
+    // m1: progress message
+    expect(channel.send).toHaveBeenCalledTimes(1);
+
+    await tracker.repostBelow();
+    expect(channel.deleteMessage).toHaveBeenCalledWith("42", "m1");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    // m2: progress message again, below the newly sent message
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(channel.send.mock.calls[1][0].text).toContain("Bash: ls");
   });
 
   it("posts waiting interim text before the final answer", async () => {

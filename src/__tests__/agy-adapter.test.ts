@@ -25,8 +25,12 @@ rl.on("line", (line) => {
   const context = Number(file && existsSync(file) ? readFileSync(file, "utf8") : "1000");
   out({ event: "step_update", step_update: { step_index: 1, step_type: "agent_response", state: "ACTIVE" } });
   out({ event: "step_update", step_update: { step_index: 1, step_type: "agent_response", state: "DONE", text_delta: "ok",
-    usage: { input_tokens: 2000, cache_read_tokens: context - 2000 } } });
-  out({ event: "result", result: { conversation_id: conversation, status: "SUCCESS", response: "ok" } });
+    usage: { input_tokens: 2000, cache_read_tokens: context - 2000, output_tokens: 150 } } });
+  if (process.env.FAKE_AGY_RESULT_ERROR) {
+    out({ event: "result", result: { conversation_id: conversation, status: "ERROR", error: process.env.FAKE_AGY_RESULT_ERROR, response: "ok" } });
+  } else {
+    out({ event: "result", result: { conversation_id: conversation, status: "SUCCESS", response: "ok" } });
+  }
 });
 `;
 
@@ -158,5 +162,36 @@ describe("Antigravity adapter", () => {
     expect(last.prompt).toContain("[Context Handover Notice]");
     expect(last.prompt).toContain("did the big task");
     expect(last.prompt.endsWith("after")).toBe(true);
+    expect(session.usage?.compactions).toBe(1);
+    expect(session.usage?.lastCompactionPreTokens).toBe(AGY_ROTATE_CONTEXT_TOKENS + 1);
+  });
+
+  it("omits conflicting --effort when model ID already encodes tier (-low/-medium/-high)", async () => {
+    const adapter = makeAdapter();
+    const session = makeSession();
+    session.model = "gemini-4-argon-medium";
+    session.effort = "high";
+    await collect(adapter.sendMessage(session, "hi", "bot-1"));
+    await adapter.shutdown();
+    const args = calls()[0].args;
+    expect(args).toContain("--model");
+    expect(args[args.indexOf("--model") + 1]).toBe("gemini-4-argon-medium");
+    expect(args).not.toContain("--effort");
+  });
+
+  it("ignores historical result.error when the turn produced output and records usage", async () => {
+    process.env.FAKE_AGY_RESULT_ERROR = "API error (attempt 1): request failed: stream idle timeout (5m0s): context deadline exceeded";
+    try {
+      const adapter = makeAdapter();
+      const session = makeSession();
+      const events = await collect(adapter.sendMessage(session, "upload video", "bot-1"));
+      await adapter.shutdown();
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      expect(events.at(-1)).toEqual({ type: "result", result: "ok", isError: false });
+      expect(session.usage?.contextTokens).toBe(1000);
+      expect(session.usage?.outputTokens).toBe(150);
+    } finally {
+      delete process.env.FAKE_AGY_RESULT_ERROR;
+    }
   });
 });

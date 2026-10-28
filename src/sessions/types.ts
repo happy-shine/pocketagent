@@ -11,6 +11,25 @@ export interface SessionHistoryItem {
   text: string;
 }
 
+export interface SessionUsage {
+  /** Latest model call context size (input + cache_read + cache_creation tokens) */
+  contextTokens?: number;
+  /** Cumulative output tokens in this session */
+  outputTokens?: number;
+  /** Latest turn output tokens */
+  lastOutputTokens?: number;
+  /** Cumulative cost in USD (when reported by engine, e.g. Claude) */
+  totalCostUsd?: number;
+  /** Number of context compactions / rotations in this session */
+  compactions?: number;
+  /** Timestamp (ms) of the last compaction */
+  lastCompactionAt?: number;
+  /** Context tokens before the last compaction */
+  lastCompactionPreTokens?: number;
+  /** Trigger of the last compaction (e.g. "auto" | "manual" | "auto-rotate") */
+  lastCompactionTrigger?: string;
+}
+
 export interface Session {
   sessionId: string;
   chatId: string;
@@ -47,6 +66,14 @@ export interface Session {
 
   // Track last message ID injected into session context for group chats
   lastContextMessageId?: string;
+  // Last turn the background memory review has read (see memory/auto.ts)
+  memoryCursor?: string;
+
+  // Per engine, the shared memory (src/memory) its conversation last saw, so a change can be passed on
+  memorySeen?: Partial<Record<EngineType, string>>;
+
+  // Token usage & context compaction tracking
+  usage?: SessionUsage;
 }
 
 export interface ChatSessionState {

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, watch, type FSWatcher, readdirSync, statSync, readFileSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import type { Logger } from "pino";
+import { syncSourceSnapshot } from "../source/snapshot.js";
 import { ApiServer, type ApiSessionBinding, type CronApiResult, type JobApiResult } from "../api/server.js";
 import { DEFAULT_SEND_LIMITS } from "../api/send-limiter.js";
 import { BotInstance } from "../bot/bot-instance.js";
@@ -177,6 +178,7 @@ export class Gateway {
         scheduler: this.scheduler,
         jobs: this.jobManager,
         steerMailbox: this.steerMailbox,
+        memorySettings: () => this.config.memory,
       });
       this.bots.set(bot.botId, bot);
     }
@@ -189,9 +191,20 @@ export class Gateway {
   async start(): Promise<void> {
     this.log.info("Starting PocketAgent Gateway...");
 
+    // Installs and updates end in a start: refresh the read-only source copy agents are pointed at
+    const snapshot = syncSourceSnapshot(this.dataDir);
+    if (snapshot.error) this.log.warn({ error: snapshot.error }, "Could not copy PocketAgent source for agents");
+    else if (snapshot.status === "created" || snapshot.status === "updated") {
+      this.log.info({ status: snapshot.status, commit: snapshot.info?.commit }, "Copied PocketAgent source for agents");
+    }
+
     this.apiServer = new ApiServer({
       port: this.config.gateway.port,
       steerHook: (engine, event, sessionId, payload) => this.answerSteerHook(engine, event, sessionId, payload),
+      onMessageSent: async (botId, chatId) => {
+        const bot = this.bots.get(botId);
+        await bot?.repostProgress(chatId);
+      },
       getBotTelegram: (botId) => this.bots.get(botId)?.telegram,
       getBotChannel: (botId, channelType) => this.bots.get(botId)?.getChannel(channelType),
       resolveSession: (sessionId) => this.resolveApiSession(sessionId),
@@ -212,6 +225,7 @@ export class Gateway {
       onReloadConfig: () => this.reloadConfig(),
       getBotsInfo: () => this.getBotsInfo(),
       getEngineManager: () => this.engineManager,
+      getMemoryDir: () => this.engineManager.getMemoryDir(),
       getPendingPairings: () => this.getPendingPairings(),
       approvePairing: (code) => this.approvePairing(code),
       getAllSessions: () => this.getAllSessions(),
@@ -366,6 +380,7 @@ export class Gateway {
             scheduler: this.scheduler,
             jobs: this.jobManager,
             steerMailbox: this.steerMailbox,
+            memorySettings: () => this.config.memory,
           });
           await newBot.start();
           this.bots.set(newBot.botId, newBot);

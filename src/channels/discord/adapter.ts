@@ -33,14 +33,32 @@ export function extractEmbedText(embeds?: readonly any[]): string {
   if (!embeds || embeds.length === 0) return "";
   const parts: string[] = [];
   for (const emb of embeds) {
-    if (emb.title) parts.push(emb.title);
-    if (emb.description) parts.push(emb.description);
+    if (!emb) continue;
+    const embParts: string[] = [];
+    if (emb.author?.name) {
+      embParts.push(emb.author.url ? `${emb.author.name} (${emb.author.url})` : emb.author.name);
+    }
+    if (emb.title) {
+      embParts.push(emb.url ? `${emb.title} (${emb.url})` : emb.title);
+    } else if (emb.url) {
+      embParts.push(emb.url);
+    }
+    if (emb.description) embParts.push(emb.description);
     if (emb.fields && emb.fields.length > 0) {
       for (const field of emb.fields) {
         if (field.name || field.value) {
-          parts.push(`${field.name}: ${field.value}`);
+          embParts.push(`${field.name}: ${field.value}`);
         }
       }
+    }
+    if (emb.footer?.text) {
+      embParts.push(emb.footer.text);
+    }
+    if (embParts.length === 0 && (emb.image?.url || emb.thumbnail?.url)) {
+      embParts.push(`[Embed Image: ${emb.image?.url || emb.thumbnail?.url}]`);
+    }
+    if (embParts.length > 0) {
+      parts.push(embParts.join("\n\n"));
     }
   }
   return parts.join("\n\n").trim();
@@ -82,6 +100,23 @@ export function extractSnapshotDetails(snapshots?: any): { text: string; attachm
   const attachments: Attachment[] = [];
 
   for (const snap of list as any[]) {
+    const authorName =
+      snap.member?.displayName ||
+      snap.author?.displayName ||
+      snap.author?.globalName ||
+      snap.author?.username;
+    let timeStr = "";
+    const rawTs = snap.createdTimestamp ?? snap.createdAt ?? snap.timestamp;
+    if (rawTs) {
+      const dt = rawTs instanceof Date ? rawTs : new Date(typeof rawTs === "number" && rawTs < 1e12 ? rawTs * 1000 : rawTs);
+      if (!isNaN(dt.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        timeStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+      }
+    }
+    const headerParts = [authorName, timeStr].filter(Boolean);
+    const header = headerParts.length > 0 ? `[${headerParts.join(" | ")}]` : "";
+
     let snapText = (snap.content || "").trim();
     const embedText = snap.embeds ? extractEmbedText(snap.embeds) : "";
     if (embedText) {
@@ -91,10 +126,10 @@ export function extractSnapshotDetails(snapshots?: any): { text: string; attachm
     attachments.push(...snapAttachments);
 
     if (snapText) {
-      texts.push(snapText);
+      texts.push(header ? `${header}\n${snapText}` : snapText);
     } else if (snapAttachments.length > 0) {
       const attDesc = snapAttachments.map((a) => `[${a.type}: ${a.fileName || a.type}]`).join(" ");
-      texts.push(attDesc);
+      texts.push(header ? `${header}\n${attDesc}` : attDesc);
     }
   }
 
@@ -115,6 +150,9 @@ export class DiscordAdapter implements ChannelAdapter {
   private commandHandlers = new Map<string, CommandHandler>();
   private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
   private activeSlashInteractions = new Map<string, ChatInputCommandInteraction>();
+  // A button click arrives with the interaction's id, which is not a message; replies to it go to the message that
+  // carried the buttons instead, or Discord shows them as replying to a message that cannot be loaded
+  private buttonMessageIds = new Map<string, string>();
   private stopped = false;
   private messageStore?: MessageStore;
   private botName = "PocketAgent";
@@ -561,6 +599,12 @@ export class DiscordAdapter implements ChannelAdapter {
         }).catch(async () => {
           await btnInteraction.deferUpdate().catch(() => {});
         });
+        if (btnInteraction.message?.id) {
+          this.buttonMessageIds.set(btnInteraction.id, btnInteraction.message.id);
+          if (this.buttonMessageIds.size > 500) {
+            this.buttonMessageIds.delete(this.buttonMessageIds.keys().next().value!);
+          }
+        }
         const inbound: InboundMessage = {
           channelType: "discord",
           chatId: btnInteraction.channelId,
@@ -656,7 +700,8 @@ export class DiscordAdapter implements ChannelAdapter {
       const isLast = i === chunks.length - 1;
       const payload: any = { content: chunk };
       if (isFirst && msg.replyToMessageId) {
-        payload.reply = { messageReference: msg.replyToMessageId, failIfNotExists: false };
+        const target = this.buttonMessageIds.get(msg.replyToMessageId) ?? msg.replyToMessageId;
+        payload.reply = { messageReference: target, failIfNotExists: false };
       }
       if (isLast && files.length > 0) {
         payload.files = files;
@@ -933,6 +978,9 @@ export class DiscordAdapter implements ChannelAdapter {
         .setName("jobs")
         .setDescription("List background jobs (long commands the agent handed off) and stop them or view their logs")
         .addStringOption((opt) => opt.setName("args").setDescription("stop|log <number>").setRequired(false)),
+      new SlashCommandBuilder()
+        .setName("memory")
+        .setDescription("Show what the agent remembers across sessions and engines"),
       new SlashCommandBuilder()
         .setName("help")
         .setDescription("Show command help message"),

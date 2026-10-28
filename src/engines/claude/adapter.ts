@@ -18,6 +18,11 @@ import type {
 } from "../types.js";
 import { discoverClaudeCapabilities } from "./discovery.js";
 import { claudeStyleHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
+import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
+
+// Claude Code's own memory: auto memory (~/.claude/projects/<cwd>/memory) and its background consolidation
+const CLAUDE_NATIVE_MEMORY_OFF_SETTINGS = { autoMemoryEnabled: false, autoDreamEnabled: false };
+const CLAUDE_NATIVE_MEMORY_OFF_ENV = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
 
 export class ClaudeEngineAdapter implements EngineAdapter {
   readonly type = "claude" as const;
@@ -56,6 +61,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     mkdirSync(sessionDir, { recursive: true });
 
     // Inject system prompt & skills into CLAUDE.md in workspace and via --append-system-prompt
+    const memory = sessionMemorySnapshot(this.config.memoryDir, botId, session);
     const systemParts = buildSystemPromptParts({
       agentsDir: this.config.agentsDir,
       botId,
@@ -66,11 +72,15 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       identity,
       backgroundJobs: this.config.backgroundJobs,
       steer: true,
+      memory,
     });
     const promptContent = systemParts.length > 0 ? systemParts.join("\n\n---\n\n") : "";
     if (promptContent) {
       writeFileSync(join(sessionDir, "CLAUDE.md"), promptContent);
     }
+    // Claude reads CLAUDE.md when it starts, resumed conversations included
+    markMemorySeen(session, "claude", memory);
+    const nativeMemoryOff = !this.config.nativeMemory;
 
     const args = [
       "-p",
@@ -79,8 +89,12 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       "--verbose",
       "--permission-mode", "bypassPermissions",
       // Hooks that relay messages sent during a turn into it
-      "--settings", JSON.stringify(claudeStyleHooks("claude")),
+      "--settings", JSON.stringify({ ...claudeStyleHooks("claude"), ...(nativeMemoryOff ? CLAUDE_NATIVE_MEMORY_OFF_SETTINGS : {}) }),
     ];
+    if (memory) {
+      // One directory per flag: the option is variadic and would swallow a positional argument after it
+      args.push("--add-dir", memory.chat.dir, "--add-dir", memory.bot.dir);
+    }
 
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);
@@ -114,7 +128,12 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
       cwd: sessionDir,
-      env: { ...process.env, POCKETAGENT_SESSION_ID: session.sessionId, [STEER_URL_ENV]: steerHookUrl(this.config.apiPort) },
+      env: {
+        ...process.env,
+        ...(nativeMemoryOff ? CLAUDE_NATIVE_MEMORY_OFF_ENV : {}),
+        POCKETAGENT_SESSION_ID: session.sessionId,
+        [STEER_URL_ENV]: steerHookUrl(this.config.apiPort),
+      },
     });
 
     const ep: EngineProcess = {
@@ -173,6 +192,10 @@ export class ClaudeEngineAdapter implements EngineAdapter {
         fullPrompt = `[Context Update while you were away]\n${deltaLines.join("\n")}\n\n${text}`;
       }
     }
+    const memoryUpdate = takeMemoryUpdate(this.config.memoryDir, botId, session, "claude");
+    if (memoryUpdate) {
+      fullPrompt = `${memoryUpdate}\n\n${fullPrompt}`;
+    }
 
     const payload = JSON.stringify({
       type: "user",
@@ -182,6 +205,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
 
     const rl = createInterface({ input: ep.process.stdout!, crlfDelay: Infinity });
     const blocks = new TextBlocks();
+    let hasStreamedDeltas = false;
+    let hasStreamedTool = false;
 
     try {
       for await (const line of rl) {
@@ -201,47 +226,99 @@ export class ClaudeEngineAdapter implements EngineAdapter {
           yield { type: "session_started", sessionId: event.session_id };
         }
 
+        // Unwrap Claude Code stream_event if present
+        let current = event;
+        if (event.type === "stream_event" && event.event && typeof event.event === "object") {
+          current = event.event as Record<string, unknown>;
+        }
+
+        const currentBlock = (current.content_block as any);
+        const currentDelta = (current.delta as any);
+
         // Map events
-        if (event.type === "thinking_start" || event.subtype === "thinking") {
+        if (current.type === "system" && current.subtype === "compact_boundary") {
+          const meta = (current.compact_metadata ?? {}) as Record<string, unknown>;
+          session.usage = session.usage ?? {};
+          session.usage.compactions = (session.usage.compactions ?? 0) + 1;
+          session.usage.lastCompactionAt = Date.now();
+          if (typeof meta.pre_tokens === "number") {
+            session.usage.lastCompactionPreTokens = meta.pre_tokens;
+          }
+          if (typeof meta.trigger === "string") {
+            session.usage.lastCompactionTrigger = meta.trigger;
+          }
+        } else if (current.type === "thinking_start" || current.subtype === "thinking" || (current.type === "content_block_start" && currentBlock?.type === "thinking")) {
           blocks.close();
           yield { type: "thinking_started" };
-        } else if (event.type === "stream_event" && (event.event as any)?.type === "content_block_start" && (event.event as any)?.content_block?.type === "thinking") {
+        } else if (current.type === "content_block_start" && currentBlock?.type === "tool_use") {
           blocks.close();
-          yield { type: "thinking_started" };
-        } else if (event.type === "tool_use" || (event.type === "content_block_start" && (event.content_block as any)?.type === "tool_use")) {
-          const tool = (event.content_block as any) ?? event;
+          hasStreamedTool = true;
+          yield { type: "tool_started", name: currentBlock.name ?? "tool", detail: JSON.stringify(currentBlock.input ?? {}) };
+        } else if (current.type === "tool_use") {
+          const tool = currentBlock ?? current;
           blocks.close();
-          yield { type: "tool_started", name: tool.name ?? "tool", detail: JSON.stringify(tool.input ?? {}) };
-        } else if (event.type === "content_block_start" && (event.content_block as any)?.type === "text") {
+          yield { type: "tool_started", name: (tool as any).name ?? "tool", detail: JSON.stringify((tool as any).input ?? {}) };
+        } else if (current.type === "content_block_start" && currentBlock?.type === "text") {
           // Streamed text: the deltas that follow belong to this new block
           blocks.close();
-        } else if (event.type === "text" && typeof event.text === "string") {
-          yield blocks.text(event.text, true);
-        } else if (event.type === "content_block_delta" && (event.delta as any)?.type === "text_delta") {
-          yield blocks.text((event.delta as any).text);
-        } else if (event.type === "assistant" && event.message) {
+        } else if (current.type === "text" && typeof current.text === "string") {
+          yield blocks.text(current.text, true);
+        } else if (current.type === "content_block_delta" && currentDelta?.type === "text_delta" && typeof currentDelta.text === "string") {
+          hasStreamedDeltas = true;
+          yield blocks.text(currentDelta.text);
+        } else if (current.type === "assistant" && current.message) {
+          const msgUsage = (current.message as any).usage as Record<string, unknown> | undefined;
+          if (msgUsage) {
+            const ctxTokens =
+              (typeof msgUsage.input_tokens === "number" ? msgUsage.input_tokens : 0) +
+              (typeof msgUsage.cache_read_input_tokens === "number" ? msgUsage.cache_read_input_tokens : 0) +
+              (typeof msgUsage.cache_creation_input_tokens === "number" ? msgUsage.cache_creation_input_tokens : 0);
+            if (ctxTokens > 0) {
+              session.usage = session.usage ?? {};
+              session.usage.contextTokens = ctxTokens;
+            }
+          }
           // Each content block of an assistant message is a whole block
-          const content = (event.message as any).content;
+          const content = (current.message as any).content;
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block && typeof block === "object") {
                 if (block.type === "tool_use" && typeof block.name === "string") {
-                  blocks.close();
-                  yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
+                  if (!hasStreamedTool) {
+                    blocks.close();
+                    yield { type: "tool_started", name: block.name, detail: JSON.stringify(block.input ?? {}) };
+                  }
                 }
                 if (block.type === "text" && typeof block.text === "string") {
-                  yield blocks.text(block.text, true);
+                  if (!hasStreamedDeltas) {
+                    yield blocks.text(block.text, true);
+                  }
                 }
               }
             }
           } else if (typeof content === "string") {
-            yield blocks.text(content, true);
+            if (!hasStreamedDeltas) {
+              yield blocks.text(content, true);
+            }
           }
-        } else if (event.type === "result") {
+          hasStreamedDeltas = false;
+          hasStreamedTool = false;
+        } else if (current.type === "result") {
+          const resUsage = current.usage as Record<string, unknown> | undefined;
+          if (resUsage || typeof current.total_cost_usd === "number") {
+            session.usage = session.usage ?? {};
+            if (resUsage && typeof resUsage.output_tokens === "number") {
+              session.usage.lastOutputTokens = resUsage.output_tokens;
+              session.usage.outputTokens = (session.usage.outputTokens ?? 0) + resUsage.output_tokens;
+            }
+            if (typeof current.total_cost_usd === "number") {
+              session.usage.totalCostUsd = (session.usage.totalCostUsd ?? 0) + current.total_cost_usd;
+            }
+          }
           yield {
             type: "result",
-            result: typeof event.result === "string" ? event.result : undefined,
-            isError: Boolean(event.is_error),
+            result: typeof current.result === "string" ? current.result : undefined,
+            isError: Boolean(current.is_error),
           };
           return;
         }

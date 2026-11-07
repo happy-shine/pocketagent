@@ -194,4 +194,28 @@ describe("Antigravity adapter", () => {
       delete process.env.FAKE_AGY_RESULT_ERROR;
     }
   });
+
+  it("starts fresh with handover primer instead of resuming stale conversation when returning to agy after absence", async () => {
+    const adapter = makeAdapter();
+    const session = makeSession();
+    session.agySessionId = "stale-conv-123";
+    session.lastEngine = "codex";
+    session.turns = [
+      { id: "1", ts: Date.now() - 5000, role: "user", text: "what's for lunch", engine: "codex" },
+      { id: "2", ts: Date.now() - 4000, role: "assistant", text: "curry rice", engine: "codex" },
+      { id: "3", ts: Date.now() - 3000, role: "user", text: "how to cook it", engine: "codex" },
+      { id: "4", ts: Date.now() - 2000, role: "assistant", text: "boil potatoes", engine: "codex" },
+      { id: "5", ts: Date.now() - 1000, role: "user", text: "today leg day", engine: "codex" },
+      { id: "6", ts: Date.now() - 500, role: "assistant", text: "eat good carbs", engine: "codex" },
+    ];
+    await collect(adapter.sendMessage(session, "question", "bot-1"));
+    await adapter.shutdown();
+
+    const firstCall = calls()[0];
+    expect(firstCall.args).not.toContain("--conversation");
+    expect(firstCall.prompt).toContain("[Context Handover Notice]");
+    expect(firstCall.prompt).toContain("curry rice");
+    expect(firstCall.prompt.endsWith("question")).toBe(true);
+    expect(session.agySessionId).not.toBe("stale-conv-123");
+  });
 });

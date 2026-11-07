@@ -1496,14 +1496,15 @@ export class BotInstance {
       messageIds: new Set(job.originMessageId ? [job.originMessageId] : []),
       tracker,
     });
+    const turnEngine = session.activeEngine;
     tracker.start();
     try {
       const interim = this.config.interimText !== "final";
-      const response = await this.collectResponse(session, prompt, tracker, { interim });
+      const response = await this.collectResponse(session, prompt, tracker, { interim, engine: turnEngine });
       const fallback = `${outcome}.${response.errorMessage ? `\n(Follow-up failed: ${response.errorMessage})` : ""}`;
       const fullText = extractButtons(response.text).text;
-      this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: fullText || fallback, engine: session.activeEngine });
-      session.lastEngine = session.activeEngine;
+      this.sessionManager.addTurn(session.sessionId, { role: "assistant", text: fullText || fallback, engine: turnEngine });
+      session.lastEngine = turnEngine;
       await this.sessionManager.flush(job.chatId);
       if (isSilentTurn(response)) {
         await tracker.discard();
@@ -1609,7 +1610,7 @@ export class BotInstance {
     session: Session,
     promptText: string,
     tracker?: ProgressTracker,
-    opts: { interim?: boolean } = {},
+    opts: { interim?: boolean; engine?: EngineType } = {},
   ): Promise<TurnResponse> {
     let text = "";
     let finalText = "";
@@ -1623,6 +1624,7 @@ export class BotInstance {
       this.botId,
       this.config.extraArgs,
       this.botIdentity(),
+      opts.engine,
     )) {
       if (event.type === "thinking_started") {
         tracker?.thinking();
@@ -1907,14 +1909,15 @@ export class BotInstance {
       messageIds: new Set([msg.messageId]),
       tracker,
     });
+    const turnEngine = session.activeEngine;
     tracker.start();
 
     try {
       const interim = this.config.interimText !== "final";
-      const response = await this.collectResponse(session, promptText, tracker, { interim });
+      const response = await this.collectResponse(session, promptText, tracker, { interim, engine: turnEngine });
 
       if (response.isError) {
-        throw new Error(response.errorMessage || `${session.activeEngine} engine failed without an error message`);
+        throw new Error(response.errorMessage || `${turnEngine} engine failed without an error message`);
       }
 
       // Check for inline buttons markup: [button: Opt1 | Opt2] or <<Opt1>>
@@ -1924,10 +1927,10 @@ export class BotInstance {
       this.sessionManager.addTurn(session.sessionId, {
         role: "assistant",
         text: fullResponse,
-        engine: session.activeEngine,
+        engine: turnEngine,
       });
 
-      session.lastEngine = session.activeEngine;
+      session.lastEngine = turnEngine;
       await this.sessionManager.flush(msg.chatId);
       this.memoryAuto?.noteTurn(session);
       // The agent may have said everything through the send-message API and ends the turn without a reply

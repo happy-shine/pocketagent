@@ -148,8 +148,10 @@ export class EngineManager {
     botId: string,
     botExtraArgs?: string[],
     identity?: BotIdentity,
+    engine?: EngineType,
   ): AsyncGenerator<EngineEvent> {
-    const adapter = this.getAdapter(session.activeEngine);
+    const targetEngine = engine ?? session.activeEngine;
+    const adapter = this.getAdapter(targetEngine);
     yield* adapter.sendMessage(session, text, botId, botExtraArgs, identity);
   }
 

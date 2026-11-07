@@ -195,6 +195,22 @@ export class AgyEngineAdapter implements EngineAdapter {
     botExtraArgs?: string[],
     identity?: BotIdentity,
   ): AsyncGenerator<EngineEvent> {
+    // If returning to Agy after interacting with another engine, decide whether to resume or start fresh
+    if (session.agySessionId && session.lastEngine && session.lastEngine !== "agy") {
+      const deltaTurns = getDeltaTurnsForEngine(session, "agy");
+      const hasLiveProcess = this.processes.has(session.sessionId);
+      // If significant turns happened elsewhere (>= 4) or the process timed out/exited,
+      // starting fresh with a handover primer prevents carrying stale tool history and hallucinating old tasks.
+      if (deltaTurns.length >= 4 || !hasLiveProcess) {
+        this.log.info(
+          { sessionId: session.sessionId, prevAgySessionId: session.agySessionId, deltaCount: deltaTurns.length, hasLiveProcess },
+          "Switching to Agy after absence or multiple turns on other engine; starting fresh conversation with handover primer",
+        );
+        session.agySessionId = undefined;
+        this.release(session.sessionId);
+      }
+    }
+
     const ep = this.acquire(session, botId, botExtraArgs, identity);
     if (!ep.process || !ep.process.stdin) {
       yield { type: "error", message: "Failed to spawn Agy process" };

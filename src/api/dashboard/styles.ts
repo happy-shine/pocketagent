@@ -452,6 +452,8 @@ pre.raw{font:12px/1.6 var(--mono);white-space:pre-wrap;word-break:break-word;mar
 
 /* bots */
 .bots{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.bot-channels{margin-bottom:20px;flex-wrap:wrap}
+.bot-channels button{display:flex;align-items:center;gap:7px}
 .bots.open{grid-template-columns:minmax(0,1fr) 470px}
 .bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;align-content:start}
 .bc-h{display:flex;align-items:center;gap:11px;padding:14px 16px 12px}

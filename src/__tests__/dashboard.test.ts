@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
+import { runInNewContext } from "node:vm";
 import { saveConfig, parseConfig } from "../config/loader.js";
 import { getDashboardHtml } from "../api/dashboard-html.js";
 import { describeCron, renderMarkdown, renderRich, splitReply } from "../api/dashboard/lib.js";
@@ -49,6 +50,45 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
       expect(src).toContain(endpoint);
     }
     expect(src).not.toMatch(/<\/script/i);
+  });
+
+  it("renders WeChat beside the other channels with its own icon, filter and QR settings", () => {
+    // Exercise the actual embedded client render functions without a live browser or gateway credentials.
+    const context: any = { navigator: { language: "zh-CN" }, localStorage: { getItem: () => null }, document: {} };
+    const hook = `globalThis.dashboardTest = {
+      setConfig(value) { draft = value; S.config = value; },
+      filter(value) { ui.botChannel = value; },
+      pageBots, botDrawer, chn, chatKind,
+      addBot(value) { ui.newBot = value; configChanged = () => {}; go = () => {}; toast = () => {}; ACT.addBot(); return draft.bots; }
+    };`;
+    const src = pageScript().replace(/\binit\(\);(\s*}\)\(\);?\s*)$/, `${hook}$1`);
+    expect(src).not.toBe(pageScript());
+    runInNewContext(src, context);
+    const app = context.dashboardTest;
+    app.setConfig({ engines: { default: "codex" }, bots: [
+      { name: "telegram-bot", channel: "telegram", token: "fixture" },
+      { name: "discord-bot", channel: "discord", token: "fixture" },
+      { name: "wechat-bot", channel: "wechat" },
+    ] });
+    const all = app.pageBots([]).html;
+    expect(all).toContain('data-v="telegram"');
+    expect(all).toContain('data-v="discord"');
+    expect(all).toContain('data-v="wechat"');
+    expect(all).toContain('href="#c-wx"');
+    expect(getDashboardHtml()).toContain('id="c-wx"');
+    app.filter("wechat");
+    const filtered = app.pageBots([]).html;
+    expect(filtered).toContain("wechat-bot");
+    expect(filtered).not.toContain("telegram-bot");
+    expect(filtered).not.toContain("discord-bot");
+    const drawer = app.botDrawer(2);
+    expect(drawer).toContain("通过微信扫码授权");
+    expect(drawer).not.toContain('data-path="bots.2.token"');
+    expect(app.chatKind("wechat-test", "owner@im.wechat", "wechat")).toBe("dm");
+    const added = app.addBot({ name: "new-wechat", channel: "wechat", token: "" });
+    expect(added).toHaveLength(4);
+    expect(added[3]).toMatchObject({ channel: "wechat", wechat: { enabled: true } });
+    expect(added[3]).not.toHaveProperty("token");
   });
 
   it("renders run output Markdown safely", () => {

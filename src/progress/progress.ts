@@ -80,6 +80,9 @@ export class ProgressTracker {
   }
 
   start(): void {
+    if (this.channel.supportsMessageEditing === false) {
+      void this.channel.sendTyping(this.chatId).catch(() => {});
+    }
     this.flushTimer = setInterval(() => {
       this.pendingFlush = this.flush().catch(() => {});
     }, TICK_INTERVAL);
@@ -262,7 +265,7 @@ export class ProgressTracker {
       await this.channel.deleteMessage?.(this.chatId, progressId).catch(() => {});
     }
 
-    if (this.messageId) {
+    if (this.messageId && this.channel.supportsMessageEditing !== false) {
       try {
         await this.channel.editMessage(
           this.chatId,
@@ -300,6 +303,11 @@ export class ProgressTracker {
 
   private async sendProgress(): Promise<void> {
     try {
+      if (this.channel.supportsMessageEditing === false) {
+        await this.channel.sendTyping(this.chatId);
+        this.lastFlush = Date.now();
+        return;
+      }
       const text = this.render().slice(0, 1000);
       if (!this.messageId) {
         this.messageId = await this.channel.send({

@@ -62,6 +62,8 @@ export interface HistoryMessage {
 
 export interface ChannelAdapter {
   readonly type: string;
+  /** False for append-only channels: progress uses typing, and answers are sent as new messages. */
+  readonly supportsMessageEditing?: boolean;
   username?: string;
   start(): Promise<void>;
   stop(): Promise<void>;

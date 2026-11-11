@@ -24,6 +24,7 @@ import {
   getUpdates,
   sendMessage,
   sendTyping,
+  getConfig,
 } from "./api.js";
 import { downloadInboundMedia, uploadAndSendWechatMedia } from "./media.js";
 import { formatWechatText, formatButtonsAsText, splitWechatMessage } from "./formatter.js";
@@ -37,6 +38,7 @@ import {
 
 export class WechatAdapter implements ChannelAdapter {
   readonly type = "wechat";
+  readonly supportsMessageEditing = false;
   username?: string;
 
   private botId: string;
@@ -51,6 +53,7 @@ export class WechatAdapter implements ChannelAdapter {
   private sessionData?: WechatSessionData;
   private syncBuf: string = "";
   private contextTokens = new Map<string, string>();
+  private typingTickets = new Map<string, { context: string | undefined; ticket: string; expires: number }>();
   private triggerWordsResolver?: (chatId: string) => string[];
   private lastPollingErrorAt: number = 0;
 
@@ -444,6 +447,7 @@ export class WechatAdapter implements ChannelAdapter {
       const clientId = `claw-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       const req: SendMessageReq = {
         msg: {
+          from_user_id: "",
           to_user_id: toUserId,
           client_id: clientId,
           message_type: 2, // BOT
@@ -460,6 +464,7 @@ export class WechatAdapter implements ChannelAdapter {
 
       const resp = await sendMessage(baseUrl, token, req);
       lastMsgId = resp.msg_id || resp.message_id || clientId;
+      this.log.info({ chatId: toUserId, messageId: lastMsgId, chars: chunk.length }, "Sent WeChat message");
     }
 
     return lastMsgId;
@@ -476,18 +481,30 @@ export class WechatAdapter implements ChannelAdapter {
   }
 
   async editMessage(): Promise<void> {
-    // WeChat doesn't support editing sent messages; no-op
+    // Never silently claim an edit delivered text that WeChat cannot display.
+    throw new Error("WeChat does not support editing messages; send a new message instead");
   }
 
   async sendTyping(chatId: string): Promise<void> {
     if (!this.sessionData?.bot_token) return;
     const baseUrl = this.sessionData.baseurl || this.config.baseUrl || DEFAULT_BASE_URL;
     try {
+      const context = this.contextTokens.get(chatId);
+      let cached = this.typingTickets.get(chatId);
+      if (!cached || cached.context !== context || cached.expires < Date.now()) {
+        const config = await getConfig(baseUrl, this.sessionData.bot_token, chatId, context);
+        if (!config.typing_ticket) return;
+        cached = { context, ticket: config.typing_ticket, expires: Date.now() + 5 * 60_000 };
+        this.typingTickets.set(chatId, cached);
+      }
       await sendTyping(baseUrl, this.sessionData.bot_token, {
         ilink_user_id: chatId,
+        typing_ticket: cached.ticket,
         status: 1,
       });
-    } catch {}
+    } catch {
+      this.typingTickets.delete(chatId);
+    }
   }
 
   async sendPhoto(chatId: string, filePath: string, caption?: string): Promise<string> {

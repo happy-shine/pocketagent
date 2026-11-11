@@ -35,7 +35,8 @@ export function dashboardClient() {
   const L = (zh, en) => (lang === "zh" ? zh : en);
 
   const ic = (name, cls) => `<svg class="i${cls ? " " + cls : ""}"><use href="#i-${name}"/></svg>`;
-  const chn = (ch, cls) => `<svg class="chn${cls ? " " + cls : ""}"><use href="#c-${ch === "discord" ? "dc" : "tg"}"/></svg>`;
+  const CHANNELS = [["telegram", "Telegram"], ["discord", "Discord"], ["wechat", L("微信", "WeChat")]];
+  const chn = (ch, cls) => `<svg class="chn${cls ? " " + cls : ""}" aria-label="${esc(CHANNELS.find(([id]) => id === ch)?.[1] || ch)}"><use href="#c-${({ telegram: "tg", discord: "dc", wechat: "wx", weixin: "wx" })[ch] || "tg"}"/></svg>`;
   const ENG = { claude: "Claude", codex: "Codex", agy: "AGY", grok: "Grok" };
   const ENG_FULL = { claude: "Claude Code", codex: "OpenAI Codex", agy: "Antigravity", grok: "xAI Grok" };
   const ENGINES = ["claude", "codex", "agy", "grok"];
@@ -373,6 +374,10 @@ export function dashboardClient() {
   function chatKind(botId, chatId, channelType) {
     const ch = channelType || (rtById(botId) || {}).channel;
     if (ch === "telegram") return String(chatId).startsWith("-") ? "group" : "dm";
+    if (ch === "wechat" || ch === "weixin") {
+      const session = S.sessions.find((s) => s.botId === botId && s.chatId === chatId);
+      return session?.isGroup ? "group" : "dm";
+    }
     const hint = S.cron.find((j) => j.botId === botId && j.chatId === chatId) || S.jobs.find((j) => j.botId === botId && j.chatId === chatId);
     if (hint) return hint.isGroup ? "channel" : "dm";
     return "channel";
@@ -973,7 +978,7 @@ export function dashboardClient() {
       const dd = dayDiff(j.state.nextRunAt, S.cronTz);
       return `<a class="up" href="#/cron/${enc(j.id)}"><div class="up-t">${hhmm(p)}<small>${dd === 0 ? L("今天", "Today") : dd === 1 ? L("明天", "Tomorrow") : p.m + "/" + p.d}</small></div><div class="up-l"><span class="dot ${cronFailed(j) ? "err" : "ok"}"></span></div><div class="up-n"><b>${esc(j.name)}</b><span>${esc(chatText(j.botId, j.chatId, j.channelType))} · ${esc(botName(j.botId))}</span></div></a>`;
     });
-    const botRows = bots.map((b) => `<a class="br" href="#/bots">${chn(b.channel)}<b>${esc(b.name)}</b><span class="muted ell">${b.username ? (b.channel === "discord" ? "" : "@") + esc(String(b.username).replace(/^@/, "")) : ""}</span><div class="r">${eng(b.engine)}</div></a>`);
+    const botRows = bots.map((b) => `<a class="br" href="#/bots">${chn(b.channel)}<b>${esc(b.name)}</b><span class="muted ell">${b.username ? (b.channel === "telegram" ? "@" : "") + esc(String(b.username).replace(/^@/, "")) : ""}</span><div class="r">${eng(b.engine)}</div></a>`);
     const engTiles = ENGINES.map((e) => {
       const cap = S.caps[e];
       const n = (cap && cap.models && cap.models.length) || 0;
@@ -1030,12 +1035,12 @@ export function dashboardClient() {
       <div class="sl-h"><h2>${L("会话", "Sessions")}</h2><span class="muted" style="font-size:12px">${L(`${all.length} 个聊天 · ${S.sessions.length} 个会话`, `${all.length} chats · ${S.sessions.length} sessions`)}</span><button class="btn icon sm outline" style="margin-left:auto" data-act="newSession" title="${L("新建会话", "New session")}">${ic("plus")}</button></div>
       <div class="sl-f">
         <div class="input sm">${ic("search")}<input id="ses-q" data-filter="ses.q" value="${esc(f.q)}" placeholder="${L("搜索聊天、备注、会话 ID…", "Search chats, names, session IDs…")}" spellcheck="false" autocomplete="off"></div>
-        <div class="row"><div class="seg sm full" style="flex:1">${[["all", L("全部", "All")], ["telegram", "Telegram"], ["discord", "Discord"]]
+        <div class="row"><div class="seg sm full" style="flex:1">${[["all", L("全部", "All")], ...CHANNELS]
           .map(([v, t]) => `<button class="${f.ch === v ? "on" : ""}" data-act="sesCh" data-v="${v}">${t} <i>${cnt(v)}</i></button>`)
           .join("")}</div></div>
         <select class="app-input sm" data-filter="ses.bot">${botOpts.map(([v, t]) => `<option value="${esc(v)}"${f.bot === v ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>
       </div>
-      <div class="sl-items" data-keep="sl">${!S.loaded.sessions ? `<div class="empty">${L("加载中…", "Loading…")}</div>` : groups.join("") || `<div class="empty">${all.length ? L("没有匹配的聊天", "No matching chats") : L("还没有会话。在 Telegram 或 Discord 里给 Bot 发条消息就会出现在这里。", "No sessions yet. Message a bot on Telegram or Discord and it shows up here.")}</div>`}</div>
+      <div class="sl-items" data-keep="sl">${!S.loaded.sessions ? `<div class="empty">${L("加载中…", "Loading…")}</div>` : groups.join("") || `<div class="empty">${all.length ? L("没有匹配的聊天", "No matching chats") : L("还没有会话。在 Telegram、Discord 或微信里给 Bot 发条消息就会出现在这里。", "No sessions yet. Message a bot on Telegram, Discord or WeChat and it shows up here.")}</div>`}</div>
       <div class="sl-foot">${ic("folder")}${orphans.length ? `<a data-act="orphans" style="color:var(--warn)">${L(`孤立工作区 ${orphans.length} 个`, `${orphans.length} orphaned workspaces`)}</a>` : L("孤立工作区 0 个", "No orphaned workspaces")}</div>
     </section>`;
 
@@ -1401,10 +1406,13 @@ export function dashboardClient() {
     const editing = args[0] === "new" ? "new" : args[0] !== undefined && bots[Number(args[0])] ? Number(args[0]) : null;
     if (editing === "new" && !ui.newBot) ui.newBot = { name: "", channel: "telegram", token: "", dmPolicy: "pairing", groupPolicy: "pairing", allowFrom: [], triggerWords: [], groups: {} };
     const de = defaultEngine();
+    const botChannel = ui.botChannel || "all";
     const cards = bots.map((b, i) => {
+      if (botChannel !== "all" && b.channel !== botChannel) return "";
       const rt = rtByName(b.name);
       const groups = Object.values(b.groups || {}).filter((v) => v === true || (v && v.enabled !== false)).length;
       const dc = b.channel === "discord";
+      const wx = b.channel === "wechat";
       let soul = "";
       if (rt) {
         const sc = ensure(ui.soul, rt.botId, "1", () => api(`/api/soul?bot_id=${enc(rt.botId)}`).then((d) => !!(d.content && d.content.trim())));
@@ -1412,7 +1420,7 @@ export function dashboardClient() {
       } else soul = `<span class="muted">${L("Bot 运行后可设置", "After the bot starts")}</span>`;
       const model = [b.model, b.effort].filter(Boolean).join(" · ");
       return `<div class="card bc${editing === i ? " sel" : ""}">
-        <div class="bc-h">${chn(b.channel)}<div style="min-width:0"><b class="ell">${esc(b.name)}</b><span>${rt ? (rt.username ? esc(String(rt.username).startsWith("@") || dc ? rt.username : "@" + rt.username) : "") : L("未运行（保存后启动）", "Not running (starts after save)")}</span></div>${rt ? `<span class="pill ok">${L("在线", "Online")}</span>` : `<span class="pill nodot">${L("未运行", "Stopped")}</span>`}</div>
+        <div class="bc-h">${chn(b.channel)}<div style="min-width:0"><b class="ell">${esc(b.name)}</b><span>${rt ? (rt.username ? esc(String(rt.username).startsWith("@") || dc || wx ? rt.username : "@" + rt.username) : "") : L("未运行（保存后启动）", "Not running (starts after save)")}</span></div>${rt ? `<span class="pill ok">${L("在线", "Online")}</span>` : `<span class="pill nodot">${L("未运行", "Stopped")}</span>`}</div>
         <dl class="bc-b"><dt>${L("默认执行", "Runs on")}</dt><dd>${b.engine ? eng(b.engine) : eng(de) + `<span class="muted">${L("· 跟随全局", "· global default")}</span>`}${model ? `<span class="muted">· ${esc(model)}</span>` : ""}</dd>
           <dt>${L("访问", "Access")}</dt><dd>${L("私聊 ", "DM ")}${esc(policyName(b.dmPolicy || (draft.auth && draft.auth.defaultPolicy) || "pairing"))} · ${dc ? L("频道 ", "Channels ") : L("群组 ", "Groups ")}${esc(policyName(b.groupPolicy || (draft.auth && draft.auth.defaultPolicy) || "pairing"))}</dd>
           <dt>${L("已授权", "Allowed")}</dt><dd>${L(`${(b.allowFrom || []).length} 位用户 · ${groups} 个${dc ? "频道" : "群组"}`, `${(b.allowFrom || []).length} users · ${groups} ${dc ? "channels" : "groups"}`)}</dd>
@@ -1425,8 +1433,9 @@ export function dashboardClient() {
       crumb: editing === null ? null : ["Bots", editing === "new" ? L("添加", "Add") : bots[editing].name],
       actions: `<a class="btn sm outline" href="#/bots/new">${ic("plus")}${L("添加 Bot", "Add bot")}</a>`,
       html: `<div class="page">
-        <div class="ph"><div><h1>Bots</h1><p>${L("每个 Bot 是一个 Telegram 或 Discord 机器人，可以单独设置默认引擎、访问策略和人设。", "Each bot is a Telegram or Discord bot with its own default engine, access policy and persona.")}</p></div></div>
-        <div class="bots${drawer ? " open" : ""}"><div class="bgrid">${cards.join("") || `<div class="card"><div class="empty"><b>${L("还没有 Bot", "No bots yet")}</b>${L("先在 BotFather 或 Discord 开发者后台拿到 Token。", "Get a token from BotFather or the Discord developer portal first.")}<br><a class="btn primary" href="#/bots/new">${ic("plus")}${L("添加 Bot", "Add bot")}</a></div></div>`}</div>${drawer}</div>
+        <div class="ph"><div><h1>Bots</h1><p>${L("管理 Telegram、Discord 与微信机器人，分别设置默认引擎、访问策略和人设。", "Manage Telegram, Discord and WeChat bots, each with its own engine, access policy and persona.")}</p></div></div>
+        <div class="seg bot-channels" aria-label="${L("机器人渠道", "Bot channels")}">${[["all", L("全部", "All")], ...CHANNELS].map(([id, name]) => `<button class="${botChannel === id ? "on" : ""}" data-act="botCh" data-v="${id}">${id === "all" ? "" : chn(id)}${name}<span class="muted">${id === "all" ? bots.length : bots.filter((b) => b.channel === id).length}</span></button>`).join("")}</div>
+        <div class="bots${drawer ? " open" : ""}"><div class="bgrid">${cards.join("") || `<div class="card"><div class="empty"><b>${L("没有此渠道的 Bot", "No bots on this channel")}</b>${L("Telegram / Discord 使用 Token，微信使用扫码授权。", "Telegram / Discord use tokens; WeChat uses QR authorization.")}<br><a class="btn primary" href="#/bots/new">${ic("plus")}${L("添加 Bot", "Add bot")}</a></div></div>`}</div>${drawer}</div>
       </div>`,
     };
   }
@@ -1435,6 +1444,7 @@ export function dashboardClient() {
     const pre = isNew ? "@new." : `bots.${i}.`;
     const b = isNew ? ui.newBot : draft.bots[i];
     const dc = b.channel === "discord";
+    const wx = b.channel === "wechat";
     const e = b.engine || defaultEngine();
     const rk = isNew ? "new" : b.name;
     const groups = Object.entries(b.groups || {});
@@ -1444,10 +1454,10 @@ export function dashboardClient() {
       <div class="dr-h">${chn(b.channel)}<h2>${isNew ? L("添加 Bot", "Add bot") : L("编辑 ", "Edit ") + esc(b.name)}</h2><div class="r"><a class="btn icon sm ghost" href="#/bots" title="${L("关闭", "Close")}">${ic("x")}</a></div></div>
       <div class="dr-b">
         <div class="dr-s">${L("基本", "BASICS")}</div>
-        ${isNew ? fld(L("渠道", "Channel"), `<div class="seg full">${[["telegram", "Telegram"], ["discord", "Discord"]].map(([v, t]) => `<button class="${b.channel === v ? "on" : ""}" data-act="setPath" data-path="@new.channel" data-val="${v}">${t}</button>`).join("")}</div>`) : ""}
+        ${isNew ? fld(L("渠道", "Channel"), `<div class="seg full">${CHANNELS.map(([v, t]) => `<button class="${b.channel === v ? "on" : ""}" data-act="setPath" data-path="@new.channel" data-val="${v}">${chn(v)}${t}</button>`).join("")}</div>`) : ""}
         <div class="g2">
           ${fld(L("名称", "Name"), inp(pre + "name", { ph: "my-bot" }), { path: isNew ? "" : pre + "name" })}
-          ${fld("Bot Token", `<div class="input" style="padding-right:4px"><input type="${ui.reveal[rk] ? "text" : "password"}" data-path="${pre}token" value="${esc(b.token || b.discordToken || "")}" placeholder="${dc ? "MTIz…" : "123456:ABC…"}" autocomplete="off" spellcheck="false" class="mono"><button class="copy" data-act="reveal" data-k="${esc(rk)}" title="${L("显示/隐藏", "Show/hide")}">${ic(ui.reveal[rk] ? "eyeoff" : "eye")}</button></div>`, { path: isNew ? "" : pre + "token" })}
+          ${wx ? fld(L("微信连接", "WeChat connection"), `<div class="hint">${L("通过微信扫码授权，凭据保存在本机；无需填写 Bot Token。", "Authorize by scanning the WeChat QR code. Credentials stay on this machine; no Bot Token is needed.")}</div>`) : fld("Bot Token", `<div class="input" style="padding-right:4px"><input type="${ui.reveal[rk] ? "text" : "password"}" data-path="${pre}token" value="${esc(b.token || b.discordToken || "")}" placeholder="${dc ? "MTIz…" : "123456:ABC…"}" autocomplete="off" spellcheck="false" class="mono"><button class="copy" data-act="reveal" data-k="${esc(rk)}" title="${L("显示/隐藏", "Show/hide")}">${ic(ui.reveal[rk] ? "eyeoff" : "eye")}</button></div>`, { path: isNew ? "" : pre + "token" })}
         </div>
         <div class="dr-s">${L("默认执行", "DEFAULTS")}</div>
         <div class="g3">
@@ -1995,6 +2005,10 @@ export function dashboardClient() {
       load(["pairings", "config", "status"]);
     },
     // sessions
+    botCh: (el) => {
+      ui.botChannel = el.dataset.v;
+      renderMain(true);
+    },
     sesCh: (el) => {
       ui.ses.ch = el.dataset.v;
       renderMain(true);
@@ -2280,9 +2294,14 @@ export function dashboardClient() {
     addBot: () => {
       const b = ui.newBot;
       if (!b.name || !b.name.trim()) return toast(L("请填写名称", "Name is required"), "error");
-      if (!b.token) return toast(L("请填写 Token", "Token is required"), "error");
+      if (b.channel !== "wechat" && !b.token) return toast(L("请填写 Token", "Token is required"), "error");
       if ((draft.bots || []).some((x) => x.name === b.name.trim())) return toast(L("已经有同名的 Bot", "A bot with this name exists"), "error");
       b.name = b.name.trim();
+      if (b.channel === "wechat") {
+        delete b.token;
+        delete b.discordToken;
+        b.wechat = { ...(b.wechat || {}), enabled: true };
+      }
       draft.bots = (draft.bots || []).concat([clone(b)]);
       ui.newBot = null;
       configChanged(false);

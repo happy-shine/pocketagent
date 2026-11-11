@@ -118,7 +118,26 @@ async function apiFetch(
   }
 
   const res = await fetch(url, fetchOpts);
+  if (!res.ok) throw new Error(`WeChat API HTTP ${res.status}`);
   return res.text();
+}
+
+export async function getConfig(
+  baseUrl: string,
+  token: string,
+  userId: string,
+  contextToken?: string,
+): Promise<{ typing_ticket?: string }> {
+  const text = await apiFetch(`${baseUrl}/ilink/bot/getconfig`, "POST", buildHeaders(token), {
+    ilink_user_id: userId,
+    context_token: contextToken,
+    base_info: buildBaseInfo(),
+  }, 10_000);
+  const resp = JSON.parse(text);
+  if ((resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0)) {
+    throw new Error(`WeChat getConfig error ${resp.errcode ?? resp.ret}`);
+  }
+  return resp;
 }
 
 export async function fetchBotQrCode(

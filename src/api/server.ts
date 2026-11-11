@@ -38,7 +38,7 @@ export interface ApiServerConfig {
   onReloadConfig?: () => Promise<{ ok: boolean; changes: string[] }>;
   getBotsInfo?: () => Array<{
     name: string;
-    channel: "telegram" | "discord";
+    channel: "telegram" | "discord" | "wechat";
     botId: string;
     username?: string;
     status: "online" | "stopped" | "error";

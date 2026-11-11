@@ -1,5 +1,5 @@
 export interface InboundMessage {
-  channelType: "telegram" | "discord" | string;
+  channelType: "telegram" | "discord" | "wechat" | string;
   chatId: string;
   senderId: string;
   senderName: string;

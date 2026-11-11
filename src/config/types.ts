@@ -1,13 +1,14 @@
-import type { AppConfig, BotConfig, EngineType } from "./schema.js";
+import type { AppConfig, BotConfig, EngineType, WechatChannelConfig } from "./schema.js";
 
 export type GatewayConfig = AppConfig;
-export type { BotConfig, EngineType };
+export type { BotConfig, EngineType, WechatChannelConfig };
 
 export interface ResolvedBotConfig {
   name: string;
-  channel: "telegram" | "discord";
+  channel: "telegram" | "discord" | "wechat";
   token?: string; // Telegram bot token
   discordToken?: string; // Discord bot token
+  wechat?: WechatChannelConfig;
   botId: string;
   engine: EngineType;
   model?: string;

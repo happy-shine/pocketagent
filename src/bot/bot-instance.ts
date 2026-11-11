@@ -7,6 +7,7 @@ import { checkAccess } from "../auth/access.js";
 import { PairingManager } from "../auth/pairing.js";
 import { TelegramAdapter } from "../channels/telegram/adapter.js";
 import { DiscordAdapter } from "../channels/discord/adapter.js";
+import { WechatAdapter } from "../channels/wechat/adapter.js";
 import type { ChannelAdapter, InboundMessage, InlineButton, HistoryMessage } from "../channels/types.js";
 import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
 import { EngineManager } from "../engines/manager.js";
@@ -122,6 +123,7 @@ export class BotInstance {
   config: ResolvedBotConfig;
   readonly telegram?: TelegramAdapter;
   readonly discord?: DiscordAdapter;
+  readonly wechat?: WechatAdapter;
   private sessionManager: SessionManager;
   private pairingManager: PairingManager;
   private engineManager: EngineManager;
@@ -203,6 +205,17 @@ export class BotInstance {
       this.discord.setTriggerWordsResolver((id) => this.getDiscordTriggerWords(id));
     }
 
+    if (opts.botConfig.channel === "wechat" || opts.botConfig.wechat) {
+      this.wechat = new WechatAdapter({
+        botId: this.botId,
+        dataDir: opts.dataDir,
+        config: opts.botConfig.wechat,
+        log: this.log,
+      });
+      this.wechat.setMessageStore(this.messageStore, this.name);
+      this.wechat.setTriggerWordsResolver((chatId) => this.getTriggerWords(chatId));
+    }
+
     this.allowFrom = this.loadAllowFrom();
     this.runtimeGroups = this.loadRuntimeGroups();
   }
@@ -224,7 +237,7 @@ export class BotInstance {
   }
 
   getUsername(): string | undefined {
-    return this.telegram?.username ?? this.discord?.username;
+    return this.telegram?.username ?? this.discord?.username ?? this.wechat?.username;
   }
 
   getAllowFrom(): string[] {
@@ -263,7 +276,8 @@ export class BotInstance {
   getChannel(channelType?: string): ChannelAdapter | undefined {
     if (channelType === "telegram") return this.telegram;
     if (channelType === "discord") return this.discord;
-    return this.telegram ?? this.discord;
+    if (channelType === "wechat" || channelType === "weixin") return this.wechat;
+    return this.telegram ?? this.discord ?? this.wechat;
   }
 
   /**
@@ -393,12 +407,19 @@ export class BotInstance {
       this.discord.onMessage((msg) => this.handleMessage(msg, this.discord!));
       await this.discord.start();
     }
+
+    if (this.wechat) {
+      this.registerCommands(this.wechat);
+      this.wechat.onMessage((msg) => this.handleMessage(msg, this.wechat!));
+      await this.wechat.start();
+    }
   }
 
   async stop(): Promise<void> {
     this.memoryAuto?.stop();
     if (this.telegram) await this.telegram.stop();
     if (this.discord) await this.discord.stop();
+    if (this.wechat) await this.wechat.stop();
     await this.sessionManager.flushAll();
   }
 
@@ -1259,7 +1280,7 @@ export class BotInstance {
 
   /** Executes one run of a scheduled task in its own session and posts the result to the task's chat. */
   async runScheduledTask(job: CronJob, run: CronRunContext): Promise<CronExecutionResult> {
-    const channel = job.channelType === "discord" ? this.discord : this.telegram;
+    const channel = this.getChannel(job.channelType);
     if (!channel) {
       const reason = `Bot "${this.name}" has no ${job.channelType} connection`;
       return { status: "error", error: reason, pauseReason: reason };
@@ -1328,7 +1349,7 @@ export class BotInstance {
   }
 
   async notifyChat(chatId: string, channelType: string, text: string): Promise<void> {
-    const channel = channelType === "discord" ? this.discord : this.telegram;
+    const channel = this.getChannel(channelType);
     await channel?.send({ chatId, text });
   }
 
@@ -1453,7 +1474,7 @@ export class BotInstance {
   async handleJobFinished(job: BackgroundJob): Promise<JobCallbackState> {
     // Whoever stopped it already saw the confirmation
     if (job.status === "cancelled") return "skipped";
-    const channel = job.channelType === "discord" ? this.discord : this.telegram;
+    const channel = this.getChannel(job.channelType);
     if (!channel) return "failed";
 
     let state: JobCallbackState = "done";
@@ -1810,12 +1831,12 @@ export class BotInstance {
     text += msg.text;
 
     const allAttachments = [...(msg.attachments ?? []), ...(msg.replyAttachments ?? [])];
-    const adapter = msg.channelType === "discord" ? this.discord : this.telegram;
+    const adapter = this.getChannel(msg.channelType);
     if (adapter?.downloadFile && allAttachments.length > 0) {
       const downloadsDir = join(this.dataDir, "downloads", this.botId, msg.chatId);
       for (const att of allAttachments) {
         try {
-          const localPath = await adapter.downloadFile(att.fileId, downloadsDir, att.fileName);
+          const localPath = att.localPath ?? (await adapter.downloadFile(att.fileId, downloadsDir, att.fileName));
           text += `\n[Attached ${att.type}: ${localPath}]`;
         } catch (err) {
           this.log.error({ error: err }, "Failed to download attachment");

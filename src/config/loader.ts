@@ -87,6 +87,19 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
         groups: tg.groups,
       },
     ];
+  } else if (config.channels?.wechat) {
+    const wc = config.channels.wechat;
+    rawBots = [
+      {
+        name: "wechat",
+        channel: "wechat",
+        wechat: wc,
+        dmPolicy: wc.dmPolicy,
+        groupPolicy: wc.groupPolicy,
+        allowFrom: wc.allowFrom,
+        triggerWords: wc.triggerWords,
+      },
+    ];
   } else {
     return [];
   }
@@ -103,15 +116,15 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
   }
 
   return rawBots.map((bot) => {
-    const channel: "telegram" | "discord" =
-      bot.channel ?? (bot.discordToken && !bot.token ? "discord" : "telegram");
+    const channel: "telegram" | "discord" | "wechat" =
+      bot.channel ?? (bot.wechat ? "wechat" : (bot.discordToken && !bot.token ? "discord" : "telegram"));
 
     let tgToken: string | undefined = undefined;
     let dcToken: string | undefined = undefined;
 
     if (channel === "discord") {
       dcToken = bot.token ?? bot.discordToken;
-    } else {
+    } else if (channel === "telegram") {
       tgToken = bot.token;
       dcToken = bot.discordToken;
     }
@@ -127,6 +140,8 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
           botId = decoded;
         }
       } catch {}
+    } else if (channel === "wechat") {
+      botId = `wechat-${bot.name}`;
     }
 
     const dmPolicy = (bot.dmPolicy ?? bot.auth?.dmPolicy ?? defaultPolicy) as "open" | "pairing" | "allowlist" | "disabled";
@@ -181,6 +196,7 @@ export function resolveBots(config: GatewayConfig): ResolvedBotConfig[] {
       channel,
       token: tgToken,
       discordToken: dcToken,
+      wechat: bot.wechat ?? config.channels?.wechat,
       botId,
       engine,
       model: bot.model ?? defaultModel,

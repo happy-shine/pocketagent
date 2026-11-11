@@ -38,6 +38,17 @@ const discordChannelSchema = z.object({
   guilds: z.record(z.string(), discordGuildSchema).default({}),
 });
 
+const wechatChannelSchema = z.object({
+  enabled: z.boolean().default(true),
+  botType: z.string().default("3"),
+  baseUrl: z.string().optional(),
+  cdnBaseUrl: z.string().optional(),
+  dmPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("pairing"),
+  groupPolicy: z.enum(["open", "pairing", "allowlist", "disabled"]).default("disabled"),
+  allowFrom: z.array(z.string()).default([]),
+  triggerWords: z.array(z.string()).optional(),
+});
+
 const gatewaySchema = z.object({
   port: z.number().int().positive().default(18790),
   proxy: z.string().url().optional(),
@@ -154,6 +165,7 @@ const authSchema = z.object({
 const channelsSchema = z.object({
   telegram: telegramChannelSchema.optional(),
   discord: discordChannelSchema.optional(),
+  wechat: wechatChannelSchema.optional(),
 });
 
 const botAuthSchema = z.object({
@@ -167,9 +179,10 @@ const botAuthSchema = z.object({
 
 const botSchema = z.object({
   name: z.string().min(1, "bot name is required"),
-  channel: z.enum(["telegram", "discord"]).optional(),
+  channel: z.enum(["telegram", "discord", "wechat"]).optional(),
   token: z.string().optional(), // Telegram or Discord Bot Token
   discordToken: z.string().optional(), // For backward compatibility
+  wechat: wechatChannelSchema.optional(),
   engine: EngineTypeSchema.optional(), // Default engine for this bot
   model: z.string().optional(),
   effort: z.string().optional(),
@@ -244,6 +257,7 @@ export type AppConfig = z.infer<typeof configSchema>;
 export type BotConfig = z.infer<typeof botSchema>;
 export type TelegramChannelConfig = z.infer<typeof telegramChannelSchema>;
 export type DiscordChannelConfig = z.infer<typeof discordChannelSchema>;
+export type WechatChannelConfig = z.infer<typeof wechatChannelSchema>;
 export type EnginesConfig = z.infer<typeof enginesSchema>;
 export type CustomModel = z.infer<typeof customModelSchema>;
 export type MemoryConfig = z.infer<typeof memorySchema>;

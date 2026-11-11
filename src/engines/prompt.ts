@@ -100,10 +100,15 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
 
   if (input.identity) {
     const lines = [`你是 ${input.identity.name}（@${input.identity.username}）。`];
-    if (input.isGroup && input.identity.peerBots && input.identity.peerBots.length > 0) {
-      const botList = input.identity.peerBots.map((bot) => `@${bot.username}（${bot.name}）`).join("、");
+    const discord = input.channelType === "discord";
+    const peers = (input.identity.peerBots ?? [])
+      .filter((bot) => bot.channel === (input.channelType ?? "telegram") && (!discord || bot.userId))
+      .map((bot) => (discord ? `<@${bot.userId}>（${bot.name}）` : `@${bot.username}（${bot.name}）`));
+    if (input.isGroup && peers.length > 0) {
       lines.push(
-        `本群可@的bot: ${botList}。只有以上列出的bot可以被@到，@其他任何bot都无效。除非用户明确要求bot间交流，否则不要主动@其他bot。`,
+        `本群可@的bot: ${peers.join("、")}。只有以上列出的bot可以被@到，@其他任何bot都无效。` +
+          (discord ? "在 Discord 上要原样写 <@数字ID> 才能@到。" : "") +
+          "除非用户明确要求bot间交流，否则不要主动@其他bot。",
       );
     }
     parts.push(lines.join("\n"));

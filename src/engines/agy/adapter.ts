@@ -27,6 +27,8 @@ export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
 // Keep each generated rule file under 23,000 bytes and spill excess sections into .agents/rules/pa-overflow-*.md.
 export const AGY_MAX_RULE_FILE_BYTES = 23_000;
 const AGY_ALWAYS_ON_HEADER = "---\ntrigger: always_on\n---\n\n";
+// How long an interrupted Antigravity process gets to exit on SIGTERM before it is killed
+const AGY_KILL_GRACE_MS = 5000;
 
 /** How Antigravity should work, from watching it take many slow, tiny steps and lose track after compaction. */
 export const AGY_WORKING_STYLE =
@@ -91,6 +93,8 @@ export class AgyEngineAdapter implements EngineAdapter {
   readonly supportsSteer = true;
 
   private processes = new Map<string, EngineProcess>();
+  // Sessions whose running turn /stop ended
+  private interrupted = new Set<string>();
   private config: EngineRuntimeConfig;
   private log: Logger;
 
@@ -240,6 +244,7 @@ export class AgyEngineAdapter implements EngineAdapter {
     ep.busy = true;
     ep.lastActiveAt = Date.now();
     this.clearIdleTimer(session.sessionId);
+    this.interrupted.delete(session.sessionId);
 
     // Check for Context Handover (the system prompt reaches Antigravity as AGENTS.md rules, see acquire)
     let fullPrompt = text;
@@ -376,6 +381,9 @@ export class AgyEngineAdapter implements EngineAdapter {
           return;
         }
       }
+      if (this.interrupted.delete(session.sessionId)) {
+        yield { type: "result", result: "(Interrupted)", isError: false };
+      }
     } finally {
       rl.close();
       ep.busy = false;
@@ -400,21 +408,26 @@ export class AgyEngineAdapter implements EngineAdapter {
     }
   }
 
+  /**
+   * Antigravity's stream-json input takes only "user" messages and ignores any other event, so an interrupt ends
+   * the process instead; the next turn resumes the conversation with --conversation.
+   */
   sendControl(sessionId: string, request: Record<string, unknown>): boolean {
+    if (request.subtype !== "interrupt") return false;
     const ep = this.processes.get(sessionId);
-    if (!ep || !ep.process || !ep.process.stdin || ep.process.killed) {
+    if (!ep?.busy || !ep.process || ep.process.exitCode !== null || ep.process.signalCode !== null) {
       return false;
     }
-    const msg = JSON.stringify({
-      event: "control",
-      request,
-    });
-    try {
-      ep.process.stdin.write(msg + "\n");
-      return true;
-    } catch {
-      return false;
-    }
+    const proc = ep.process;
+    this.interrupted.add(sessionId);
+    this.clearIdleTimer(sessionId);
+    this.processes.delete(sessionId);
+    proc.kill("SIGTERM");
+    // A tool command that ignores SIGTERM must not keep the turn running
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    }, AGY_KILL_GRACE_MS).unref();
+    return true;
   }
 
   hasProcess(sessionId: string): boolean {

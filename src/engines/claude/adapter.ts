@@ -368,6 +368,8 @@ export class ClaudeEngineAdapter implements EngineAdapter {
     if (!ep || !ep.process || !ep.process.stdin || ep.process.killed) {
       return false;
     }
+    // Nothing to interrupt between turns
+    if (request.subtype === "interrupt" && !ep.busy) return false;
     const msg = JSON.stringify({
       type: "control_request",
       request_id: `pa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

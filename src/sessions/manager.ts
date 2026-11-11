@@ -48,6 +48,10 @@ export class SessionManager {
         if (active.isGroup === undefined && opts.isGroup !== undefined) {
           active.isGroup = opts.isGroup;
         }
+        // Sessions made without knowing the chat's platform were taken for Telegram
+        if (opts.channelType && active.channelType !== opts.channelType) {
+          active.channelType = opts.channelType;
+        }
         if (!active.turns) active.turns = [];
         if (!active.activeEngine) active.activeEngine = state.preferredEngine ?? opts.defaultEngine ?? "claude";
         return active;
@@ -104,12 +108,14 @@ export class SessionManager {
     defaultModel?: string,
     defaultEffort?: string,
     title?: string,
+    chat: { channelType?: string; isGroup?: boolean } = {},
   ): Session {
     let state = this.chats.get(chatId);
     if (!state) {
       return this.createFirst({
         chatId,
-        channelType: "telegram",
+        channelType: chat.channelType ?? "telegram",
+        isGroup: chat.isGroup,
         defaultEngine: defaultEngine ?? "claude",
         defaultModel,
         defaultEffort,
@@ -159,7 +165,7 @@ export class SessionManager {
     const session: Session = {
       sessionId: randomUUID(),
       chatId,
-      channelType: prev ? prev.channelType : "telegram",
+      channelType: chat.channelType ?? prev?.channelType ?? "telegram",
       activeEngine,
       model,
       effort,
@@ -169,7 +175,7 @@ export class SessionManager {
       lastActiveAt: Date.now(),
       isActive: true,
       sessionNum: maxNum + 1,
-      isGroup: prev ? prev.isGroup : false,
+      isGroup: chat.isGroup ?? (prev ? prev.isGroup : false),
       title,
       turns: [],
     };
@@ -342,9 +348,9 @@ export class SessionManager {
     const state = this.chats.get(chatId);
     if (!state) return false;
 
-    const initialLen = state.sessions.length;
+    const removed = state.sessions.find((s) => s.sessionId === sessionId);
+    if (!removed) return false;
     state.sessions = state.sessions.filter((s) => s.sessionId !== sessionId);
-    if (state.sessions.length === initialLen) return false;
 
     if (state.activeSessionId === sessionId) {
       if (state.sessions.length > 0) {
@@ -356,7 +362,8 @@ export class SessionManager {
         // Create replacement session
         this.createFirst({
           chatId,
-          channelType: "telegram",
+          channelType: removed.channelType,
+          isGroup: removed.isGroup,
           defaultEngine: state.preferredEngine,
         });
       }

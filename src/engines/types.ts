@@ -4,10 +4,20 @@ import type { MemorySnapshot } from "../memory/store.js";
 
 export type { EngineType };
 
+/** Another bot of this gateway on one platform. */
+export interface PeerBot {
+  name: string;
+  channel: string;
+  username: string;
+  // Discord user id: a mention there is written <@id>
+  userId?: string;
+}
+
 export interface BotIdentity {
   name: string;
   username: string;
-  peerBots?: Array<{ name: string; username: string }>;
+  // Only bots on the platform of the chat: the others cannot be mentioned there
+  peerBots?: PeerBot[];
 }
 
 export interface ModelInfo {

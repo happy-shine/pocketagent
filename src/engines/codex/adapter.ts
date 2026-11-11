@@ -23,6 +23,8 @@ export class CodexEngineAdapter implements EngineAdapter {
   readonly type = "codex" as const;
 
   private processes = new Map<string, EngineProcess>();
+  // Sessions whose running turn /stop ended
+  private interrupted = new Set<string>();
   private config: EngineRuntimeConfig;
   private log: Logger;
 
@@ -104,6 +106,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     ep.busy = true;
     ep.lastActiveAt = Date.now();
     this.clearIdleTimer(session.sessionId);
+    this.interrupted.delete(session.sessionId);
 
     // Context Handover check
     let fullPrompt = text;
@@ -183,6 +186,7 @@ export class CodexEngineAdapter implements EngineAdapter {
 
     const rl = createInterface({ input: proc.stdout!, crlfDelay: Infinity });
     const blocks = new TextBlocks();
+    let sawResult = false;
 
     try {
       for await (const line of rl) {
@@ -201,8 +205,12 @@ export class CodexEngineAdapter implements EngineAdapter {
             continue;
           }
           if (ev.type === "tool_started" || ev.type === "thinking_started") blocks.close();
+          if (ev.type === "result") sawResult = true;
           yield ev;
         }
+      }
+      if (this.interrupted.delete(session.sessionId) && !sawResult) {
+        yield { type: "result", result: "(Interrupted)", isError: false };
       }
     } finally {
       rl.close();
@@ -212,8 +220,18 @@ export class CodexEngineAdapter implements EngineAdapter {
     }
   }
 
-  sendControl(_sessionId: string, _request: Record<string, unknown>): boolean {
-    return false;
+  /** Each Codex turn is its own `codex exec` process, so an interrupt stops that process. */
+  sendControl(sessionId: string, request: Record<string, unknown>): boolean {
+    if (request.subtype !== "interrupt") return false;
+    const ep = this.processes.get(sessionId);
+    const proc = ep?.process;
+    if (!ep?.busy || !proc || proc.exitCode !== null || proc.signalCode !== null) return false;
+    this.interrupted.add(sessionId);
+    if (!proc.kill("SIGINT")) return false;
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGTERM");
+    }, 5000).unref();
+    return true;
   }
 
   hasProcess(sessionId: string): boolean {

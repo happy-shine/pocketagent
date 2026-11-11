@@ -1,4 +1,4 @@
-import { mkdirSync, appendFileSync, readFileSync, existsSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, appendFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StoredMessage {
@@ -8,6 +8,18 @@ export interface StoredMessage {
   senderId: string;
   text: string;
   media?: string[];
+  replyToId?: string;
+  replyToSender?: string;
+  replyToText?: string;
+  // Forum topic of a Telegram group the message was posted in
+  threadId?: string;
+}
+
+/** A later line about a message already in the file: its edited text, or that it was deleted. */
+interface MessageChange {
+  id: string;
+  op: "edit" | "delete";
+  text?: string;
 }
 
 export interface MessageQueryOptions {
@@ -23,23 +35,11 @@ const DEDUP_WINDOW = 500;
 
 export class MessageStore {
   private dir: string;
-  private cursors = new Map<string, string>();
   private recentIds = new Map<string, Set<string>>();
 
   constructor(dataDir: string) {
     this.dir = join(dataDir, "messages");
     mkdirSync(this.dir, { recursive: true });
-  }
-
-  advanceCursor(sessionId: string, messageId: string): void {
-    this.cursors.set(sessionId, messageId);
-  }
-
-  advanceCursorToLatest(chatId: string, sessionId: string): void {
-    const latest = this.getRecent(chatId, 1);
-    if (latest.length > 0) {
-      this.cursors.set(sessionId, latest[0].id);
-    }
   }
 
   append(chatId: string, msg: StoredMessage): boolean {
@@ -55,36 +55,47 @@ export class MessageStore {
       if (first !== undefined) seen.delete(first);
     }
 
-    const filePath = join(this.dir, `${chatId}.jsonl`);
-    appendFileSync(filePath, JSON.stringify(msg) + "\n");
+    this.write(chatId, msg);
     return true;
+  }
+
+  /** Records the new text of a message that was edited; readers see the message with it, in its old place. */
+  edit(chatId: string, id: string, text: string): void {
+    this.write(chatId, { id, op: "edit", text } satisfies MessageChange);
+  }
+
+  /** Records that a message was deleted; readers no longer see it. */
+  remove(chatId: string, id: string): void {
+    this.write(chatId, { id, op: "delete" } satisfies MessageChange);
   }
 
   getRecent(chatId: string, limit = 50): StoredMessage[] {
     const filePath = join(this.dir, `${chatId}.jsonl`);
     if (!existsSync(filePath)) return [];
     const lines = readFileSync(filePath, "utf-8").trim().split("\n").filter(Boolean);
-    const slice = lines.slice(-limit);
-    return slice.map((line) => {
+    // Edits and deletions take lines too; read past them so `limit` messages remain
+    const messages = new Map<string, StoredMessage>();
+    for (const line of lines.slice(-limit * 2)) {
+      let entry: StoredMessage | MessageChange;
       try {
-        return JSON.parse(line) as StoredMessage;
+        entry = JSON.parse(line);
       } catch {
-        return null;
+        continue;
       }
-    }).filter((m): m is StoredMessage => m !== null);
+      if ("op" in entry) {
+        const msg = messages.get(entry.id);
+        if (entry.op === "delete") messages.delete(entry.id);
+        else if (msg && typeof entry.text === "string") messages.set(entry.id, { ...msg, text: entry.text });
+      } else if (!messages.has(entry.id)) {
+        messages.set(entry.id, entry);
+      }
+    }
+    return [...messages.values()].slice(-limit);
   }
 
-  getSinceCursor(chatId: string, sessionId: string, limit = 20): StoredMessage[] {
-    const cursor = this.cursors.get(sessionId);
-    const messages = this.getRecent(chatId, 100);
-    if (!cursor) {
-      return messages.slice(-limit);
-    }
-    const idx = messages.findIndex((m) => m.id === cursor);
-    if (idx === -1) {
-      return messages.slice(-limit);
-    }
-    return messages.slice(idx + 1, idx + 1 + limit);
+  /** A recent message by id, if it is still in the store. */
+  find(chatId: string, id: string): StoredMessage | undefined {
+    return this.getRecent(chatId, 200).find((m) => m.id === id);
   }
 
   query(opts: MessageQueryOptions): StoredMessage[] {
@@ -96,5 +107,9 @@ export class MessageStore {
       if (opts.search && !m.text.toLowerCase().includes(opts.search.toLowerCase())) return false;
       return true;
     }).slice(-(opts.limit ?? 50));
+  }
+
+  private write(chatId: string, entry: StoredMessage | MessageChange): void {
+    appendFileSync(join(this.dir, `${chatId}.jsonl`), JSON.stringify(entry) + "\n");
   }
 }

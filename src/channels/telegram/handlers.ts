@@ -1,7 +1,7 @@
 import type { Bot, Context } from "grammy";
 import type { InboundMessage, MessageHandler, CommandHandler, Attachment } from "../types.js";
 import type { Logger } from "pino";
-import type { MessageStore, StoredMessage } from "../../sessions/message-store.js";
+import type { MessageStore } from "../../sessions/message-store.js";
 
 const mediaGroupBuffers = new Map<string, {
   messages: Array<{ msg: InboundMessage; attachments: Attachment[] }>;
@@ -23,22 +23,19 @@ export function setMessageStore(store: MessageStore): void {
   messageStore = store;
 }
 
-function recordGroupMessage(chatId: string, msg: {
-  messageId: string;
-  senderName: string;
-  senderId: string;
-  text: string;
-  timestamp: number;
-  media?: string[];
-}): void {
+function recordGroupMessage(msg: InboundMessage, text: string, media?: string[]): void {
   if (!messageStore) return;
-  messageStore.append(chatId, {
+  messageStore.append(msg.chatId, {
     id: msg.messageId,
     ts: msg.timestamp,
     sender: msg.senderName,
     senderId: msg.senderId,
-    text: msg.text,
-    media: msg.media,
+    text,
+    media,
+    replyToId: msg.replyToMessageId,
+    replyToSender: msg.replySenderName,
+    replyToText: msg.replyText,
+    threadId: msg.threadId,
   });
 }
 
@@ -70,13 +67,7 @@ export function registerHandlers(
     if (!msg) return;
 
     if (msg.isGroup) {
-      recordGroupMessage(msg.chatId, {
-        messageId: msg.messageId,
-        senderName: msg.senderName,
-        senderId: msg.senderId,
-        text: ctx.message.text,
-        timestamp: msg.timestamp,
-      });
+      recordGroupMessage(msg, ctx.message.text);
 
       const triggers = getTriggerWords?.(msg.chatId);
       const result = checkGroupMention(ctx, msg, ctx.message.text, triggers);
@@ -99,14 +90,7 @@ export function registerHandlers(
     if (msg.isGroup) {
       const photo = ctx.message.photo;
       const largest = photo[photo.length - 1];
-      recordGroupMessage(msg.chatId, {
-        messageId: msg.messageId,
-        senderName: msg.senderName,
-        senderId: msg.senderId,
-        text: caption ? `[Photo] ${caption}` : "[Photo]",
-        timestamp: msg.timestamp,
-        media: [`photo:${largest.file_id}`],
-      });
+      recordGroupMessage(msg, caption ? `[Photo] ${caption}` : "[Photo]", [`photo:${largest.file_id}`]);
 
       const triggers = getTriggerWords?.(msg.chatId);
       const result = checkGroupMention(ctx, msg, caption, triggers);
@@ -186,14 +170,11 @@ export function registerHandlers(
     if (msg.isGroup) {
       const doc = ctx.message.document;
       const fileName = doc?.file_name;
-      recordGroupMessage(msg.chatId, {
-        messageId: msg.messageId,
-        senderName: msg.senderName,
-        senderId: msg.senderId,
-        text: caption ? `[File: ${fileName ?? "document"}] ${caption}` : `[File: ${fileName ?? "document"}]`,
-        timestamp: msg.timestamp,
-        media: doc ? [`document:${doc.file_id}:${fileName ?? ""}`] : undefined,
-      });
+      recordGroupMessage(
+        msg,
+        caption ? `[File: ${fileName ?? "document"}] ${caption}` : `[File: ${fileName ?? "document"}]`,
+        doc ? [`document:${doc.file_id}:${fileName ?? ""}`] : undefined,
+      );
 
       const triggers = getTriggerWords?.(msg.chatId);
       const result = checkGroupMention(ctx, msg, caption, triggers);
@@ -232,14 +213,7 @@ export function registerHandlers(
 
     if (msg.isGroup) {
       const voice = ctx.message.voice;
-      recordGroupMessage(msg.chatId, {
-        messageId: msg.messageId,
-        senderName: msg.senderName,
-        senderId: msg.senderId,
-        text: caption ? `[Voice] ${caption}` : "[Voice]",
-        timestamp: msg.timestamp,
-        media: [`voice:${voice.file_id}`],
-      });
+      recordGroupMessage(msg, caption ? `[Voice] ${caption}` : "[Voice]", [`voice:${voice.file_id}`]);
 
       const triggers = getTriggerWords?.(msg.chatId);
       const result = checkGroupMention(ctx, msg, caption, triggers);
@@ -273,14 +247,7 @@ export function registerHandlers(
     const fileName = audio.file_name ?? `audio_${audio.file_unique_id}.mp3`;
 
     if (msg.isGroup) {
-      recordGroupMessage(msg.chatId, {
-        messageId: msg.messageId,
-        senderName: msg.senderName,
-        senderId: msg.senderId,
-        text: caption ? `[Audio: ${fileName}] ${caption}` : `[Audio: ${fileName}]`,
-        timestamp: msg.timestamp,
-        media: [`audio:${audio.file_id}:${fileName}`],
-      });
+      recordGroupMessage(msg, caption ? `[Audio: ${fileName}] ${caption}` : `[Audio: ${fileName}]`, [`audio:${audio.file_id}:${fileName}`]);
 
       const triggers = getTriggerWords?.(msg.chatId);
       const result = checkGroupMention(ctx, msg, caption, triggers);
@@ -445,7 +412,8 @@ export function contextToInbound(ctx: Context): InboundMessage | null {
     text: msg.text ?? msg.caption ?? "",
     isGroup: msg.chat.type === "group" || msg.chat.type === "supergroup",
     timestamp: msg.date,
-    threadId: msg.message_thread_id ? String(msg.message_thread_id) : undefined,
+    // Replies in any supergroup carry message_thread_id too; only a forum topic is a thread of its own
+    threadId: msg.is_topic_message && msg.message_thread_id ? String(msg.message_thread_id) : undefined,
     replyToMessageId: reply?.message_id ? String(reply.message_id) : undefined,
     replyText,
     replySenderName,

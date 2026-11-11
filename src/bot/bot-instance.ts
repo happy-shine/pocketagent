@@ -10,7 +10,7 @@ import { DiscordAdapter } from "../channels/discord/adapter.js";
 import type { ChannelAdapter, InboundMessage, InlineButton, HistoryMessage } from "../channels/types.js";
 import type { GatewayConfig, ResolvedBotConfig } from "../config/types.js";
 import { EngineManager } from "../engines/manager.js";
-import type { EngineType, ModelInfo, EffortInfo } from "../engines/types.js";
+import type { EngineType, ModelInfo, EffortInfo, PeerBot } from "../engines/types.js";
 import { ProgressTracker } from "../progress/progress.js";
 import { appendText } from "../engines/text-blocks.js";
 import { markdownToTelegramHtml, stripHtml } from "../channels/telegram/formatter.js";
@@ -132,15 +132,18 @@ export class BotInstance {
   private runtimeGroups: Record<string, { enabled: boolean; allowFrom?: string[] }>;
   private lastButtonMsg = new Map<string, string>();
   private chatQueues = new Map<string, Promise<void>>();
-  private peerBots: Array<{ name: string; username: string }> = [];
+  private peerBots: PeerBot[] = [];
   private scheduler?: Scheduler;
   private jobManager?: JobManager;
   // Chats with a turn running right now
   private busyChats = new Set<string>();
   // Turn currently running per chat, used to attribute API calls the CLI makes during that turn
   private turnSenders = new Map<string, TurnInfo>();
-  // Scheduled runs and side questions running now, in sessions of their own that the session manager does not keep
-  private sideRuns = new Map<string, { chatId: string; channelType: string }>();
+  // Messages relayed into a running turn, which the session's next turn must not get again as chat context
+  private steeredIds = new Map<string, Set<string>>();
+  // Scheduled runs and side questions running now, in sessions of their own that the session manager does not keep;
+  // engine is set for side questions (/btw), which /stop ends along with the chat's turn
+  private sideRuns = new Map<string, { chatId: string; channelType: string; engine?: EngineType }>();
   private steerMailbox?: SteerMailbox;
   // Background memory upkeep: recall by alias, review of finished turns, daily consolidation
   private memoryAuto?: MemoryAutopilot;
@@ -219,7 +222,7 @@ export class BotInstance {
     return Array.from(new Set([...botTriggers, ...guildTriggers]));
   }
 
-  setPeerBots(peers: Array<{ name: string; username: string }>): void {
+  setPeerBots(peers: PeerBot[]): void {
     this.peerBots = peers.filter((b) => b.name !== this.name);
   }
 
@@ -934,8 +937,8 @@ export class BotInstance {
       undefined,
       undefined,
       title,
+      { channelType: msg.channelType, isGroup: msg.isGroup },
     );
-    this.messageStore.advanceCursorToLatest(msg.chatId, session.sessionId);
     await this.sessionManager.flush(msg.chatId);
 
     const titleSuffix = session.title ? ` (${session.title})` : "";
@@ -1026,7 +1029,11 @@ export class BotInstance {
       defaultEngine: this.config.engine,
     });
 
-    const sent = this.engineManager.sendControl(session.sessionId, session.activeEngine, { subtype: "interrupt" });
+    let sent = this.engineManager.sendControl(session.sessionId, session.activeEngine, { subtype: "interrupt" });
+    for (const [sideId, run] of this.sideRuns) {
+      if (run.chatId !== msg.chatId || !run.engine) continue;
+      if (this.engineManager.sendControl(sideId, run.engine, { subtype: "interrupt" })) sent = true;
+    }
     const jobs = this.jobManager?.counts(this.botId, msg.chatId);
     const hint = jobs && jobs.running + jobs.queued > 0 ? "\nBackground jobs keep running; stop them from /jobs." : "";
     await channel.send({
@@ -1054,7 +1061,9 @@ export class BotInstance {
     // that gets the recent conversation as context instead of interleaving with the running turn
     const busy = this.busyChats.has(msg.chatId) || this.engineManager.isBusy(chatSession.sessionId, chatSession.activeEngine);
     const session = busy ? this.forkSession(chatSession, `btw-${randomBytes(4).toString("hex")}`) : chatSession;
-    if (session !== chatSession) this.sideRuns.set(session.sessionId, { chatId: msg.chatId, channelType: msg.channelType });
+    if (session !== chatSession) {
+      this.sideRuns.set(session.sessionId, { chatId: msg.chatId, channelType: msg.channelType, engine: session.activeEngine });
+    }
 
     const tracker = new ProgressTracker(channel, msg.chatId, msg.messageId);
     tracker.start();
@@ -1622,7 +1631,7 @@ export class BotInstance {
       promptText,
       this.botId,
       this.config.extraArgs,
-      this.botIdentity(),
+      this.botIdentity(session.channelType),
     )) {
       if (event.type === "thinking_started") {
         tracker?.thinking();
@@ -1775,6 +1784,9 @@ export class BotInstance {
       text,
       onDelivered: () => {
         this.sessionManager.addTurn(turn.sessionId, { role: "user", text: historyTextOf(relayed), author: msg.senderName });
+        let steered = this.steeredIds.get(turn.sessionId);
+        if (!steered) this.steeredIds.set(turn.sessionId, (steered = new Set()));
+        steered.add(msg.messageId);
         void channel.setReaction?.(msg.chatId, msg.messageId, REACTION_STEER_DELIVERED);
       },
       onUndelivered: () => {
@@ -1850,12 +1862,12 @@ export class BotInstance {
       defaultEffort: this.config.effort,
     });
 
-    // Optimize context: provide up to 100 recent group messages with reply context,
-    // and if there is an overlap with previously sent messages in this session, only send the new delta.
+    // Group chats: up to 100 recent messages with reply context, or only those since the session's previous turn.
+    // A direct chat needs none, as the engine already has the whole conversation.
     let contextBlock = "";
-    const shouldFetchContext = Boolean(msg.isGroup || msg.channelType === "discord");
-
-    if (shouldFetchContext) {
+    const steered = this.steeredIds.get(session.sessionId);
+    this.steeredIds.delete(session.sessionId);
+    if (msg.isGroup) {
       let history: HistoryMessage[] = [];
       if (channel.fetchHistory) {
         try {
@@ -1864,23 +1876,18 @@ export class BotInstance {
           this.log.error({ error: err, chatId: msg.chatId }, "Failed to fetch channel history");
         }
       } else if (this.messageStore) {
-        const stored = this.messageStore.getRecent(msg.chatId, 100);
-        history = stored.map((s) => ({
-          id: s.id,
-          ts: s.ts,
-          sender: s.sender,
-          senderId: s.senderId,
-          text: s.text,
-          media: s.media,
-        }));
+        history = this.messageStore.getRecent(msg.chatId, 100);
       }
+      // A forum topic is a conversation of its own
+      history = history.filter((m) => m.threadId === msg.threadId);
 
-      const botUserId = (channel as any).client?.user?.id;
+      const botUserId = channel.botUserId;
       contextBlock = buildGroupContext({
         history,
         triggerId: msg.messageId,
         lastCursor: session.lastContextMessageId,
         isOwn: (m) => Boolean(botUserId && m.senderId === botUserId) || m.sender === this.name,
+        skip: steered,
       });
 
       // Advance cursor to current message
@@ -1968,11 +1975,15 @@ export class BotInstance {
     });
   }
 
-  private botIdentity() {
+  /** Who the bot is in a chat on one platform: its username there and the other bots it can mention there. */
+  private botIdentity(channelType: string) {
+    const username = channelType === "discord"
+      ? this.discord?.username ?? this.telegram?.username
+      : this.telegram?.username ?? this.discord?.username;
     return {
       name: this.name,
-      username: this.telegram?.username ?? this.discord?.username ?? this.name,
-      peerBots: this.peerBots,
+      username: username ?? this.name,
+      peerBots: this.peerBots.filter((bot) => bot.channel === channelType),
     };
   }
 

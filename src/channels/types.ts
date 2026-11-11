@@ -7,6 +7,7 @@ export interface InboundMessage {
   text: string;
   isGroup: boolean;
   timestamp: number;
+  // Forum topic of a Telegram group, which is a conversation of its own
   threadId?: string;
   replyToMessageId?: string;
   replyText?: string;
@@ -38,6 +39,8 @@ export interface OutboundMessage {
   plainFallback?: string;
   replyToMessageId?: string;
   attachments?: OutboundAttachment[];
+  // A status message (the progress card) that is edited and deleted while a turn runs: not chat history
+  transient?: boolean;
 }
 
 export interface InlineButton {
@@ -58,11 +61,15 @@ export interface HistoryMessage {
   replyToId?: string;
   replyToSender?: string;
   replyToText?: string;
+  // Telegram forum topic (see InboundMessage.threadId)
+  threadId?: string;
 }
 
 export interface ChannelAdapter {
   readonly type: string;
   username?: string;
+  // The bot's own user id on the platform, once connected
+  readonly botUserId?: string;
   start(): Promise<void>;
   stop(): Promise<void>;
   send(msg: OutboundMessage): Promise<string>;
@@ -76,6 +83,8 @@ export interface ChannelAdapter {
     buttons?: string[],
     parseMode?: "MarkdownV2" | "HTML",
     plainFallback?: string,
+    // The message stays a status message (see OutboundMessage.transient); otherwise it now holds a reply
+    opts?: { transient?: boolean },
   ): Promise<void>;
   deleteMessage?(chatId: string, messageId: string): Promise<void>;
   /** Sets the bot's reaction on a message, replacing its previous one; null clears it. Never throws. */
@@ -86,7 +95,6 @@ export interface ChannelAdapter {
   downloadFile?(fileId: string, destDir: string, fileName?: string): Promise<string>;
   fetchHistory?(chatId: string, limit?: number): Promise<HistoryMessage[]>;
   setMessageStore?(store: any, botName?: string): void;
-  advanceCursorForSession?(sessionId: string, messageId: string): void;
   onMessage(handler: MessageHandler): void;
   onCommand(command: string, handler: CommandHandler): void;
   onCallback?(prefix: string, handler: (ctx: any) => Promise<void>): void;

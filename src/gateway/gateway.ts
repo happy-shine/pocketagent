@@ -21,6 +21,7 @@ import { JobStore } from "../jobs/store.js";
 import { jobDuration } from "../jobs/format.js";
 import { isEphemeralSessionId, isJobActive, type BackgroundJob } from "../jobs/types.js";
 import { answerSteerHook, SteerMailbox } from "../steer/steer.js";
+import type { PeerBot } from "../engines/types.js";
 
 export interface SessionSummary {
   botId: string;
@@ -309,11 +310,13 @@ export class Gateway {
   }
 
   private syncPeerBots(): void {
-    const peers: Array<{ name: string; username: string }> = [];
+    const peers: PeerBot[] = [];
     for (const bot of this.bots.values()) {
-      const username = bot.telegram?.username ?? bot.discord?.username;
-      if (username) {
-        peers.push({ name: bot.name, username });
+      if (bot.telegram?.username) {
+        peers.push({ name: bot.name, channel: "telegram", username: bot.telegram.username });
+      }
+      if (bot.discord?.username) {
+        peers.push({ name: bot.name, channel: "discord", username: bot.discord.username, userId: bot.discord.botUserId });
       }
     }
     for (const bot of this.bots.values()) {
@@ -531,7 +534,9 @@ export class Gateway {
     const bot = this.bots.get(botId);
     if (!bot) return { ok: false, error: `Bot ${botId} not found` };
     const sm = bot.getSessionManager();
-    const s = sm.createNew(chatId, engine, model, effort, title);
+    // A chat without sessions yet is on the bot's only platform
+    const channelType = bot.discord && !bot.telegram ? "discord" : bot.telegram && !bot.discord ? "telegram" : undefined;
+    const s = sm.createNew(chatId, engine, model, effort, title, { channelType });
     return { ok: true, session: s };
   }
 

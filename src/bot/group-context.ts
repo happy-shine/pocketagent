@@ -14,6 +14,8 @@ export interface GroupContextInput {
   // Last trigger the session was given context up to
   lastCursor?: string;
   isOwn: (m: HistoryMessage) => boolean;
+  // Messages the session already has, relayed into its previous turn
+  skip?: ReadonlySet<string>;
 }
 
 /**
@@ -21,10 +23,11 @@ export interface GroupContextInput {
  * than the history window), otherwise those since the previous turn. Empty when nobody but the bot spoke.
  */
 export function buildGroupContext(input: GroupContextInput): string {
-  const { history, triggerId, lastCursor, isOwn } = input;
+  const { history, triggerId, lastCursor, isOwn, skip } = input;
   // Messages after the trigger (e.g. someone speaking while the bot works) belong to the next turn
   const triggerIdx = history.findIndex((m) => m.id === triggerId);
-  const prior = triggerIdx !== -1 ? history.slice(0, triggerIdx) : history.filter((m) => m.id !== triggerId);
+  const prior = (triggerIdx !== -1 ? history.slice(0, triggerIdx) : history.filter((m) => m.id !== triggerId))
+    .filter((m) => !skip?.has(m.id));
 
   let messages: HistoryMessage[];
   let header = "### Recent Group Chat Context (prior messages leading up to this turn):";

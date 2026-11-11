@@ -306,9 +306,10 @@ export class ProgressTracker {
           chatId: this.chatId,
           text,
           replyToMessageId: this.replyToMessageId,
+          transient: true,
         });
       } else {
-        await this.channel.editMessage(this.chatId, this.messageId, text);
+        await this.channel.editMessage(this.chatId, this.messageId, text, undefined, undefined, undefined, { transient: true });
       }
       this.lastFlush = Date.now();
     } catch {

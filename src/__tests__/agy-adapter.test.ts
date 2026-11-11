@@ -7,7 +7,8 @@ import { AGY_MAX_RULE_FILE_BYTES, AGY_ROTATE_CONTEXT_TOKENS, AgyEngineAdapter, s
 import type { EngineEvent } from "../engines/types.js";
 import type { Session } from "../sessions/types.js";
 
-// Stands in for `agy` in stream-json mode: logs its argv and each prompt, answers every prompt with one turn.
+// Stands in for `agy` in stream-json mode: logs its argv and each prompt, answers every prompt with one turn
+// (except one containing HANG, which never ends).
 // The context size it reports is read from the file FAKE_AGY_CONTEXT_FILE names, so a test can change it between turns.
 const FAKE_AGY = `#!/usr/bin/env node
 const { appendFileSync, existsSync, readFileSync } = require("node:fs");
@@ -21,6 +22,11 @@ rl.on("line", (line) => {
   const msg = JSON.parse(line);
   appendFileSync(process.env.FAKE_AGY_LOG, JSON.stringify({ args, cwd: process.cwd(), prompt: msg.message.content }) + "\\n");
   out({ event: "init", conversation_id: conversation });
+  // A turn that runs until it is stopped
+  if (msg.message.content.includes("HANG")) {
+    out({ event: "step_update", step_update: { step_index: 1, step_type: "tool", state: "ACTIVE", tool_name: "run_command" } });
+    return;
+  }
   const file = process.env.FAKE_AGY_CONTEXT_FILE;
   const context = Number(file && existsSync(file) ? readFileSync(file, "utf8") : "1000");
   out({ event: "step_update", step_update: { step_index: 1, step_type: "agent_response", state: "ACTIVE" } });
@@ -109,6 +115,30 @@ describe("Antigravity adapter", () => {
     expect(rules).toContain("## Working style");
     expect(existsSync(join(workspace, "GEMINI.md"))).toBe(false);
     expect(calls()[0].prompt).toBe("hi");
+  });
+
+  it("stops a running turn by ending the process, and resumes the conversation on the next turn", async () => {
+    const adapter = makeAdapter();
+    const session = makeSession();
+    await collect(adapter.sendMessage(session, "one", "bot-1"));
+    const conversation = session.agySessionId;
+    // Between turns there is nothing to stop
+    expect(adapter.sendControl(session.sessionId, { subtype: "interrupt" })).toBe(false);
+
+    const events: EngineEvent[] = [];
+    for await (const ev of adapter.sendMessage(session, "HANG", "bot-1")) {
+      events.push(ev);
+      if (ev.type === "tool_started") expect(adapter.sendControl(session.sessionId, { subtype: "interrupt" })).toBe(true);
+    }
+    expect(events.at(-1)).toEqual({ type: "result", result: "(Interrupted)", isError: false });
+    expect(adapter.isBusy(session.sessionId)).toBe(false);
+
+    await collect(adapter.sendMessage(session, "two", "bot-1"));
+    await adapter.shutdown();
+    const last = calls().at(-1);
+    expect(last.prompt).toBe("two");
+    expect(last.args).toContain("--conversation");
+    expect(last.args[last.args.indexOf("--conversation") + 1]).toBe(conversation);
   });
 
   it("keeps a GEMINI.md it did not write", async () => {

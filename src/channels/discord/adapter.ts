@@ -153,7 +153,6 @@ export class DiscordAdapter implements ChannelAdapter {
   // carried the buttons instead, or Discord shows them as replying to a message that cannot be loaded
   private buttonMessageIds = new Map<string, string>();
   private stopped = false;
-  private messageStore?: MessageStore;
   private botName = "PocketAgent";
   private outboundCallback?: (chatId: string, text: string, messageId: string) => void;
   private recentMessagesCache = new Map<string, { id: string; sender: string; text: string }>();
@@ -166,6 +165,10 @@ export class DiscordAdapter implements ChannelAdapter {
     this.log = log.child({ module: "discord" });
   }
 
+  get botUserId(): string | undefined {
+    return this.client?.user?.id;
+  }
+
   setTriggerWordsResolver(resolver: (guildOrChannelId: string) => string[]): void {
     this.triggerWordsResolver = resolver;
   }
@@ -174,8 +177,8 @@ export class DiscordAdapter implements ChannelAdapter {
     this.forwarderBotIds = new Set(ids);
   }
 
-  setMessageStore(store: MessageStore, botName?: string): void {
-    this.messageStore = store;
+  setMessageStore(_store: MessageStore, botName?: string): void {
+    // Discord history comes from Discord itself (fetchHistory), so nothing is stored
     if (botName) this.botName = botName;
   }
 
@@ -280,10 +283,6 @@ export class DiscordAdapter implements ChannelAdapter {
 
   onOutbound(cb: (chatId: string, text: string, messageId: string) => void): void {
     this.outboundCallback = cb;
-  }
-
-  advanceCursorForSession(sessionId: string, messageId: string): void {
-    this.messageStore?.advanceCursor(sessionId, messageId);
   }
 
   onMessage(handler: MessageHandler): void {
@@ -425,13 +424,11 @@ export class DiscordAdapter implements ChannelAdapter {
           // Ignore reference fetch errors
         }
 
-        // Fallback to MessageStore if reply text couldn't be retrieved via Discord API
-        if (!replyText && this.messageStore) {
-          const stored = this.messageStore.getRecent(message.channelId, 50).find((m) => m.id === message.reference?.messageId);
-          if (stored) {
-            replyText = stored.text;
-            if (!replySenderName) replySenderName = stored.sender;
-          }
+        // Fall back to the messages seen lately if Discord would not return the one replied to
+        const cached = replyText ? undefined : this.recentMessagesCache.get(message.reference.messageId);
+        if (cached) {
+          replyText = cached.text || undefined;
+          if (!replySenderName) replySenderName = cached.sender;
         }
       }
 

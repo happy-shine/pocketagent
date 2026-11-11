@@ -18,6 +18,8 @@ export class TelegramAdapter implements ChannelAdapter {
   private callbackHandlers = new Map<string, (ctx: Context) => Promise<void>>();
   private stopped = false;
   private messageStore?: MessageStore;
+  // Progress cards sent and not yet turned into a reply, with the message each replies to
+  private transientIds = new Map<string, string | undefined>();
   private botName: string;
   private outboundCallback?: (chatId: string, text: string, messageId: string) => void;
   private triggerWordsResolver?: (chatId: string) => string[];
@@ -30,6 +32,10 @@ export class TelegramAdapter implements ChannelAdapter {
     this.botName = "PocketAgent";
   }
 
+  get botUserId(): string {
+    return this.token.split(":")[0];
+  }
+
   setTriggerWordsResolver(resolver: (chatId: string) => string[]): void {
     this.triggerWordsResolver = resolver;
   }
@@ -39,20 +45,34 @@ export class TelegramAdapter implements ChannelAdapter {
     if (botName) this.botName = botName;
   }
 
-  private recordOutbound(chatId: string, messageId: string, text: string): void {
+  private recordOutbound(chatId: string, messageId: string, text: string, replyToId?: string): void {
     if (!this.messageStore) return;
     if (!chatId.startsWith("-")) return;
+    // A reply lands in the forum topic of the message it answers
+    const replied = replyToId ? this.messageStore.find(chatId, replyToId) : undefined;
     this.messageStore.append(chatId, {
       id: messageId,
       ts: Math.floor(Date.now() / 1000),
       sender: this.botName,
-      senderId: this.token.split(":")[0],
+      senderId: this.botUserId,
       text,
+      replyToId,
+      replyToSender: replied?.sender,
+      replyToText: replied?.text,
+      threadId: replied?.threadId,
     });
   }
 
-  advanceCursorForSession(sessionId: string, messageId: string): void {
-    this.messageStore?.advanceCursor(sessionId, messageId);
+  /** An edit as the chat history sees it: a progress card edited into a reply is a new message there. */
+  private recordEdit(chatId: string, messageId: string, text: string): void {
+    if (!this.messageStore || !chatId.startsWith("-")) return;
+    if (this.transientIds.has(messageId)) {
+      const replyToId = this.transientIds.get(messageId);
+      this.transientIds.delete(messageId);
+      this.recordOutbound(chatId, messageId, text, replyToId);
+    } else {
+      this.messageStore.edit(chatId, messageId, text);
+    }
   }
 
   onMessage(handler: MessageHandler): void {
@@ -192,7 +212,13 @@ export class TelegramAdapter implements ChannelAdapter {
       }
       const id = String(sent.message_id);
       ids.push(id);
-      this.recordOutbound(msg.chatId, id, chunk);
+      if (msg.transient) {
+        this.transientIds.set(id, msg.replyToMessageId);
+        // Cards a turn never finished (the gateway stopped mid-turn) are not remembered forever
+        if (this.transientIds.size > 200) this.transientIds.delete(this.transientIds.keys().next().value!);
+      } else {
+        this.recordOutbound(msg.chatId, id, chunk, isFirst ? msg.replyToMessageId : undefined);
+      }
       this.outboundCallback?.(msg.chatId, chunk, id);
     }
 
@@ -237,7 +263,7 @@ export class TelegramAdapter implements ChannelAdapter {
         reply_markup: { inline_keyboard: keyboard },
       });
       const id = String(sent.message_id);
-      this.recordOutbound(chatId, id, text);
+      this.recordOutbound(chatId, id, text, replyToMessageId);
       return id;
     } catch (err) {
       if (parseMode && err instanceof Error && err.message?.includes("can't parse entities")) {
@@ -248,7 +274,7 @@ export class TelegramAdapter implements ChannelAdapter {
           reply_markup: { inline_keyboard: keyboard },
         });
         const id = String(sent.message_id);
-        this.recordOutbound(chatId, id, fallback);
+        this.recordOutbound(chatId, id, fallback, replyToMessageId);
         return id;
       }
       throw err;
@@ -262,6 +288,7 @@ export class TelegramAdapter implements ChannelAdapter {
     buttons?: string[],
     parseMode?: "MarkdownV2" | "HTML",
     plainFallback?: string,
+    opts: { transient?: boolean } = {},
   ): Promise<void> {
     const chunks = splitMessage(text);
     const firstChunk = chunks[0] || text;
@@ -279,7 +306,7 @@ export class TelegramAdapter implements ChannelAdapter {
         ...parseOpts,
         reply_markup: replyMarkup,
       });
-      this.recordOutbound(chatId, messageId, firstChunk);
+      if (!opts.transient) this.recordEdit(chatId, messageId, firstChunk);
     } catch (err) {
       if (err instanceof Error && err.message?.includes("message is not modified")) return;
       if (parseMode && err instanceof Error && err.message?.includes("can't parse entities")) {
@@ -289,7 +316,7 @@ export class TelegramAdapter implements ChannelAdapter {
           await this.bot.api.editMessageText(chatId, Number(messageId), fallbackText, {
             reply_markup: replyMarkup,
           });
-          this.recordOutbound(chatId, messageId, fallbackText);
+          if (!opts.transient) this.recordEdit(chatId, messageId, fallbackText);
         } catch (e2: unknown) {
           if (e2 instanceof Error && !e2.message?.includes("message is not modified")) throw e2;
         }
@@ -299,7 +326,7 @@ export class TelegramAdapter implements ChannelAdapter {
           await this.bot.api.editMessageText(chatId, Number(messageId), fallbackChunks[0] || plainFallback, {
             reply_markup: replyMarkup,
           });
-          this.recordOutbound(chatId, messageId, fallbackChunks[0] || plainFallback);
+          if (!opts.transient) this.recordEdit(chatId, messageId, fallbackChunks[0] || plainFallback);
         } catch {
           // Ignore
         }
@@ -339,7 +366,10 @@ export class TelegramAdapter implements ChannelAdapter {
       await this.bot.api.deleteMessage(chatId, Number(messageId));
     } catch {
       // Ignore delete errors
+      return;
     }
+    if (this.transientIds.delete(messageId)) return;
+    if (chatId.startsWith("-")) this.messageStore?.remove(chatId, messageId);
   }
 
   async sendPhoto(chatId: string, filePath: string, caption?: string): Promise<string> {

@@ -60,6 +60,8 @@ export interface Session {
 
   // In-session turns history
   turns: SessionHistoryItem[];
+  // Lifetime record counters; complete=false means only a lower bound survived an older history cap.
+  historyStats?: { userTurns: number; messages: number; complete: boolean };
 
   // Workspace folder key, defaults to sessionId; side sessions (/btw) set it to share their parent session's files
   workspaceId?: string;

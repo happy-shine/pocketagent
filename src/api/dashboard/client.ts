@@ -1000,6 +1000,12 @@ export function dashboardClient() {
   }
 
   // ---------------------------------------------------------------- sessions
+  function sessionCountText(s) {
+    if (typeof s.messageCount !== "number") return L(`${s.turnCount || 0} 条记录`, `${s.turnCount || 0} records`);
+    const lower = s.countsComplete === false ? L("至少 ", "at least ") : "";
+    return L(`${lower}${s.turnCount} 次提问 · ${lower}${s.messageCount} 条记录`, `${lower}${s.turnCount} requests · ${lower}${s.messageCount} records`);
+  }
+  const sessionLabel = (s) => L(`会话 #${s.sessionNum}`, `Session #${s.sessionNum}`);
   function bucket(ts) {
     const d = dayDiff(ts);
     if (d === 0) return L("今天", "Today");
@@ -1027,7 +1033,7 @@ export function dashboardClient() {
       if (b !== lastB) groups.push(`<div class="sl-g">${b}</div>`);
       lastB = b;
       const s = c.active;
-      groups.push(`<a class="si${cur && cur.key === c.key ? " on" : ""}" href="#/sessions/${enc(c.botId)}/${enc(c.chatId)}">${chn(c.channelType)}<div class="si-t">${chatTitleHtml(c.botId, c.chatId, c.channelType)}</div><span class="si-time" data-ago="${c.last}">${esc(ago(c.last))}</span><div class="si-m">${esc(c.botName)}${eng(s.activeEngine)}#${esc(s.sessionNum)} · ${L(`${s.turnCount} 轮`, `${s.turnCount} turns`)}${c.sessions.length > 1 ? `<span class="ns">${L(`${c.sessions.length} 个会话`, `${c.sessions.length} sessions`)}</span>` : ""}</div></a>`);
+      groups.push(`<a class="si${cur && cur.key === c.key ? " on" : ""}" href="#/sessions/${enc(c.botId)}/${enc(c.chatId)}">${chn(c.channelType)}<div class="si-t">${chatTitleHtml(c.botId, c.chatId, c.channelType)}</div><span class="si-time" data-ago="${c.last}">${esc(ago(c.last))}</span><div class="si-m">${esc(c.botName)}${eng(s.activeEngine)}${esc(sessionLabel(s))} · ${esc(sessionCountText(s))}${c.sessions.length > 1 ? `<span class="ns">${L(`${c.sessions.length} 个会话`, `${c.sessions.length} sessions`)}</span>` : ""}</div></a>`);
     }
     const orphans = S.workspaces.filter((w) => !w.isKnownSession);
     const botOpts = [["", L("全部 Bot", "All bots")]].concat(botsRt().map((b) => [b.botId, b.name]));
@@ -1057,9 +1063,9 @@ export function dashboardClient() {
     const shown = cur.sessions.slice(0, 3);
     if (!shown.includes(sel)) shown.push(sel);
     const rest = cur.sessions.filter((s) => !shown.includes(s));
-    const sb = (s) => `<button class="sb${s === sel ? " on" : ""}" data-act="pickSession" data-key="${esc(cur.key)}" data-sid="${esc(s.sessionId)}">${s.isActive ? `<span class="dot ok"></span>` : ""}#${esc(s.sessionNum)}${s.isActive ? L(" 当前", " current") : ""}${eng(s.activeEngine)}<span class="muted">${L(`${s.turnCount} 轮`, `${s.turnCount} turns`)}</span></button>`;
+    const sb = (s) => `<button class="sb${s === sel ? " on" : ""}" data-act="pickSession" data-key="${esc(cur.key)}" data-sid="${esc(s.sessionId)}" title="${L("会话编号，不是对话轮数", "Session number, not conversation turns")}">${s.isActive ? `<span class="dot ok"></span>` : ""}${esc(sessionLabel(s))}${s.isActive ? L(" 当前", " current") : ""}${eng(s.activeEngine)}<span class="muted">${esc(sessionCountText(s))}</span></button>`;
     const switcher = shown.map(sb).join("") + (rest.length
-      ? menu(`<button class="sb">${L(`更早 ${rest.length} 个`, `${rest.length} older`)}${ic("down")}</button>`, rest.map((s) => `<button data-act="pickSession" data-key="${esc(cur.key)}" data-sid="${esc(s.sessionId)}">#${esc(s.sessionNum)} ${eng(s.activeEngine)}<span class="muted" style="margin-left:auto">${L(`${s.turnCount} 轮`, `${s.turnCount} turns`)} · ${esc(fmtWhen(s.lastActiveAt))}</span></button>`))
+      ? menu(`<button class="sb">${L(`更早 ${rest.length} 个`, `${rest.length} older`)}${ic("down")}</button>`, rest.map((s) => `<button data-act="pickSession" data-key="${esc(cur.key)}" data-sid="${esc(s.sessionId)}">${esc(sessionLabel(s))} ${eng(s.activeEngine)}<span class="muted" style="margin-left:auto">${esc(sessionCountText(s))} · ${esc(fmtWhen(s.lastActiveAt))}</span></button>`))
       : "");
 
     const tc = ensure(ui.turns, sel.sessionId, sel.turnCount + "|" + sel.lastActiveAt, () => api(`/api/sessions/turns?botId=${enc(sel.botId)}&chatId=${enc(sel.chatId)}&sessionId=${enc(sel.sessionId)}`));
@@ -1105,7 +1111,8 @@ export function dashboardClient() {
           <dt>${L("引擎", "Engine")}</dt><dd>${eng(s.activeEngine)}</dd>
           <dt>${L("模型", "Model")}</dt><dd style="flex-direction:column;align-items:flex-start;gap:0">${s.model ? `<span class="mono">${esc(s.model)}</span>` : `<span class="mono">${esc(effModel || L("CLI 默认", "CLI default"))}</span><span class="muted" style="font-size:11px">${L("跟随默认", "inherited")}</span>`}</dd>
           <dt>${L("推理强度", "Effort")}</dt><dd>${esc(s.effort || L("默认", "default"))}</dd>
-          <dt>${L("轮次", "Turns")}</dt><dd>${esc(s.turnCount)}</dd>
+          <dt>${L("对话统计", "Conversation")}</dt><dd>${esc(sessionCountText(s))}</dd>
+          <dt>${L("当前保留", "Retained")}</dt><dd>${L(`${s.retainedMessageCount ?? s.messageCount ?? s.turnCount} 条记录`, `${s.retainedMessageCount ?? s.messageCount ?? s.turnCount} records`)}</dd>
           <dt>${L("开始", "Started")}</dt><dd>${esc(fmtWhen(s.createdAt))}</dd>
           <dt>${L("最近活动", "Last active")}</dt><dd data-ago="${s.lastActiveAt}">${esc(ago(s.lastActiveAt))}</dd>
           <dt>${L("会话 ID", "Session ID")}</dt><dd><span class="mono">${esc(s.sessionId.slice(0, 8))}…${esc(s.sessionId.slice(-4))}</span>${copyBtn(s.sessionId)}</dd>
@@ -1125,6 +1132,9 @@ export function dashboardClient() {
   function transcript(sess, turns, chat) {
     if (!turns.length) return `<div class="empty" style="margin:auto">${L("这个会话还没有对话", "No messages in this session yet")}</div>`;
     const out = [];
+    if (sess.historyTruncated) {
+      out.push(`<div class="sys"><span>${ic("info")}${L(`这里只展示最近 ${turns.length} 条保留记录。`, `Only the latest ${turns.length} retained records are shown.`)}${sess.countsComplete === false ? L(" 旧版更早记录已截断，总数只能显示下限。", " Older records were truncated by an earlier version; totals are lower bounds.") : ""}</span></div>`);
+    }
     let lastDay = null;
     let lastEngine = null;
     let prevUserTs = null;
@@ -1137,7 +1147,7 @@ export function dashboardClient() {
     if (startTs) {
       lastDay = dayOf(startTs);
       out.push(`<div class="day">${esc(dayHeading(startTs))}</div>`);
-      out.push(`<div class="sys"><span>${ic("sparkle")}${L("会话", "Session")} #${esc(sess.sessionNum)} ${L("开始", "started")} · ${esc(ENG[firstEngine] || firstEngine || "")} · ${esc(hhmm(tzParts(startTs)))}</span></div>`);
+      out.push(`<div class="sys"><span>${ic("sparkle")}${L("会话", "Session")} #${esc(sess.sessionNum)} ${L("开始", "started")}${sess.historyTruncated ? "" : " · " + esc(ENG[firstEngine] || firstEngine || "")} · ${esc(hhmm(tzParts(startTs)))}</span></div>`);
     }
     const face = botFace(chat.botId);
     for (const t of turns) {
@@ -2036,7 +2046,7 @@ export function dashboardClient() {
       const s = S.sessions.find((x) => x.sessionId === el.dataset.sid && x.botId === botId);
       const r = await confirmDialog({
         title: L("删除这个会话？", "Delete this session?"),
-        body: L(`会话 #${s ? s.sessionNum : ""} 的 ${s ? s.turnCount : 0} 轮对话记录会被删除，无法恢复。`, `The ${s ? s.turnCount : 0} turns of session #${s ? s.sessionNum : ""} will be deleted for good.`),
+        body: L(`会话 #${s ? s.sessionNum : ""} 的保留记录会被删除，无法恢复。`, `The retained records of session #${s ? s.sessionNum : ""} will be deleted for good.`),
         check: s && s.workspaceExists ? { label: L(`同时删除工作区目录（${s.workspaceFileCount || 0} 个文件，${bytes(s.workspaceSizeBytes)}）`, `Also delete its workspace folder (${s.workspaceFileCount || 0} files, ${bytes(s.workspaceSizeBytes)})`), on: true } : null,
         ok: L("删除", "Delete"),
         danger: true,

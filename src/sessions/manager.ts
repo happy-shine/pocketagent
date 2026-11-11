@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Session, ChatSessionState, EngineType, SessionHistoryItem } from "./types.js";
 import { SessionStore } from "./store.js";
-
-const MAX_TURNS_HISTORY = 50;
+import { ensureHistoryStats, MAX_TURNS_HISTORY } from "./counts.js";
 
 export interface SessionResolveOptions {
   chatId: string;
@@ -30,12 +29,22 @@ export class SessionManager {
         for (const s of state.sessions) {
           if (!s.turns) s.turns = [];
           if (!s.activeEngine) s.activeEngine = "claude";
+          s.chatId = state.chatId;
+          ensureHistoryStats(s);
+        }
+        // Folder names are escaped filesystem keys, not the platform's chat identity.
+        // In particular, @im.wechat must survive reload unchanged.
+        let previousNum = 0;
+        for (const session of [...state.sessions].sort((a, b) => a.createdAt - b.createdAt)) {
+          session.sessionNum = Math.max(previousNum + 1, Number.isInteger(session.sessionNum) ? session.sessionNum : 0);
+          previousNum = session.sessionNum;
+          session.isActive = session.sessionId === state.activeSessionId;
         }
         if (!state.preferredEngine && state.sessions.length > 0) {
           const active = state.sessions.find((s) => s.sessionId === state.activeSessionId);
           state.preferredEngine = active?.activeEngine ?? state.sessions[state.sessions.length - 1]?.activeEngine;
         }
-        this.chats.set(chatId, state);
+        this.chats.set(state.chatId, state);
       }
     }
   }
@@ -225,6 +234,9 @@ export class SessionManager {
     if (!session) return;
 
     if (!session.turns) session.turns = [];
+    const stats = ensureHistoryStats(session);
+    stats.messages += 1;
+    if (turn.role === "user") stats.userTurns += 1;
     session.turns.push({
       id: randomUUID(),
       ts: Date.now(),

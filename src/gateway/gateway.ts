@@ -22,6 +22,7 @@ import { jobDuration } from "../jobs/format.js";
 import { isEphemeralSessionId, isJobActive, type BackgroundJob } from "../jobs/types.js";
 import { answerSteerHook, SteerMailbox } from "../steer/steer.js";
 import { isWithinDirectory } from "../runtime/paths.js";
+import { sessionCounts } from "../sessions/counts.js";
 
 export interface SessionSummary {
   botId: string;
@@ -36,6 +37,10 @@ export interface SessionSummary {
   effort?: string;
   isActive: boolean;
   turnCount: number;
+  messageCount: number;
+  retainedMessageCount: number;
+  countsComplete: boolean;
+  historyTruncated: boolean;
   createdAt: number;
   lastActiveAt: number;
   workspacePath: string;
@@ -479,7 +484,7 @@ export class Gateway {
             model: s.model,
             effort: s.effort,
             isActive: s.isActive,
-            turnCount: s.turns?.length ?? 0,
+            ...sessionCounts(s),
             createdAt: s.createdAt,
             lastActiveAt: s.lastActiveAt,
             workspacePath: wsPath,
@@ -498,11 +503,8 @@ export class Gateway {
     const bot = this.bots.get(botId);
     if (!bot) return null;
     const sm = bot.getSessionManager();
-    const chats = sm.getAllChats();
-    const chat = chats.find((c) => c.chatId === chatId);
-    if (!chat) return null;
-    const session = chat.sessions.find((s) => s.sessionId === sessionId);
-    if (!session) return null;
+    const session = sm.findSession(sessionId);
+    if (!session || session.chatId !== chatId) return null;
     return {
       session: {
         sessionId: session.sessionId,
@@ -515,6 +517,7 @@ export class Gateway {
         effort: session.effort,
         createdAt: session.createdAt,
         lastActiveAt: session.lastActiveAt,
+        ...sessionCounts(session),
       },
       turns: session.turns ?? [],
     };

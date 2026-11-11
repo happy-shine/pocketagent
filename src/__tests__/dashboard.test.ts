@@ -58,7 +58,7 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     const hook = `globalThis.dashboardTest = {
       setConfig(value) { draft = value; S.config = value; },
       filter(value) { ui.botChannel = value; },
-      pageBots, botDrawer, chn, chatKind,
+      pageBots, botDrawer, chn, chatKind, sessionCountText, transcript,
       addBot(value) { ui.newBot = value; configChanged = () => {}; go = () => {}; toast = () => {}; ACT.addBot(); return draft.bots; }
     };`;
     const src = pageScript().replace(/\binit\(\);(\s*}\)\(\);?\s*)$/, `${hook}$1`);
@@ -89,6 +89,12 @@ describe("PocketAgent Dashboard & Hot-Update System", () => {
     expect(added).toHaveLength(4);
     expect(added[3]).toMatchObject({ channel: "wechat", wechat: { enabled: true } });
     expect(added[3]).not.toHaveProperty("token");
+    expect(app.sessionCountText({ turnCount: 1, messageCount: 2, countsComplete: true })).toBe("1 次提问 · 2 条记录");
+    expect(app.sessionCountText({ turnCount: 25, messageCount: 50, countsComplete: false })).toContain("至少");
+    const history = app.transcript({ sessionNum: 1, historyTruncated: true, countsComplete: false },
+      [{ role: "user", text: "question" }, { role: "assistant", text: "answer" }], { botId: "wechat-test" });
+    expect(history).toContain("这里只展示最近 2 条保留记录");
+    expect(history).toContain("总数只能显示下限");
   });
 
   it("renders run output Markdown safely", () => {

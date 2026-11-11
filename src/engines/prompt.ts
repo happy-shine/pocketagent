@@ -17,6 +17,7 @@ import { buildMemoryPrompt } from "../memory/prompt.js";
 import type { MemorySnapshot } from "../memory/store.js";
 import type { BotIdentity } from "./types.js";
 import { platformApiExamples } from "../skills/platform-examples.js";
+import { getWechatFormatSkill } from "../skills/wechat-format.js";
 
 // Agents have pasted bot tokens they found in config files straight into curl commands, which leaves them in transcripts
 const CREDENTIALS_NOTE =
@@ -132,10 +133,13 @@ export function buildSystemPromptParts(input: SystemPromptPartsInput): string[] 
   if (input.steer) {
     parts.push(STEER_SYSTEM_NOTE);
   }
-  parts.push(getTelegramButtonsSkill());
-  if (input.channelType === "discord") {
+  if (input.channelType === "wechat") {
+    parts.push(getWechatFormatSkill());
+  } else if (input.channelType === "discord") {
+    parts.push(getTelegramButtonsSkill());
     parts.push(getDiscordFormatSkill());
   } else {
+    parts.push(getTelegramButtonsSkill());
     parts.push(getTelegramFormatSkill());
   }
   if (input.isGroup) {

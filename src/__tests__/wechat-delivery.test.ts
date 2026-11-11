@@ -2,9 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import pino from "pino";
 import { WechatAdapter } from "../channels/wechat/adapter.js";
 import { ProgressTracker } from "../progress/progress.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("WeChat answer delivery", () => {
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  const directories: string[] = [];
+  afterEach(() => {
+    vi.useRealTimers(); vi.unstubAllGlobals();
+    for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
 
   function setup(rejectSends = false) {
     const requests: Array<{ endpoint: string; body: any }> = [];
@@ -14,7 +21,8 @@ describe("WeChat answer delivery", () => {
       return new Response(JSON.stringify(endpoint.endsWith("getconfig") ? { typing_ticket: "test-ticket" }
         : endpoint.endsWith("sendmessage") && rejectSends ? { errcode: -14, errmsg: "expired" } : {}));
     }));
-    const adapter = new WechatAdapter({ botId: "test", dataDir: "unused", log: pino({ level: "silent" }) });
+    const dataDir = mkdtempSync(join(tmpdir(), "wechat-delivery-")); directories.push(dataDir);
+    const adapter = new WechatAdapter({ botId: "test", dataDir, log: pino({ level: "silent" }) });
     Object.assign(adapter as any, { sessionData: { bot_token: "fixture", baseurl: "https://ilinkai.weixin.qq.com" } });
     return { adapter, requests };
   }

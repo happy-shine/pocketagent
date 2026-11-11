@@ -189,6 +189,8 @@ export interface WechatSessionData {
   ilink_user_id?: string;
   baseurl: string;
   login_time: string;
+  /** Account-scoped reply contexts; secrets stored alongside the bot credentials. */
+  context_tokens?: Record<string, string>;
 }
 
 export interface WechatQrStatus {

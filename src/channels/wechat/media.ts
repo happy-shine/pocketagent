@@ -8,6 +8,12 @@ import { getUploadUrl, uploadBufferToCdn, sendMessage } from "./api.js";
 import { MessageItemType, UploadMediaType, type MessageItem, type SendMessageReq } from "./types.js";
 
 const SILK_SAMPLE_RATE = 24_000;
+const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+
+function downloadUrl(media: { full_url?: string; encrypt_query_param?: string } | undefined, base: string): string {
+  return media?.full_url || (media?.encrypt_query_param
+    ? `${base.replace(/\/$/, "")}/download?encrypted_query_param=${encodeURIComponent(media.encrypt_query_param)}` : "");
+}
 
 /**
  * Wrap raw pcm_s16le bytes in a standard 44-byte WAV header.
@@ -76,11 +82,33 @@ async function fetchAndDecrypt(
   aesKeyBase64?: string,
   label: string = "media",
 ): Promise<Buffer> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) {
     throw new Error(`CDN download failed ${res.status}: ${res.statusText}`);
   }
-  const rawBuf = Buffer.from(await res.arrayBuffer());
+  if (Number(res.headers.get("content-length")) > MAX_MEDIA_BYTES) {
+    await res.body?.cancel();
+    throw new Error("WeChat media exceeds the 100 MiB download limit");
+  }
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("WeChat media response has no body");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_MEDIA_BYTES) {
+        await reader.cancel();
+        throw new Error("WeChat media exceeds the 100 MiB download limit");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const rawBuf = Buffer.concat(chunks, bytes);
   if (aesKeyBase64) {
     const key = parseAesKey(aesKeyBase64, label);
     return decryptAesEcb(rawBuf, key);
@@ -110,15 +138,18 @@ export async function downloadInboundMedia(
 
   if (item.type === MessageItemType.IMAGE && item.image_item) {
     const img = item.image_item;
-    const fullUrl = img.media?.full_url || (img.media?.encrypt_query_param ? `${cdnBaseUrl}/download?param=${encodeURIComponent(img.media.encrypt_query_param)}` : "");
+    const fullUrl = downloadUrl(img.media, cdnBaseUrl);
     if (!fullUrl) return null;
     const aesKey = img.aeskey ? Buffer.from(img.aeskey, "hex").toString("base64") : img.media?.aes_key;
     try {
       const buf = await fetchAndDecrypt(fullUrl, aesKey, "image");
-      const fileName = `image_${ts}_${rand}.jpg`;
+      const imageType = buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? "png"
+        : buf.subarray(0, 3).toString() === "GIF" ? "gif"
+        : buf.subarray(0, 4).toString() === "RIFF" && buf.subarray(8, 12).toString() === "WEBP" ? "webp" : "jpeg";
+      const fileName = `image_${ts}_${rand}.${imageType === "jpeg" ? "jpg" : imageType}`;
       const localPath = path.join(destDir, fileName);
       await fs.writeFile(localPath, buf);
-      return { localPath, type: "photo", fileName, mimeType: "image/jpeg" };
+      return { localPath, type: "photo", fileName, mimeType: `image/${imageType}` };
     } catch (err) {
       log?.error({ error: err }, "Failed to download image");
       return null;
@@ -127,7 +158,7 @@ export async function downloadInboundMedia(
 
   if (item.type === MessageItemType.VOICE && item.voice_item) {
     const voice = item.voice_item;
-    const fullUrl = voice.media?.full_url || (voice.media?.encrypt_query_param ? `${cdnBaseUrl}/download?param=${encodeURIComponent(voice.media.encrypt_query_param)}` : "");
+    const fullUrl = downloadUrl(voice.media, cdnBaseUrl);
     if (!fullUrl || !voice.media?.aes_key) return null;
     try {
       const silkBuf = await fetchAndDecrypt(fullUrl, voice.media.aes_key, "voice");
@@ -151,7 +182,7 @@ export async function downloadInboundMedia(
 
   if (item.type === MessageItemType.VIDEO && item.video_item) {
     const video = item.video_item;
-    const fullUrl = video.media?.full_url || (video.media?.encrypt_query_param ? `${cdnBaseUrl}/download?param=${encodeURIComponent(video.media.encrypt_query_param)}` : "");
+    const fullUrl = downloadUrl(video.media, cdnBaseUrl);
     if (!fullUrl || !video.media?.aes_key) return null;
     try {
       const buf = await fetchAndDecrypt(fullUrl, video.media.aes_key, "video");
@@ -167,11 +198,12 @@ export async function downloadInboundMedia(
 
   if (item.type === MessageItemType.FILE && item.file_item) {
     const file = item.file_item;
-    const fullUrl = file.media?.full_url || (file.media?.encrypt_query_param ? `${cdnBaseUrl}/download?param=${encodeURIComponent(file.media.encrypt_query_param)}` : "");
+    const fullUrl = downloadUrl(file.media, cdnBaseUrl);
     if (!fullUrl || !file.media?.aes_key) return null;
     try {
       const buf = await fetchAndDecrypt(fullUrl, file.media.aes_key, "file");
-      const rawName = file.file_name || `file_${ts}_${rand}.bin`;
+      const rawName = (file.file_name || "file.bin").split(/[\\/]/).pop()!
+        .replace(/[<>:"|?*\x00-\x1f]/g, "_").replace(/[. ]+$/g, "").slice(-180) || "file.bin";
       const fileName = `${path.parse(rawName).name}_${ts}_${rand}${path.parse(rawName).ext}`;
       const localPath = path.join(destDir, fileName);
       await fs.writeFile(localPath, buf);
@@ -201,6 +233,9 @@ export async function uploadAndSendWechatMedia(params: {
   const { filePath, toUserId, baseUrl, token, cdnBaseUrl, contextToken, caption, log } = params;
   if (!existsSync(filePath)) {
     throw new Error(`File does not exist: ${filePath}`);
+  }
+  if ((await fs.stat(filePath)).size > MAX_MEDIA_BYTES - 16) {
+    throw new Error("WeChat media exceeds the 100 MiB upload limit");
   }
 
   const plaintext = await fs.readFile(filePath);
@@ -251,7 +286,8 @@ export async function uploadAndSendWechatMedia(params: {
     item.image_item = {
       media: {
         encrypt_query_param: downloadParam,
-        aes_key: aeskey.toString("base64"),
+        aes_key: Buffer.from(aeskey.toString("hex")).toString("base64"),
+        encrypt_type: 1,
       },
       hd_size: filesize,
       mid_size: filesize,
@@ -261,7 +297,8 @@ export async function uploadAndSendWechatMedia(params: {
     item.video_item = {
       media: {
         encrypt_query_param: downloadParam,
-        aes_key: aeskey.toString("base64"),
+        aes_key: Buffer.from(aeskey.toString("hex")).toString("base64"),
+        encrypt_type: 1,
       },
       video_size: filesize,
     };
@@ -270,7 +307,8 @@ export async function uploadAndSendWechatMedia(params: {
     item.file_item = {
       media: {
         encrypt_query_param: downloadParam,
-        aes_key: aeskey.toString("base64"),
+        aes_key: Buffer.from(aeskey.toString("hex")).toString("base64"),
+        encrypt_type: 1,
       },
       file_name: path.basename(filePath),
       len: String(rawsize),
@@ -288,6 +326,7 @@ export async function uploadAndSendWechatMedia(params: {
 
   const sendReq: SendMessageReq = {
     msg: {
+      from_user_id: "",
       to_user_id: toUserId,
       client_id: clientId,
       message_type: 2, // BOT

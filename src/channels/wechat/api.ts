@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 
 export const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
-export const DEFAULT_CDN_BASE_URL = "https://ilinkai.weixin.qq.com";
+export const DEFAULT_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c";
 const DEFAULT_TIMEOUT_MS = 20_000;
 const CHANNEL_VERSION = "2.4.10";
 const CLIENT_VERSION = 132106; // 0x0002040A
@@ -230,7 +230,11 @@ export async function getUploadUrl(
   const headers = buildHeaders(token);
   const body = { ...req, base_info: buildBaseInfo() };
   const text = await apiFetch(url, "POST", headers, body);
-  return JSON.parse(text) as GetUploadUrlResp;
+  const resp = JSON.parse(text) as GetUploadUrlResp;
+  if ((resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0)) {
+    throw new Error(`WeChat getUploadUrl error ${resp.errcode ?? resp.ret}`);
+  }
+  return resp;
 }
 
 export async function uploadBufferToCdn(params: {
@@ -245,7 +249,7 @@ export async function uploadBufferToCdn(params: {
   const ciphertext = encryptAesEcb(buf, aeskey);
   let cdnUrl = uploadFullUrl?.trim();
   if (!cdnUrl && uploadParam) {
-    cdnUrl = `${cdnBaseUrl}/upload?param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(filekey)}`;
+    cdnUrl = `${cdnBaseUrl.replace(/\/$/, "")}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(filekey)}`;
   }
   if (!cdnUrl) {
     throw new Error("uploadBufferToCdn: missing upload target url");
@@ -253,6 +257,7 @@ export async function uploadBufferToCdn(params: {
 
   const res = await fetch(cdnUrl, {
     method: "POST",
+    signal: AbortSignal.timeout(60_000),
     headers: { "Content-Type": "application/octet-stream" },
     body: new Uint8Array(ciphertext),
   });

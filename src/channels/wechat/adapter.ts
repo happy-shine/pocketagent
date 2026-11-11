@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import QRCode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
@@ -47,6 +48,8 @@ export class WechatAdapter implements ChannelAdapter {
   private log: Logger;
   private messageHandler?: MessageHandler;
   private commandHandlers = new Map<string, CommandHandler>();
+  private callbackHandlers = new Map<string, (ctx: any) => Promise<void>>();
+  private pendingMenus = new Map<string, { buttons: InlineButton[]; expires: number }>();
   private messageStore?: MessageStore;
   private botName: string = "PocketAgent";
   private stopped = false;
@@ -90,6 +93,10 @@ export class WechatAdapter implements ChannelAdapter {
     this.commandHandlers.set(command.toLowerCase(), handler);
   }
 
+  onCallback(prefix: string, handler: (ctx: any) => Promise<void>): void {
+    this.callbackHandlers.set(prefix, handler);
+  }
+
   private credentialsDir(): string {
     const dir = join(this.dataDir, "credentials", this.botId);
     mkdirSync(dir, { recursive: true });
@@ -116,6 +123,8 @@ export class WechatAdapter implements ChannelAdapter {
         const data = JSON.parse(raw) as WechatSessionData;
         if (data && data.bot_token) {
           this.sessionData = data;
+          this.contextTokens = new Map(Object.entries(data.context_tokens ?? {})
+            .filter((entry): entry is [string, string] => typeof entry[1] === "string"));
           this.username = data.ilink_bot_id || "WeChatBot";
           this.log.info({ botId: data.ilink_bot_id, user: data.ilink_user_id }, "Loaded existing WeChat session");
           return true;
@@ -130,7 +139,10 @@ export class WechatAdapter implements ChannelAdapter {
   private saveSession(data: WechatSessionData): void {
     this.sessionData = data;
     this.username = data.ilink_bot_id || "WeChatBot";
-    writeFileSync(this.sessionFilePath(), JSON.stringify(data, null, 2), "utf-8");
+    const target = this.sessionFilePath();
+    const temp = `${target}.tmp`;
+    writeFileSync(temp, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 0o600 });
+    renameSync(temp, target);
     this.log.info({ botId: data.ilink_bot_id }, "Saved WeChat session");
   }
 
@@ -305,10 +317,17 @@ export class WechatAdapter implements ChannelAdapter {
 
   private async handleIncomingWechatMessage(msg: WeixinMessage): Promise<void> {
     const fromUser = msg.from_user_id;
-    if (!fromUser) return;
+    if (!fromUser || (msg.message_type !== undefined && msg.message_type !== 1)) return;
 
     if (msg.context_token) {
       this.contextTokens.set(fromUser, msg.context_token);
+      if (this.sessionData) {
+        try {
+          this.saveSession({ ...this.sessionData, context_tokens: Object.fromEntries(this.contextTokens) });
+        } catch {
+          this.log.warn("Could not persist WeChat reply contexts; current replies still use memory");
+        }
+      }
     }
 
     const items = msg.item_list ?? [];
@@ -324,6 +343,10 @@ export class WechatAdapter implements ChannelAdapter {
     for (const item of items) {
       if (item.type === MessageItemType.TEXT && item.text_item?.text) {
         textParts.push(item.text_item.text);
+      }
+      // A server transcript remains useful even when there is no audio URL or the CDN is unavailable.
+      if (item.type === MessageItemType.VOICE && item.voice_item?.text) {
+        textParts.push(`[语音转写: ${item.voice_item.text}]`);
       }
 
       if (item.ref_msg) {
@@ -352,13 +375,12 @@ export class WechatAdapter implements ChannelAdapter {
               mimeType: mediaRes.mimeType,
               localPath: mediaRes.localPath,
             });
-            // If voice has transcribed text from server, append it
-            if (item.voice_item?.text) {
-              textParts.push(`[语音转写: ${item.voice_item.text}]`);
-            }
+          } else if (!item.voice_item?.text) {
+            textParts.push("[微信附件下载失败，尚未读取附件内容；请重新发送]");
           }
         } catch (err) {
           this.log.error({ error: err }, "Error downloading inbound WeChat media");
+          if (!item.voice_item?.text) textParts.push("[微信附件下载失败，尚未读取附件内容；请重新发送]");
         }
       }
     }
@@ -384,6 +406,29 @@ export class WechatAdapter implements ChannelAdapter {
 
     this.log.info({ fromUser, text: fullText, attachmentsCount: attachments.length }, "Received WeChat message");
 
+    // Menus are scoped to a recipient, single-use, and expire rather than intercepting later numbers.
+    const menu = this.pendingMenus.get(fromUser);
+    this.pendingMenus.delete(fromUser);
+    if (menu && menu.expires > Date.now() && attachments.length === 0) {
+      const value = fullText.trim();
+      const matches = /^\d+$/.test(value) ? [menu.buttons[Number(value) - 1]].filter(Boolean)
+        : menu.buttons.filter(button => button.text === value);
+      if (matches.length === 1) {
+        const choice = matches[0];
+        const handler = [...this.callbackHandlers].find(([prefix]) =>
+          choice.data === prefix || choice.data.startsWith(`${prefix}:`))?.[1];
+        if (handler) {
+          await handler({
+            data: choice.data, chatId: fromUser, senderId: fromUser, senderName: fromUser,
+            // Callback implementations update their old menu on editable channels; WeChat sends a confirmation.
+            editMessageText: async (text: string) => this.send({ chatId: fromUser, text }),
+          });
+          return;
+        }
+        inbound.text = choice.data;
+      }
+    }
+
     // Check slash commands (e.g. /engine, /model, /status, /help, /new)
     if (fullText.startsWith("/") || fullText.startsWith("!")) {
       const parts = fullText.slice(1).trim().split(/\s+/);
@@ -404,6 +449,11 @@ export class WechatAdapter implements ChannelAdapter {
   }
 
   async send(msg: OutboundMessage): Promise<string> {
+    const ids = await this.sendMessages(msg);
+    return ids.at(-1) ?? "";
+  }
+
+  async sendMessages(msg: OutboundMessage): Promise<string[]> {
     if (!this.sessionData?.bot_token) {
       throw new Error("WeChat adapter not logged in");
     }
@@ -412,39 +462,35 @@ export class WechatAdapter implements ChannelAdapter {
     const token = this.sessionData.bot_token;
     const toUserId = msg.chatId;
     const contextToken = this.contextTokens.get(toUserId);
+    const ids: string[] = [];
 
     // Send media attachments if present
     if (msg.attachments && msg.attachments.length > 0) {
       const cdnBaseUrl = this.config.cdnBaseUrl || DEFAULT_CDN_BASE_URL;
       for (const att of msg.attachments) {
-        try {
-          await uploadAndSendWechatMedia({
-            filePath: att.path,
-            toUserId,
-            baseUrl,
-            token,
-            cdnBaseUrl,
-            contextToken,
-            caption: att.caption,
-            log: this.log,
-          });
-        } catch (err) {
-          this.log.error({ error: err, file: att.path }, "Failed to send WeChat media attachment");
-        }
+        ids.push(await uploadAndSendWechatMedia({
+          filePath: att.path,
+          toUserId,
+          baseUrl,
+          token,
+          cdnBaseUrl,
+          contextToken,
+          caption: att.caption,
+          log: this.log,
+        }));
       }
     }
 
     const rawText = msg.text.trim();
     if (!rawText) {
-      return `wechat-out-${Date.now()}`;
+      return ids;
     }
 
     const plainText = formatWechatText(rawText);
     const chunks = splitWechatMessage(plainText);
-    let lastMsgId = `wechat-out-${Date.now()}`;
 
     for (const chunk of chunks) {
-      const clientId = `claw-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const clientId = `claw-${randomUUID()}`;
       const req: SendMessageReq = {
         msg: {
           from_user_id: "",
@@ -463,21 +509,23 @@ export class WechatAdapter implements ChannelAdapter {
       };
 
       const resp = await sendMessage(baseUrl, token, req);
-      lastMsgId = resp.msg_id || resp.message_id || clientId;
-      this.log.info({ chatId: toUserId, messageId: lastMsgId, chars: chunk.length }, "Sent WeChat message");
+      const messageId = resp.msg_id || resp.message_id || clientId;
+      ids.push(messageId);
+      this.log.info({ chatId: toUserId, messageId, chars: chunk.length }, "Sent WeChat message");
     }
 
-    return lastMsgId;
-  }
-
-  async sendMessages(msg: OutboundMessage): Promise<string[]> {
-    const id = await this.send(msg);
-    return [id];
+    return ids;
   }
 
   async sendWithButtons(chatId: string, text: string, buttons: InlineButton[][]): Promise<string> {
     const formatted = formatButtonsAsText(formatWechatText(text), buttons);
-    return this.send({ chatId, text: formatted });
+    this.pendingMenus.delete(chatId);
+    const id = await this.send({ chatId, text: formatted });
+    for (const [key, menu] of this.pendingMenus) {
+      if (menu.expires <= Date.now()) this.pendingMenus.delete(key);
+    }
+    this.pendingMenus.set(chatId, { buttons: buttons.flat().map(b => ({ ...b })), expires: Date.now() + 5 * 60_000 });
+    return id;
   }
 
   async editMessage(): Promise<void> {

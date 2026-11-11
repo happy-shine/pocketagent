@@ -126,7 +126,7 @@ export interface GetUpdatesReq {
 }
 
 export interface GetUpdatesResp {
-  ret: number;
+  ret?: number;
   errcode?: number;
   errmsg?: string;
   msgs?: WeixinMessage[];
@@ -148,7 +148,7 @@ export interface SendMessageReq {
 }
 
 export interface SendMessageResp {
-  ret: number;
+  ret?: number;
   errcode?: number;
   errmsg?: string;
   msg_id?: string;

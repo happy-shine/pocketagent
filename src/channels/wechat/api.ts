@@ -185,7 +185,7 @@ export async function sendMessage(
   const body = { ...req, base_info: buildBaseInfo() };
   const text = await apiFetch(url, "POST", headers, body);
   const resp = parseWeixinApiJson<SendMessageResp>(text);
-  if (resp.ret !== 0) {
+  if ((resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0)) {
     throw new Error(`sendMessage ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg}`);
   }
   return resp;

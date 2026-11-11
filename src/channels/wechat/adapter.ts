@@ -266,7 +266,13 @@ export class WechatAdapter implements ChannelAdapter {
       try {
         const resp = await getUpdates(baseUrl, this.sessionData.bot_token, this.syncBuf, pollTimeout);
 
-        if (resp && resp.ret === 0) {
+        const isApiError = Boolean(
+          resp &&
+            ((resp.ret !== undefined && resp.ret !== 0) ||
+              (resp.errcode !== undefined && resp.errcode !== 0))
+        );
+
+        if (resp && !isApiError) {
           if (resp.get_updates_buf) {
             this.saveSyncBuf(resp.get_updates_buf);
           }
@@ -279,7 +285,7 @@ export class WechatAdapter implements ChannelAdapter {
               await this.handleIncomingWechatMessage(msg);
             }
           }
-        } else if (resp && (resp.ret !== 0 || resp.errcode !== 0)) {
+        } else if (resp && isApiError) {
           this.log.warn({ ret: resp.ret, errcode: resp.errcode, errmsg: resp.errmsg }, "getUpdates non-zero response");
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }

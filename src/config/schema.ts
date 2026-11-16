@@ -84,6 +84,9 @@ const enginesSchema = z.object({
   default: EngineTypeSchema.default("claude"),
   maxProcesses: z.number().int().positive().default(10),
   idleTimeoutMs: z.number().int().positive().default(600000),
+  // Conversation size (tokens) each engine is kept under: Claude and Codex compact their own context near it,
+  // Antigravity starts a new conversation past it. 0 leaves it to each CLI's own default.
+  contextLimitTokens: z.number().int().nonnegative().default(150000),
   claude: claudeEngineSchema.default(claudeEngineSchema.parse({})),
   codex: codexEngineSchema.default(codexEngineSchema.parse({})),
   agy: agyEngineSchema.default(agyEngineSchema.parse({})),
@@ -189,6 +192,8 @@ const botSchema = z.object({
   // What the agent writes before a tool call: "message" posts it right away as its own message, "final" keeps it
   // for the final reply as before
   interimText: z.enum(["message", "final"]).optional(),
+  // Small line under each reply with the size of the engine's context and how full it is; on by default
+  contextFooter: z.boolean().optional(),
 });
 
 export const configSchema = z.preprocess((input) => {

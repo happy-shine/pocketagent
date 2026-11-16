@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { Session, EngineType } from "../sessions/types.js";
-import { ClaudeEngineAdapter } from "./claude/adapter.js";
+import { ClaudeEngineAdapter, CLAUDE_MIN_AUTO_COMPACT_WINDOW } from "./claude/adapter.js";
 import { AgyEngineAdapter } from "./agy/adapter.js";
 import { CodexEngineAdapter } from "./codex/adapter.js";
 import { GrokEngineAdapter } from "./grok/adapter.js";
@@ -19,12 +19,15 @@ export class EngineManager {
   private log: Logger;
   private memoryRoot: string;
   private memoryEnabled = false;
+  private contextLimitTokens = 0;
 
   constructor(config: GatewayConfig, log: Logger, apiPort: number, dataDir: string) {
     this.log = log.child({ module: "engine-manager" });
 
     const maxProcesses = config.engines.maxProcesses;
     const idleTimeoutMs = config.engines.idleTimeoutMs;
+    const contextLimitTokens = config.engines.contextLimitTokens;
+    this.contextLimitTokens = contextLimitTokens;
     const backgroundJobs = config.jobs.enabled;
     const workspaceDir = `${dataDir}/workspaces`;
     const agentsDir = `${dataDir}/agents`;
@@ -40,6 +43,7 @@ export class EngineManager {
       extraArgs: config.engines.claude.extraArgs,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       workspaceDir,
       apiPort,
       agentsDir,
@@ -59,6 +63,7 @@ export class EngineManager {
       extraArgs: config.engines.agy.extraArgs,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       workspaceDir,
       apiPort,
       agentsDir,
@@ -78,6 +83,7 @@ export class EngineManager {
       extraArgs: config.engines.codex.extraArgs,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       workspaceDir,
       apiPort,
       agentsDir,
@@ -101,6 +107,7 @@ export class EngineManager {
       extraArgs: config.engines.grok.extraArgs,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       workspaceDir,
       apiPort,
       agentsDir,
@@ -110,6 +117,16 @@ export class EngineManager {
       nativeMemory,
     };
     this.adapters.set("grok", new GrokEngineAdapter(grokConfig, this.log));
+  }
+
+  /**
+   * Conversation size (tokens) at which the engine compacts or starts over, as its adapter applies
+   * engines.contextLimitTokens; undefined when nothing is applied (the limit is 0, or the engine is Grok).
+   */
+  getContextLimit(engine: EngineType): number | undefined {
+    const limit = this.contextLimitTokens;
+    if (!limit || engine === "grok") return undefined;
+    return engine === "claude" ? Math.max(limit, CLAUDE_MIN_AUTO_COMPACT_WINDOW) : limit;
   }
 
   /** Where the shared memory lives, or undefined when it is turned off. */
@@ -184,6 +201,8 @@ export class EngineManager {
   updateConfig(config: GatewayConfig): void {
     const maxProcesses = config.engines.maxProcesses;
     const idleTimeoutMs = config.engines.idleTimeoutMs;
+    const contextLimitTokens = config.engines.contextLimitTokens;
+    this.contextLimitTokens = contextLimitTokens;
     const backgroundJobs = config.jobs.enabled;
     const { memoryDir, nativeMemory } = this.memorySettings(config);
 
@@ -196,6 +215,7 @@ export class EngineManager {
       customModels: config.engines.claude.customModels,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       backgroundJobs,
       memoryDir,
       nativeMemory,
@@ -210,6 +230,7 @@ export class EngineManager {
       customModels: config.engines.agy.customModels,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       backgroundJobs,
       memoryDir,
       nativeMemory,
@@ -224,6 +245,7 @@ export class EngineManager {
       customModels: config.engines.codex.customModels,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       backgroundJobs,
       memoryDir,
       nativeMemory,
@@ -242,6 +264,7 @@ export class EngineManager {
       customModels: config.engines.grok.customModels,
       maxProcesses,
       idleTimeoutMs,
+      contextLimitTokens,
       backgroundJobs,
       memoryDir,
       nativeMemory,

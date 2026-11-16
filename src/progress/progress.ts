@@ -234,8 +234,14 @@ export class ProgressTracker {
   /**
    * Posts the final answer, replacing the progress message. With `mention`, the answer starts by mentioning
    * that user and is sent as a new message, because mentions added by an edit do not notify anyone.
+   * A footer is one line of plain text set small under the reply: Discord subtext, and italics on Telegram, which
+   * has no small text.
    */
-  async finish(finalText: string, buttons?: string[], opts: { mention?: { id: string; name: string } } = {}): Promise<void> {
+  async finish(
+    finalText: string,
+    buttons?: string[],
+    opts: { mention?: { id: string; name: string }; footer?: string } = {},
+  ): Promise<void> {
     await this.flushInterim();
     this.done = true;
     this.stop();
@@ -243,17 +249,20 @@ export class ProgressTracker {
 
     const isTelegram = this.channel.type === "telegram";
     const { mention } = opts;
+    const footer = opts.footer?.replace(/\s+/g, " ").trim();
     let textToSend = finalText;
     let parseMode: "HTML" | undefined;
     let plainFallback: string | undefined;
 
     if (isTelegram) {
       textToSend = markdownToTelegramHtml(finalText);
+      if (footer) textToSend += `\n\n<i>${escapeHtml(footer)}</i>`;
       if (mention) textToSend = `<a href="tg://user?id=${escapeHtml(mention.id)}">${escapeHtml(mention.name)}</a>\n${textToSend}`;
       parseMode = "HTML";
       plainFallback = stripHtml(textToSend);
-    } else if (mention) {
-      textToSend = `<@${mention.id}>\n${finalText}`;
+    } else {
+      if (footer) textToSend += `\n-# ${footer}`;
+      if (mention) textToSend = `<@${mention.id}>\n${textToSend}`;
     }
 
     if (mention && this.messageId) {

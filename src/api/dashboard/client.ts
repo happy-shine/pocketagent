@@ -1513,6 +1513,7 @@ export function dashboardClient() {
         <div class="sec"><div class="sec-h"><h3>${L("进程", "Processes")}</h3></div><div class="g3">
           ${fld(L("最多同时运行", "Max concurrent"), unitInp("engines.maxProcesses", L("个进程", "processes"), { conv: "int", min: 1 }), { path: "engines.maxProcesses" })}
           ${fld(L("空闲多久后回收", "Idle timeout"), unitInp("engines.idleTimeoutMs", L("分钟", "min"), { conv: "min", min: 1, step: "1" }), { path: "engines.idleTimeoutMs", hint: L("会话空闲超过这个时间，CLI 进程会被关闭，下次消息再启动。", "Idle CLI processes are stopped after this and restarted on the next message.") })}
+          ${fld(L("上下文上限", "Context limit"), unitInp("engines.contextLimitTokens", "tokens", { conv: "int", min: 0, step: "10000" }), { path: "engines.contextLimitTokens", hint: L("对话超过这个大小，Claude 和 Codex 会自动压缩成摘要，Antigravity 会换一个新对话并带上最近的聊天。Claude 最低 100000；填 0 则交给各 CLI 自己决定。Grok 不受影响。", "Past this size Claude and Codex summarize the conversation, and Antigravity starts a new one with the recent chat. Claude takes 100000 at least; 0 leaves it to each CLI. Grok is not affected.") })}
         </div></div>
         <div class="sec"><div class="sec-h"><h3>${L("各引擎设置", "Per-engine settings")}</h3></div><div class="acc">${acc.join("")}</div></div>
       </div>`,

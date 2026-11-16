@@ -16,6 +16,8 @@ export interface CodexSpawnConfig {
   nativeMemory?: boolean;
   // Directories outside the workspace the agent must be able to write to, such as the shared memory
   writableDirs?: string[];
+  // Context size (tokens) at which Codex compacts the conversation; unset or 0 leaves its per-model default
+  autoCompactTokens?: number;
 }
 
 export interface CodexJsonEvent {
@@ -57,6 +59,9 @@ export function buildCodexSpawnArgs(config: CodexSpawnConfig): CodexSpawnCommand
     "-c",
     `project_doc_max_bytes=${CODEX_MAX_PROJECT_DOC_BYTES}`,
   ];
+  if (config.autoCompactTokens) {
+    args.push("-c", `model_auto_compact_token_limit=${config.autoCompactTokens}`);
+  }
   if (!config.nativeMemory) {
     args.push("--disable", "memories");
   }

@@ -48,6 +48,19 @@ function writeClaudeWorkspaceRules(sessionDir: string, systemParts: string[]): v
   }
 }
 
+// Claude Code takes an auto-compact window of 100k tokens at least and reads a smaller one as 100k, with a warning
+export const CLAUDE_MIN_AUTO_COMPACT_WINDOW = 100_000;
+
+/**
+ * Makes Claude Code summarize the conversation as it nears the limit, instead of only near the end of the model's
+ * own window, which on a 1M-token model is long after replies have got worse. Overrides the variable when the
+ * gateway's own environment sets it; a limit of 0 leaves that one, or Claude Code's default, in place.
+ */
+export function claudeContextLimitEnv(contextLimitTokens?: number): Record<string, string> {
+  if (!contextLimitTokens) return {};
+  return { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(Math.max(contextLimitTokens, CLAUDE_MIN_AUTO_COMPACT_WINDOW)) };
+}
+
 export class ClaudeEngineAdapter implements EngineAdapter {
   readonly type = "claude" as const;
   readonly supportsSteer = true;
@@ -162,6 +175,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
       env: {
         ...process.env,
         ...(nativeMemoryOff ? CLAUDE_NATIVE_MEMORY_OFF_ENV : {}),
+        ...claudeContextLimitEnv(this.config.contextLimitTokens),
         POCKETAGENT_SESSION_ID: session.sessionId,
         [STEER_URL_ENV]: steerHookUrl(this.config.apiPort),
       },
@@ -308,6 +322,7 @@ export class ClaudeEngineAdapter implements EngineAdapter {
             if (ctxTokens > 0) {
               session.usage = session.usage ?? {};
               session.usage.contextTokens = ctxTokens;
+              session.usage.contextEngine = "claude";
             }
           }
           // Each content block of an assistant message is a whole block

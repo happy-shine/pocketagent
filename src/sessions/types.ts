@@ -14,6 +14,8 @@ export interface SessionHistoryItem {
 export interface SessionUsage {
   /** Latest model call context size (input + cache_read + cache_creation tokens) */
   contextTokens?: number;
+  /** Engine whose conversation contextTokens measures */
+  contextEngine?: EngineType;
   /** Cumulative output tokens in this session */
   outputTokens?: number;
   /** Latest turn output tokens */

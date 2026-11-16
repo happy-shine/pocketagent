@@ -50,6 +50,8 @@ export interface EngineRuntimeConfig {
   extraArgs: string[];
   maxProcesses: number;
   idleTimeoutMs: number;
+  // Conversation size (tokens) to stay under by compacting or starting over; 0 or unset leaves it to the CLI
+  contextLimitTokens?: number;
   workspaceDir: string;
   apiPort: number;
   agentsDir: string;

@@ -35,6 +35,7 @@ import type { JobManager } from "../jobs/manager.js";
 import { buildJobCallbackPrompt, describeJobOutcome, formatDuration, jobDuration } from "../jobs/format.js";
 import { isJobActive, type BackgroundJob, type JobCallbackState } from "../jobs/types.js";
 import { buildGroupContext } from "./group-context.js";
+import { formatContextUsage, sessionContextUsage } from "../sessions/context-usage.js";
 import { decideFollowUp, formatMessageIds, type SteerMailbox } from "../steer/steer.js";
 import { listMemoryFiles, loadMemorySnapshot, type MemoryStoreSnapshot } from "../memory/store.js";
 import { MemoryWriter } from "../memory/writer.js";
@@ -842,9 +843,8 @@ export class BotInstance {
     if (session.usage) {
       const u = session.usage;
       const usageParts: string[] = [];
-      if (typeof u.contextTokens === "number" && u.contextTokens > 0) {
-        usageParts.push(`Context ${(u.contextTokens / 1000).toFixed(1)}k`);
-      }
+      const context = sessionContextUsage(session, this.engineManager.getContextLimit(session.activeEngine));
+      if (context) usageParts.push(formatContextUsage(context));
       if (typeof u.outputTokens === "number" && u.outputTokens > 0) {
         usageParts.push(`Out ${(u.outputTokens / 1000).toFixed(1)}k`);
       }
@@ -1527,7 +1527,7 @@ export class BotInstance {
       const reply = text || fallback;
       const mention =
         job.isGroup && job.requester.senderId ? { id: job.requester.senderId, name: job.requester.senderName || "requester" } : undefined;
-      await tracker.finish(reply, buttons, { mention });
+      await tracker.finish(reply, buttons, { mention, footer: this.contextFooter(session) });
     } catch (err) {
       tracker.stop();
       throw err;
@@ -1949,7 +1949,7 @@ export class BotInstance {
         await tracker.discard();
         return;
       }
-      await tracker.finish(reply || "(Task completed)", buttons);
+      await tracker.finish(reply || "(Task completed)", buttons, { footer: this.contextFooter(session) });
     } catch (err) {
       tracker.stop();
       this.log.error({ error: err }, "Error processing turn");
@@ -1961,6 +1961,13 @@ export class BotInstance {
       this.turnSenders.delete(msg.chatId);
       this.releaseSteered(session.sessionId);
     }
+  }
+
+  /** The line set small under a reply: how large the engine's conversation is and how close to its limit. */
+  private contextFooter(session: Session): string | undefined {
+    if (!this.config.contextFooter) return undefined;
+    const context = sessionContextUsage(session, this.engineManager.getContextLimit(session.activeEngine));
+    return context ? formatContextUsage(context) : undefined;
   }
 
   private checkAccess(msg: InboundMessage) {

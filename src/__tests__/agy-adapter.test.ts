@@ -196,6 +196,24 @@ describe("Antigravity adapter", () => {
     expect(session.usage?.lastCompactionPreTokens).toBe(AGY_ROTATE_CONTEXT_TOKENS + 1);
   });
 
+  it("starts a new conversation at the configured context limit, and never with a limit of 0", async () => {
+    const adapter = makeAdapter();
+    const session = makeSession();
+    adapter.updateConfig({ contextLimitTokens: 50_000 });
+    setContext(50_001);
+    await collect(adapter.sendMessage(session, "one", "bot-1"));
+    expect(session.agySessionId).toBeUndefined();
+    expect(session.usage?.compactions).toBe(1);
+    expect(session.usage).toMatchObject({ contextTokens: 50_001, contextEngine: "agy" });
+
+    adapter.updateConfig({ contextLimitTokens: 0 });
+    setContext(AGY_ROTATE_CONTEXT_TOKENS + 1);
+    await collect(adapter.sendMessage(session, "two", "bot-1"));
+    await adapter.shutdown();
+    expect(session.agySessionId).toBeDefined();
+    expect(session.usage?.compactions).toBe(1);
+  });
+
   it("omits conflicting --effort when model ID already encodes tier (-low/-medium/-high)", async () => {
     const adapter = makeAdapter();
     const session = makeSession();

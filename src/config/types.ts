@@ -24,4 +24,5 @@ export interface ResolvedBotConfig {
   skills?: boolean | string[];
   followUp: "steer" | "queue";
   interimText: "message" | "final";
+  contextFooter: boolean;
 }

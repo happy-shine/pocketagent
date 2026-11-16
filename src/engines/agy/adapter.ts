@@ -19,7 +19,8 @@ import { discoverAgyCapabilities } from "./discovery.js";
 import { agyHooks, steerHookUrl, STEER_URL_ENV } from "../../steer/steer.js";
 import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
 
-// Context size (tokens) past which the next turn starts a new Antigravity conversation. Antigravity compacts its
+// Default context size (tokens) past which the next turn starts a new Antigravity conversation; the gateway's
+// engines.contextLimitTokens replaces it, and 0 there turns the switch off. Antigravity compacts its
 // context on its own near 270k tokens, mid-task, after which it loses track of the task and of its instructions;
 // starting over between turns, with a handover of the recent conversation, avoids that.
 export const AGY_ROTATE_CONTEXT_TOKENS = 150_000;
@@ -328,6 +329,7 @@ export class AgyEngineAdapter implements EngineAdapter {
               contextTokens = usage.input_tokens + (typeof usage.cache_read_tokens === "number" ? usage.cache_read_tokens : 0);
               session.usage = session.usage ?? {};
               session.usage.contextTokens = contextTokens;
+              session.usage.contextEngine = "agy";
               if (typeof usage.output_tokens === "number" && usage.output_tokens > 0 && stepKey !== lastUsageStepKey) {
                 lastUsageStepKey = stepKey;
                 turnOutputTokens += usage.output_tokens;
@@ -389,7 +391,8 @@ export class AgyEngineAdapter implements EngineAdapter {
       ep.busy = false;
       ep.lastActiveAt = Date.now();
       this.scheduleIdle(session.sessionId);
-      if (contextTokens > AGY_ROTATE_CONTEXT_TOKENS) {
+      const rotateAt = this.config.contextLimitTokens ?? AGY_ROTATE_CONTEXT_TOKENS;
+      if (rotateAt > 0 && contextTokens > rotateAt) {
         this.log.info(
           { sessionId: session.sessionId, conversation: session.agySessionId, contextTokens },
           "Agy conversation is large; the next turn starts a new one",

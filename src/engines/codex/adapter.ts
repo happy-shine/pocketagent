@@ -170,6 +170,7 @@ export class CodexEngineAdapter implements EngineAdapter {
       sandbox: this.config.codex?.sandbox ?? "danger-full-access",
       approvalPolicy: this.config.codex?.approvalPolicy ?? "never",
       nativeMemory: this.config.nativeMemory,
+      autoCompactTokens: this.config.contextLimitTokens,
       writableDirs: ep.promptMemory ? [ep.promptMemory.chat.dir, ep.promptMemory.bot.dir] : undefined,
     });
 

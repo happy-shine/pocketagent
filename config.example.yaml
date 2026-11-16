@@ -16,11 +16,17 @@ bots:
     #   "-1003981923249": true
     # interimText: message # text the agent writes before a tool call: "message" posts it right away as its
     #                      # own message (default); "final" keeps it for the end, in front of the answer
+    # contextFooter: false # drop the small "Context 25.6k / 150k · 17%" line under each reply (Claude and agy)
 
   # Optional Discord Bot
   # - name: "my-discord-bot"
   #   channel: discord
   #   token: "MTE3..."
+
+# Optional: keep long chats sharp. Past this many tokens Claude Code and Codex summarize the conversation,
+# and Antigravity starts a new one with a handover of the recent turns. Grok keeps its own setting.
+# engines:
+#   contextLimitTokens: 150000  # default; Claude Code takes 100000 at least; 0 leaves it to each CLI
 
 # Optional: scheduled tasks (created by asking the bot in plain words, or via /cron)
 # scheduler:

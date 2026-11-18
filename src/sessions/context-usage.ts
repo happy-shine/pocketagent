@@ -10,8 +10,8 @@ export interface ContextUsage {
 }
 
 /**
- * How full the active engine's conversation is, or null when that engine has not reported a size: Codex and Grok
- * never do, and a size left by another engine says nothing about this one.
+ * How full the active engine's conversation is, or null when that engine has not reported a size: Grok never
+ * does, and a size left by another engine says nothing about this one.
  */
 export function sessionContextUsage(session: Session, limit?: number): ContextUsage | null {
   const usage = session.usage;

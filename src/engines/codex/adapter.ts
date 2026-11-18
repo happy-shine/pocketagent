@@ -16,8 +16,12 @@ import type {
 } from "../types.js";
 import { discoverCodexCapabilities } from "./discovery.js";
 import { buildCodexSpawnArgs, mapCodexEvent, parseCodexJsonLine } from "./parser.js";
+import { findCodexRollout, readCodexContextSize } from "./rollout.js";
 import { TextBlocks } from "../text-blocks.js";
 import { markMemorySeen, sessionMemorySnapshot, takeMemoryUpdate } from "../../memory/prompt.js";
+
+// Reasoning efforts Codex models take; an effort another engine left on the session (or a typo) is not passed on
+const CODEX_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 
 export class CodexEngineAdapter implements EngineAdapter {
   readonly type = "codex" as const;
@@ -25,6 +29,8 @@ export class CodexEngineAdapter implements EngineAdapter {
   private processes = new Map<string, EngineProcess>();
   // Sessions whose running turn /stop ended
   private interrupted = new Set<string>();
+  // Rollout file of each Codex thread, once found
+  private rollouts = new Map<string, string>();
   private config: EngineRuntimeConfig;
   private log: Logger;
 
@@ -158,7 +164,7 @@ export class CodexEngineAdapter implements EngineAdapter {
     if (activeModel) extraArgs.push("--model", activeModel);
 
     const activeEffort = session.engineEfforts?.codex ?? session.effort ?? this.config.effort;
-    if (activeEffort && ["low", "medium", "high", "xhigh"].includes(activeEffort.toLowerCase())) {
+    if (activeEffort && CODEX_EFFORTS.has(activeEffort.toLowerCase())) {
       extraArgs.push("-c", `model_reasoning_effort=${activeEffort.toLowerCase()}`);
     }
 
@@ -193,6 +199,7 @@ export class CodexEngineAdapter implements EngineAdapter {
       for await (const line of rl) {
         const jsonEvent = parseCodexJsonLine(line);
         if (!jsonEvent) continue;
+        if (jsonEvent.type === "turn.completed") recordTurnOutput(session, jsonEvent.usage);
 
         const events = mapCodexEvent(jsonEvent);
         for (const ev of events) {
@@ -215,10 +222,28 @@ export class CodexEngineAdapter implements EngineAdapter {
       }
     } finally {
       rl.close();
+      this.recordContextSize(session);
       ep.busy = false;
       ep.lastActiveAt = Date.now();
       this.scheduleIdle(session.sessionId);
     }
+  }
+
+  /** Reads the thread's size after the turn from its rollout file, since `codex exec --json` does not report it. */
+  private recordContextSize(session: Session): void {
+    const threadId = session.codexSessionId;
+    if (!threadId) return;
+    let path = this.rollouts.get(threadId);
+    if (!path) {
+      path = findCodexRollout(threadId);
+      if (!path) return;
+      this.rollouts.set(threadId, path);
+    }
+    const size = readCodexContextSize(path);
+    if (!size) return;
+    session.usage = session.usage ?? {};
+    session.usage.contextTokens = size.tokens;
+    session.usage.contextEngine = "codex";
   }
 
   /** Each Codex turn is its own `codex exec` process, so an interrupt stops that process. */
@@ -314,4 +339,14 @@ export class CodexEngineAdapter implements EngineAdapter {
       this.processes.delete(oldestId);
     }
   }
+}
+
+/** Output tokens of a turn, from the summed usage on `turn.completed`. */
+function recordTurnOutput(session: Session, usage: unknown): void {
+  if (typeof usage !== "object" || usage === null) return;
+  const output = (usage as Record<string, unknown>).output_tokens;
+  if (typeof output !== "number" || output <= 0) return;
+  session.usage = session.usage ?? {};
+  session.usage.lastOutputTokens = output;
+  session.usage.outputTokens = (session.usage.outputTokens ?? 0) + output;
 }

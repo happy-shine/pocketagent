@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineCapabilities, ModelInfo, EffortInfo } from "../types.js";
 
@@ -8,7 +8,26 @@ const execFileAsync = promisify(execFile);
 
 let cachedCapabilities: EngineCapabilities | null = null;
 let lastFetchedAt = 0;
+let cachedStamp = "";
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+function modelsCachePath(): string {
+  const codexHome = process.env.CODEX_HOME || join(process.env.HOME || "", ".codex");
+  return join(codexHome, "models_cache.json");
+}
+
+/**
+ * Changes whenever Codex rewrites its model cache, as it does after a login or an update, so the list is read
+ * again then instead of serving the old one for up to CACHE_TTL_MS.
+ */
+function modelsCacheStamp(): string {
+  try {
+    const st = statSync(modelsCachePath());
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return "";
+  }
+}
 
 interface RawCodexModel {
   slug: string;
@@ -19,6 +38,19 @@ interface RawCodexModel {
     effort: string;
     description?: string;
   }>;
+  /** "list" for models the CLI's picker shows, "hide" for internal ones such as codex-auto-review */
+  visibility?: string;
+  /** Order in the CLI's picker, lowest first */
+  priority?: number;
+}
+
+/** The models the Codex CLI itself offers, in its own order. */
+export function listedCodexModels(raw: RawCodexModel[]): RawCodexModel[] {
+  return raw
+    .filter((m) => m && typeof m.slug === "string" && m.slug && m.visibility !== "hide")
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => (a.m.priority ?? Infinity) - (b.m.priority ?? Infinity) || a.i - b.i)
+    .map(({ m }) => m);
 }
 
 const FALLBACK_CODEX_MODELS: ModelInfo[] = [
@@ -45,7 +77,8 @@ export async function discoverCodexCapabilities(
   forceRefresh: boolean = false,
 ): Promise<EngineCapabilities> {
   const now = Date.now();
-  if (!forceRefresh && cachedCapabilities && now - lastFetchedAt < CACHE_TTL_MS) {
+  const stamp = modelsCacheStamp();
+  if (!forceRefresh && cachedCapabilities && now - lastFetchedAt < CACHE_TTL_MS && stamp === cachedStamp) {
     return cachedCapabilities;
   }
 
@@ -61,8 +94,7 @@ export async function discoverCodexCapabilities(
   } catch {
     // 2. Try reading from ~/.codex/models_cache.json
     try {
-      const codexHome = process.env.CODEX_HOME || join(process.env.HOME || "", ".codex");
-      const cachePath = join(codexHome, "models_cache.json");
+      const cachePath = modelsCachePath();
       if (existsSync(cachePath)) {
         const fileData = JSON.parse(readFileSync(cachePath, "utf-8"));
         if (Array.isArray(fileData.models)) {
@@ -71,6 +103,8 @@ export async function discoverCodexCapabilities(
       }
     } catch {}
   }
+
+  rawModels = listedCodexModels(rawModels);
 
   const models: ModelInfo[] = [];
   const effortSet = new Set<string>();
@@ -189,6 +223,7 @@ export async function discoverCodexCapabilities(
     supportsCustomModel: true,
   };
   lastFetchedAt = now;
+  cachedStamp = stamp;
 
   return cachedCapabilities;
 }

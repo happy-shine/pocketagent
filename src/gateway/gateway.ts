@@ -110,6 +110,9 @@ export class Gateway {
   private apiServer?: ApiServer;
   private messageStore: MessageStore;
   private bots = new Map<string, BotInstance>();
+  // Bots that could not connect, retried in the background so one unreachable bot does not keep the rest down
+  private botRetryTimers = new Map<string, NodeJS.Timeout>();
+  private stopping = false;
   private dataDir: string;
   private configPath: string;
   private configWatcher?: FSWatcher;
@@ -168,23 +171,86 @@ export class Gateway {
 
     const botConfigs = resolveBots(config);
     for (const botConfig of botConfigs) {
-      const bot = new BotInstance({
-        botConfig,
-        gatewayConfig: config,
-        engineManager: this.engineManager,
-        messageStore: this.messageStore,
-        dataDir: this.dataDir,
-        log,
-        scheduler: this.scheduler,
-        jobs: this.jobManager,
-        steerMailbox: this.steerMailbox,
-        memorySettings: () => this.config.memory,
-      });
+      const bot = this.createBot(botConfig, config);
       this.bots.set(bot.botId, bot);
     }
 
     if (this.bots.size === 0) {
       this.log.warn("No bots configured. Check config.yaml for bots[] or channels.");
+    }
+  }
+
+  private createBot(botConfig: ResolvedBotConfig, gatewayConfig: GatewayConfig): BotInstance {
+    return new BotInstance({
+      botConfig,
+      gatewayConfig,
+      engineManager: this.engineManager,
+      messageStore: this.messageStore,
+      dataDir: this.dataDir,
+      log: this.log,
+      scheduler: this.scheduler,
+      jobs: this.jobManager,
+      steerMailbox: this.steerMailbox,
+      memorySettings: () => this.config.memory,
+    });
+  }
+
+  /**
+   * Starts a bot; when it cannot connect (its platform's API is down or unreachable for its token), logs that and
+   * keeps retrying in the background instead of failing the whole gateway, so the other bots stay up.
+   */
+  private async startBot(bot: BotInstance, attempt = 0): Promise<boolean> {
+    try {
+      await bot.start();
+      return true;
+    } catch (err) {
+      const delayMs = Math.min(30_000 * 2 ** attempt, 5 * 60_000);
+      this.log.error(
+        { bot: bot.name, botId: bot.botId, error: err instanceof Error ? err.message : String(err), retryInMs: delayMs },
+        "Bot could not start; retrying in the background",
+      );
+      this.scheduleBotRetry(bot, attempt + 1, delayMs);
+      return false;
+    }
+  }
+
+  private scheduleBotRetry(failed: BotInstance, attempt: number, delayMs: number): void {
+    this.cancelBotRetry(failed.botId);
+    const timer = setTimeout(() => {
+      this.botRetryTimers.delete(failed.botId);
+      void this.retryBot(failed, attempt);
+    }, delayMs);
+    timer.unref();
+    this.botRetryTimers.set(failed.botId, timer);
+  }
+
+  private cancelBotRetry(botId: string): void {
+    const timer = this.botRetryTimers.get(botId);
+    if (timer) clearTimeout(timer);
+    this.botRetryTimers.delete(botId);
+  }
+
+  /** A failed bot has registered its handlers already, so the retry starts a fresh instance in its place. */
+  private async retryBot(failed: BotInstance, attempt: number): Promise<void> {
+    // Stopped, or the bot was removed or replaced by a config reload meanwhile
+    if (this.stopping || this.bots.get(failed.botId) !== failed) return;
+    await this.stopBotQuietly(failed);
+    if (this.stopping || this.bots.get(failed.botId) !== failed) return;
+    const bot = this.createBot(failed.config, this.config);
+    this.bots.set(bot.botId, bot);
+    this.syncPeerBots();
+    if (await this.startBot(bot, attempt)) {
+      this.log.info({ bot: bot.name, botId: bot.botId, attempt }, "Bot started after retrying");
+      this.syncPeerBots();
+    }
+  }
+
+  /** Stopping a bot that never connected can itself fail on the same unreachable API; that must not stop the rest. */
+  private async stopBotQuietly(bot: BotInstance): Promise<void> {
+    try {
+      await bot.stop();
+    } catch (err) {
+      this.log.warn({ bot: bot.name, error: err instanceof Error ? err.message : String(err) }, "Bot did not stop cleanly");
     }
   }
 
@@ -272,8 +338,8 @@ export class Gateway {
     // Notify bots of peers
     this.syncPeerBots();
 
-    for (const bot of this.bots.values()) {
-      await bot.start();
+    for (const bot of Array.from(this.bots.values())) {
+      await this.startBot(bot);
     }
     this.syncPeerBots();
 
@@ -358,7 +424,8 @@ export class Gateway {
       for (const [botId, bot] of Array.from(this.bots.entries())) {
         if (!newBotMap.has(botId)) {
           this.log.info({ bot: bot.name, botId }, "Stopping removed bot");
-          await bot.stop();
+          this.cancelBotRetry(botId);
+          await this.stopBotQuietly(bot);
           this.bots.delete(botId);
           changes.push(`Stopped and removed bot "${bot.name}"`);
         }
@@ -372,21 +439,12 @@ export class Gateway {
           changes.push(`Updated bot "${bc.name}"`);
         } else {
           this.log.info({ bot: bc.name, botId: bc.botId }, "Starting new bot");
-          const newBot = new BotInstance({
-            botConfig: bc,
-            gatewayConfig: freshConfig,
-            engineManager: this.engineManager,
-            messageStore: this.messageStore,
-            dataDir: this.dataDir,
-            log: this.log,
-            scheduler: this.scheduler,
-            jobs: this.jobManager,
-            steerMailbox: this.steerMailbox,
-            memorySettings: () => this.config.memory,
-          });
-          await newBot.start();
+          const newBot = this.createBot(bc, freshConfig);
           this.bots.set(newBot.botId, newBot);
-          changes.push(`Started new bot "${bc.name}" (${bc.channel})`);
+          const started = await this.startBot(newBot);
+          changes.push(started
+            ? `Started new bot "${bc.name}" (${bc.channel})`
+            : `New bot "${bc.name}" (${bc.channel}) could not connect; retrying in the background`);
         }
       }
 
@@ -928,6 +986,8 @@ export class Gateway {
 
   async stop(): Promise<void> {
     this.log.info("Stopping PocketAgent Gateway...");
+    this.stopping = true;
+    for (const botId of Array.from(this.botRetryTimers.keys())) this.cancelBotRetry(botId);
     this.scheduler.stop();
     // Running jobs keep going and are picked up again on the next start
     this.jobManager.stop();
@@ -935,7 +995,7 @@ export class Gateway {
       this.configWatcher.close();
     }
     for (const bot of this.bots.values()) {
-      await bot.stop();
+      await this.stopBotQuietly(bot);
     }
     if (this.apiServer) {
       await this.apiServer.stop();
